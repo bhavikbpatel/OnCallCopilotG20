@@ -20,9 +20,10 @@ different model family only scores what code cannot.
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
 | `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
-| `knowledge/retrieval.py` | Markdown ingestion, metadata filters, BM25 + TF-IDF vector RRF + deterministic reranker | local baseline |
-| `knowledge/memory.py` | SQLite lesson proposals/review lifecycle and fail-closed precondition checks | local baseline |
-| `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md` | done |
+| `knowledge/retrieval.py` | Markdown ingestion, metadata filters, generated diagnostic subqueries, BM25 + TF-IDF vector RRF + top-20 deterministic reranker | local baseline |
+| `knowledge/memory.py` | SQLite accepted-incident store, lesson review/deletion lifecycle and fail-closed preconditions | local baseline |
+| `telemetry/signals.py` | Service-scoped error-rate and p95 signal queries shared with lesson preconditions | local mapping |
+| `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
 | `knowledge/retrieval_queries.json` | 36 labelled development queries for Recall@5 | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
@@ -82,13 +83,18 @@ cd OnCallCopilotG20 && python -m eval.knowledge.evaluate
 cd OnCallCopilotG20 && python -m pytest eval/tests/test_knowledge.py
 ```
 
-The evaluator compares keyword-only BM25 against local hybrid retrieval on the
-labelled development set. The TF-IDF vector index and deterministic reranker are
-dependency-light placeholders, not the planned BGE/Qdrant/cross-encoder
-production stack. `knowledge/lessons.yaml` contains proposals only; call
-`MemoryStore.load_proposals()` and require a named reviewer to approve lessons
-before retrieval. See `../docs/memory-policy.md`, `../docs/severity-policy.md`
-and `../docs/knowledge-demo.md`. No held-out cases are included.
+The evaluator compares keyword-only BM25 against generated-query hybrid
+retrieval on the labelled development set. Recall@5 is a dev-only measurement,
+not evidence of held-out generalization; relevant labels may include multiple
+sections that answer an alert. The TF-IDF vector index and deterministic
+reranker are dependency-light placeholders, not the planned
+BGE/Qdrant/cross-encoder production stack. `knowledge/lessons.yaml` contains
+proposals only; call `MemoryStore.load_proposals()` and require a named reviewer
+to approve lessons before retrieval. Signal predicates must use names registered
+in `telemetry/signals.py`; unknown metrics (including DB lock wait, which the
+pinned shop does not confirm) are rejected. See `../docs/memory-policy.md`,
+`../docs/severity-policy.md` and `../docs/knowledge-demo.md`. No held-out cases
+are included.
 
 ## Regenerate the JSON Schemas after changing a schema
 

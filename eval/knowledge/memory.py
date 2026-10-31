@@ -10,6 +10,7 @@ from typing import Optional
 import yaml
 
 from ..schemas.catalogue import SERVICES
+from ..telemetry.signals import lesson_signal_name
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,17 @@ class LessonDecision:
     lesson: Lesson
     applicable: bool
     reason: str
+
+
+@dataclass(frozen=True)
+class IncidentMemory:
+    incident_id: str
+    summary: str
+    root_cause: dict
+    action: dict
+    outcome: str
+    timeline: tuple[dict, ...]
+    accepted_by: str
 
 
 def _matches(predicate: dict, context: dict) -> tuple[bool, str]:
@@ -87,6 +99,17 @@ class MemoryStore:
                 status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'withdrawn', 'rejected'))
             )
         """)
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS incidents (
+                incident_id TEXT PRIMARY KEY,
+                summary TEXT NOT NULL,
+                root_cause TEXT NOT NULL,
+                action TEXT NOT NULL,
+                outcome TEXT NOT NULL,
+                timeline TEXT NOT NULL,
+                accepted_by TEXT NOT NULL
+            )
+        """)
         self._db.commit()
 
     def close(self) -> None:
@@ -97,7 +120,7 @@ class MemoryStore:
         if not lesson_id.strip() or not text.strip() or not source_incident.strip():
             raise ValueError("lesson id, text, and source incident are required")
         self._validate_scope(applies_to)
-        self._validate_preconditions(preconditions)
+        self._validate_preconditions(preconditions, applies_to["service"])
         self._db.execute(
             "INSERT INTO lessons VALUES (?, ?, ?, ?, ?, NULL, 'pending')",
             (lesson_id, text, json.dumps(applies_to, sort_keys=True),
@@ -116,7 +139,7 @@ class MemoryStore:
             if not text or not text.strip() or not isinstance(applies_to, dict) or not preconditions:
                 raise ValueError("edit decisions require revised text, scope, and preconditions")
             self._validate_scope(applies_to)
-            self._validate_preconditions(preconditions)
+            self._validate_preconditions(preconditions, applies_to["service"])
         status = "active" if decision in {"approve", "edit"} else "rejected"
         if decision == "edit":
             cursor = self._db.execute(
@@ -144,7 +167,7 @@ class MemoryStore:
             raise ValueError("lesson scope requires a known service and fault_family")
 
     @staticmethod
-    def _validate_preconditions(preconditions: list[dict]) -> None:
+    def _validate_preconditions(preconditions: list[dict], service: Optional[str] = None) -> None:
         allowed = {"service_is", "fault_family_is", "recent_change", "signal"}
         if not preconditions:
             raise ValueError("lessons require at least one applicability precondition")
@@ -164,6 +187,15 @@ class MemoryStore:
                          and item.get("operator") in {"gt", "gte", "lt", "lte"}
                          and isinstance(item.get("threshold"), (int, float))
                          and not isinstance(item.get("threshold"), bool))
+                if valid and service:
+                    name = item["name"]
+                    if "." not in name:
+                        raise ValueError("lesson signal names must be service-qualified")
+                    signal_service, signal = name.rsplit(".", 1)
+                    try:
+                        lesson_signal_name(signal_service, signal)
+                    except ValueError as exc:
+                        raise ValueError(f"lesson references unsupported signal {name!r}") from exc
             if not valid:
                 raise ValueError(f"lesson contains a malformed {check} precondition")
 
@@ -175,7 +207,6 @@ class MemoryStore:
         for entry in entries:
             if not isinstance(entry, dict):
                 raise ValueError("lesson proposal must be a mapping")
-            self._validate_preconditions(entry.get("preconditions", []))
             self.propose(
                 lesson_id=entry["lesson_id"],
                 text=entry["text"],
@@ -195,6 +226,61 @@ class MemoryStore:
         if cursor.rowcount != 1:
             self._db.rollback()
             raise ValueError(f"active lesson {lesson_id!r} not found")
+        self._db.commit()
+
+    def delete_lesson(self, lesson_id: str, reviewer: str) -> None:
+        """Permanently remove a lesson at an authorized human's request."""
+        if not reviewer.strip():
+            raise ValueError("reviewer identity is required")
+        cursor = self._db.execute("DELETE FROM lessons WHERE lesson_id = ?", (lesson_id,))
+        if cursor.rowcount != 1:
+            self._db.rollback()
+            raise ValueError(f"lesson {lesson_id!r} not found")
+        self._db.commit()
+
+    def save_incident(self, incident_id: str, summary: str, root_cause: dict,
+                      action: dict, outcome: str, timeline: list[dict],
+                      accepted_by: str) -> None:
+        """Persist a redacted incident only after a human accepts its postmortem."""
+        if not all(isinstance(value, str) and value.strip()
+                   for value in (incident_id, summary, outcome, accepted_by)):
+            raise ValueError("incident ID, summary, outcome, and accepting reviewer are required")
+        if not isinstance(root_cause, dict) or not isinstance(action, dict):
+            raise ValueError("incident root cause and action must be structured mappings")
+        if not isinstance(timeline, list) or not all(isinstance(item, dict) for item in timeline):
+            raise ValueError("incident timeline must be a list of structured entries")
+        try:
+            from ..schemas.case import Action
+            from .retrieval import validate_typed_action
+            typed_action = Action.model_validate(action)
+            validate_typed_action(typed_action.tool, typed_action.args)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"incident action must be a typed allow-listed action: {exc}") from exc
+        self._db.execute(
+            "INSERT INTO incidents VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (incident_id, summary, json.dumps(root_cause, sort_keys=True),
+             json.dumps(action, sort_keys=True), outcome,
+             json.dumps(timeline, sort_keys=True), accepted_by),
+        )
+        self._db.commit()
+
+    def get_incident(self, incident_id: str) -> Optional[IncidentMemory]:
+        row = self._db.execute(
+            "SELECT incident_id, summary, root_cause, action, outcome, timeline, accepted_by "
+            "FROM incidents WHERE incident_id = ?", (incident_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return IncidentMemory(row[0], row[1], json.loads(row[2]), json.loads(row[3]),
+                              row[4], tuple(json.loads(row[5])), row[6])
+
+    def delete_incident(self, incident_id: str, reviewer: str) -> None:
+        if not reviewer.strip():
+            raise ValueError("reviewer identity is required")
+        cursor = self._db.execute("DELETE FROM incidents WHERE incident_id = ?", (incident_id,))
+        if cursor.rowcount != 1:
+            self._db.rollback()
+            raise ValueError(f"incident {incident_id!r} not found")
         self._db.commit()
 
     def search(self, service: str, fault_family: str, context: dict,

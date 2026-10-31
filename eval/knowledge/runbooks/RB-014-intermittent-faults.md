@@ -5,7 +5,7 @@ kind: runbook
 service: [payment, cart, product-catalog, ad]
 symptom: [intermittent 5xx, periodic failures, alternating healthy and failing windows]
 fault_family: intermittent_fault
-fix: {tool: set_flag, args: {flag: paymentFailure, value: off}}
+fix: null
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31
@@ -15,9 +15,9 @@ Errors alternate with healthy periods; one short query can miss the failure or m
 ## Checks
 Use aligned time windows for error rate, traces and flag-change history. Compare each failing window with a healthy window; identify the exact service and flag rather than reusing the example payment flag.
 ## Preconditions
-Require repeated correlated failure windows and an identified flag/fault family. The typed example fix is valid only for `paymentFailure`; substitute another catalogue flag only when telemetry proves it and the action schema validates it.
+Require repeated correlated failure windows and an identified service, flag and fault family. This generic runbook intentionally has no fixed action: retrieve the matching service-specific runbook and validate its preconditions before proposing any write.
 ## Action
-Dry-run the exact identified flag-off action, capture current state and obtain human approval bound to its hash. Never toggle repeatedly to chase an intermittent symptom.
+Do not execute an action from this generic runbook. Once the fault is identified, use its service-specific runbook, dry-run its exact typed action, capture current state and obtain human approval bound to its hash. Never toggle repeatedly to chase an intermittent symptom.
 ## Expected effect
 No new failure window occurs for at least one full observed interval; error-rate baseline is stable.
 ## Verification

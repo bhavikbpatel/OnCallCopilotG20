@@ -23,6 +23,33 @@ REQUIRED_METADATA = {
     "doc_id", "kind", "service", "symptom", "fault_family", "fix",
     "author", "written_on", "reviewed_on",
 }
+SERVICE_SYNONYMS = {
+    "payment": ("processor", "payments"),
+    "checkout": ("checkout", "check out", "purchase"),
+    "cart": ("basket", "shopping cart"),
+    "product-catalog": ("catalog", "catalogue", "product catalog"),
+    "recommendation": ("recommendations", "recommender"),
+    "fraud-detection": ("fraud",),
+    "image-provider": ("images", "image provider", "product images"),
+    "frontend-proxy": ("proxy", "upstream proxy"),
+    "astronomy-db": ("database", "db"),
+    "valkey-cart": ("valkey", "redis"),
+    "shipping": ("shipping", "delivery"),
+    "ad": ("ads", "advertising"),
+    "email": ("email", "mail delivery"),
+}
+QUERY_EXPANSIONS = (
+    (("error", "errors", "5xx", "failure", "failures", "fail", "fails", "failing", "failed", "unavailable", "outage"),
+     "error rate failed requests 5xx traces"),
+    (("latency", "slow", "delay", "timeout"),
+     "p95 latency slow spans timeout traces"),
+    (("flag", "change", "changed", "feature"),
+     "recent feature flag changes and timing"),
+    (("memory", "rss", "leak"),
+     "memory usage trend over time"),
+    (("lag", "backlog", "queue"),
+     "consumer lag throughput queue backlog"),
+)
 
 
 @dataclass(frozen=True)
@@ -35,7 +62,7 @@ class Passage:
     services: tuple[str, ...]
     symptoms: tuple[str, ...]
     fault_family: str
-    fix: dict
+    fix: Optional[dict]
     title: str
 
 
@@ -69,25 +96,29 @@ def _parse_document(path: Path) -> tuple[dict, str]:
         raise ValueError(f"{path}: unknown or empty service metadata")
     if not symptoms or not all(isinstance(item, str) and item.strip() for item in symptoms):
         raise ValueError(f"{path}: symptom metadata must contain non-empty strings")
-    if not isinstance(metadata["fix"], dict):
-        raise ValueError(f"{path}: fix must be a typed action mapping")
+    if metadata["fix"] is None:
+        if metadata["kind"] != "runbook":
+            raise ValueError(f"{path}: postmortem must record a typed fix action")
+    elif not isinstance(metadata["fix"], dict):
+        raise ValueError(f"{path}: fix must be a typed action mapping or null for a non-actionable runbook")
     # PyYAML's YAML 1.1 resolver reads the unquoted scalar "off" as False.
-    args = metadata["fix"].get("args", {})
+    args = metadata["fix"].get("args", {}) if metadata["fix"] is not None else {}
     if isinstance(args, dict):
         for key in ("value", "variant"):
             if args.get(key) is False:
                 args[key] = "off"
-    try:
-        action = Action.model_validate(metadata["fix"])
-        _validate_fix(action.tool, action.args)
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"{path}: fix is not an allow-listed typed action: {exc}") from exc
+    if metadata["fix"] is not None:
+        try:
+            action = Action.model_validate(metadata["fix"])
+            validate_typed_action(action.tool, action.args)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"{path}: fix is not an allow-listed typed action: {exc}") from exc
     metadata["service"] = services
     metadata["symptom"] = symptoms
     return metadata, body.strip()
 
 
-def _validate_fix(tool: str, args: dict) -> None:
+def validate_typed_action(tool: str, args: dict) -> None:
     if tool == "set_flag":
         flag = args.get("flag")
         value = args.get("value", args.get("variant"))
@@ -208,6 +239,30 @@ class KnowledgeIndex:
         }
 
     @staticmethod
+    def decompose_query(query: str, service: Optional[str] = None,
+                        symptom: Optional[str] = None) -> list[str]:
+        """Expand alert-like queries into service-scoped diagnostic searches."""
+        lowered = query.lower()
+        services = [service] if service else []
+        if not services:
+            for name in sorted(SERVICES):
+                aliases = SERVICE_SYNONYMS.get(name, (name.replace("-", " "),))
+                if any(alias in lowered for alias in aliases):
+                    services.append(name)
+        if not services:
+            return []
+        expansions = [text for terms, text in QUERY_EXPANSIONS
+                      if any(re.search(rf"\b{re.escape(term)}\b", lowered) for term in terms)]
+        if not expansions:
+            expansions = ["service symptoms telemetry evidence preconditions"]
+        symptom_context = symptom or query
+        return [
+            f"{item} {symptom_context} {expansion}"
+            for item in services
+            for expansion in expansions
+        ]
+
+    @staticmethod
     def _rank(scores: dict[int, float]) -> list[int]:
         return sorted((index for index in scores if scores[index] > 0),
                       key=lambda index: (-scores[index], index))
@@ -227,7 +282,8 @@ class KnowledgeIndex:
         if mode not in {"bm25", "hybrid"}:
             raise ValueError(f"unknown retrieval mode {mode!r}")
         candidates = self._filter(service, symptom)
-        queries = [query] + (subqueries or [])
+        generated = self.decompose_query(query, service, symptom) if mode == "hybrid" else []
+        queries = list(dict.fromkeys([query] + generated + (subqueries or [])))
         if mode == "bm25":
             scores: dict[int, float] = defaultdict(float)
             for item in queries:
@@ -240,10 +296,25 @@ class KnowledgeIndex:
                 for component in (self._bm25(item, candidates), self._vector(item, candidates)):
                     for rank, index in enumerate(self._rank(component), 1):
                         fused[index] += 1 / (60 + rank)
-            ranked = sorted(
-                fused,
-                key=lambda index: (-self._rerank(query, self.passages[index]), -fused[index], index),
-            )
+            # Keep the fusion stage meaningful: rerank only its top-20 candidates,
+            # then combine normalized fusion rank and lexical relevance.
+            candidates_by_fusion = sorted(fused, key=lambda index: (-fused[index], index))[:20]
+            rerank_scores = {
+                index: self._rerank(query, self.passages[index])
+                for index in candidates_by_fusion
+            }
+            fused_values = [fused[index] for index in candidates_by_fusion]
+            rerank_values = list(rerank_scores.values())
+            fused_min, fused_max = min(fused_values), max(fused_values)
+            rerank_min, rerank_max = min(rerank_values), max(rerank_values)
+            fused_span = fused_max - fused_min or 1.0
+            rerank_span = rerank_max - rerank_min or 1.0
+            combined = {
+                index: 0.5 * (fused[index] - fused_min) / fused_span
+                + 0.5 * (rerank_scores[index] - rerank_min) / rerank_span
+                for index in candidates_by_fusion
+            }
+            ranked = sorted(candidates_by_fusion, key=lambda index: (-combined[index], index))
         return [self.passages[index] for index in ranked[:k]]
 
     @staticmethod
