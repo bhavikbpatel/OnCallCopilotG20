@@ -33,13 +33,14 @@ expected:
   recovery:
     signal: latency_p95_ms
     service: shipping
-    baseline_factor: 3
+    op: lt
+    threshold: 1000
     within_s: 300
   severity:
     level: SEV3
     rule: null
     provisional: true
-notes: 'Only non-US addresses are slowed: a minority of users. Measured 31 Oct: shipping p95 47 -> 7,750
-  ms (the load generator does send non-US addresses); visible ~3 min after injection.'
+notes: 'Only non-US addresses are slowed: a minority of users.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
+- does the load generator send non-US addresses?

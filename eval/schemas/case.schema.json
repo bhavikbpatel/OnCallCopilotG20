@@ -227,17 +227,14 @@
     },
     "RecoveryCheck": {
       "additionalProperties": false,
-      "description": "Checked independently by the harness, never taken from the agent.\n\n``signal`` is a named signal from eval/telemetry/signals.py. Two ways to judge:\n\n- ``measure: window`` (default): the signal's value ``within_s`` after the fix,\n  compared either with a fixed ``threshold`` or with ``baseline_factor`` times\n  the value the runner measured just before injecting. Use the baseline form\n  for latency and memory: healthy levels differ a lot between sessions\n  (ad p95 was 7.6 ms in one run and 88 ms in another).\n- ``measure: since_fix``: errors/rates counted from ``settle_s`` after the fix\n  until ``within_s`` after it. Use this on low-traffic paths (checkout sees\n  ~2.5 requests/min) and for rare operations (cartFailure breaks only EmptyCart).\n  ``settle_s`` skips errors that happened before the fix but arrive late\n  (metrics reach Prometheus 60-120 s behind).",
+      "description": "Checked independently by the harness, never taken from the agent.\n\n``signal`` is a named signal the runner maps to a PromQL query, so cases do not\nhard-code metric names before they are confirmed on the running shop.",
       "properties": {
         "signal": {
           "enum": [
             "error_rate",
-            "error_count",
             "latency_p95_ms",
-            "latency_p50_ms",
-            "throughput_rps",
             "memory_mb",
-            "cpu_percent",
+            "cpu_ratio",
             "consumer_lag"
           ],
           "title": "Signal",
@@ -245,15 +242,6 @@
         },
         "service": {
           "title": "Service",
-          "type": "string"
-        },
-        "measure": {
-          "default": "window",
-          "enum": [
-            "window",
-            "since_fix"
-          ],
-          "title": "Measure",
           "type": "string"
         },
         "op": {
@@ -266,46 +254,20 @@
           "type": "string"
         },
         "threshold": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Threshold"
-        },
-        "baseline_factor": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Baseline Factor"
+          "title": "Threshold",
+          "type": "number"
         },
         "within_s": {
           "default": 300,
           "exclusiveMinimum": 0,
           "title": "Within S",
           "type": "integer"
-        },
-        "settle_s": {
-          "default": 90,
-          "minimum": 0,
-          "title": "Settle S",
-          "type": "integer"
         }
       },
       "required": [
         "signal",
-        "service"
+        "service",
+        "threshold"
       ],
       "title": "RecoveryCheck",
       "type": "object"

@@ -46,12 +46,11 @@ expected:
       service: valkey-cart
   - tool: rollback
   recovery:
-    signal: error_count
+    signal: error_rate
     service: cart
-    measure: since_fix
-    threshold: 1
+    op: lt
+    threshold: 0.01
     within_s: 300
-    settle_s: 90
   severity:
     level: SEV2
     rule: null

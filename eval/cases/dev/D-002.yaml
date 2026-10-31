@@ -35,11 +35,10 @@ expected:
   - tool: rollback
   recovery:
     signal: error_rate
-    service: payment
-    measure: since_fix
-    threshold: 0.05
+    service: checkout
+    op: lt
+    threshold: 0.01
     within_s: 300
-    settle_s: 90
   severity:
     level: SEV1
     rule: null

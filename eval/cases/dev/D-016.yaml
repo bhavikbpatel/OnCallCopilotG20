@@ -10,7 +10,7 @@ load:
   flood_start_after_s: 30
   flood_duration_s: 180
 alert:
-  name: FrontendTrafficHigh
+  name: FrontendLatencyHigh
   service: frontend
   provisional: true
 expected:
@@ -19,6 +19,6 @@ expected:
     level: NONE
     rule: null
     provisional: true
-notes: Transient burst that clears by itself during the investigation (traffic alert, see D-015).
+notes: Transient burst that clears by itself during the investigation.
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
