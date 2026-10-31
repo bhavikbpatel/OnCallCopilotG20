@@ -19,6 +19,11 @@ different model family only scores what code cannot.
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
+| `knowledge/runbooks/`, `knowledge/postmortems/` | 15 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
+| `knowledge/retrieval.py` | Markdown ingestion, metadata filters, BM25 + TF-IDF vector RRF + deterministic reranker | local baseline |
+| `knowledge/memory.py` | SQLite lesson proposals/review lifecycle and fail-closed precondition checks | local baseline |
+| `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md` | done |
+| `knowledge/retrieval_queries.json` | 36 labelled development queries for Recall@5 | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
@@ -69,6 +74,21 @@ python -m eval.probes discover              # ~4 min, adds the flag-write noise 
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).
+
+## Knowledge and memory baseline
+
+```bash
+cd OnCallCopilotG20 && python -m eval.knowledge.evaluate
+cd OnCallCopilotG20 && python -m pytest eval/tests/test_knowledge.py
+```
+
+The evaluator compares keyword-only BM25 against local hybrid retrieval on the
+labelled development set. The TF-IDF vector index and deterministic reranker are
+dependency-light placeholders, not the planned BGE/Qdrant/cross-encoder
+production stack. `knowledge/lessons.yaml` contains proposals only; call
+`MemoryStore.load_proposals()` and require a named reviewer to approve lessons
+before retrieval. See `../docs/memory-policy.md`, `../docs/severity-policy.md`
+and `../docs/knowledge-demo.md`. No held-out cases are included.
 
 ## Regenerate the JSON Schemas after changing a schema
 
