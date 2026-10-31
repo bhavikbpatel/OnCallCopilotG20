@@ -89,6 +89,13 @@ calls**, in order:
 Case files are checked against this table, so a typo (`value`, `restart`, an unknown
 service) fails when the case loads, not during a run.
 
+**`recovery`**: filled by the runner with `eval/recovery`, never by the agent. `checked`,
+`recovered` (`true`, `false`, or `null` = could not be judged), `value`, `limit`, `baseline`,
+`signal`, `service`, `measure`, `op`, `errors` and `requests` (since-fix checks), `points` (the
+distinct readings), `reason` (why it is `false` or `null`) and `query`. No data, too little traffic,
+a missing baseline or an unreachable Prometheus give `null`, never `true`; a run whose recovery is
+`null` does not count as a success.
+
 **`budget.max_tool_calls`**: the budget this run was given (5, 10 or 20 in E4).
 
 ## The payload hash (agreed with Person 2)

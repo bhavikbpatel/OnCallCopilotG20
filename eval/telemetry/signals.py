@@ -34,6 +34,11 @@ NO_SPAN_METRICS = frozenset({"recommendation", "astronomy-db", "valkey-cart", "k
 # Span metrics reach Prometheus about once a minute; rate()/increase() need two
 # samples inside the window, so shorter windows return "no data" (found 31 Oct).
 MIN_WINDOW_S = 120
+# Prometheus gets a new span-metric point about once a minute. Two identical readings
+# closer together than this are the same point read twice, not two observations.
+SAME_POINT_WINDOW_S = 45.0
+# Data reaches Prometheus 12-40 s behind real time (docs/shop-telemetry-findings.md §5).
+PROM_LAG_S = 40
 
 SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
 

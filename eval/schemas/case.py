@@ -132,6 +132,10 @@ class RootCause(_Strict):
         return self
 
 
+# Signals where a higher value is healthier. For every other signal lower is better.
+HIGHER_IS_BETTER = frozenset({"throughput_rps"})
+
+
 class RecoveryCheck(_Strict):
     """Checked independently by the harness, never taken from the agent.
 
@@ -178,6 +182,11 @@ class RecoveryCheck(_Strict):
             if self.within_s - self.settle_s < 120:
                 raise ValueError("since_fix needs at least 120 s between settle_s and within_s "
                                  "(metrics arrive about once a minute)")
+        higher_is_better = self.signal in HIGHER_IS_BETTER
+        if higher_is_better != (self.op == "gt"):
+            want = "gt" if higher_is_better else "lt"
+            raise ValueError(f"{self.signal}: recovered means {'above' if higher_is_better else 'below'} "
+                             f"the limit, so op must be {want!r}")
         if self.signal == "cpu_percent":
             raise ValueError("cpu_percent behaves like a slow running average in this shop and "
                              "cannot show recovery; use latency instead")

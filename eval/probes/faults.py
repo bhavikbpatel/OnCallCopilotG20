@@ -130,7 +130,7 @@ def _moved(signal: str, base: Optional[float], value: Optional[float],
 # Identical readings closer than this are the same Prometheus point. A value can
 # legitimately repeat across points (lock contention sits at the 15,000 ms bucket
 # ceiling every minute), so repeats further apart count as new points.
-SAME_POINT_WINDOW_S = 45.0
+SAME_POINT_WINDOW_S = sig.SAME_POINT_WINDOW_S  # shared with the recovery checker
 
 
 def distinct_points(series: list, times: list) -> tuple:
