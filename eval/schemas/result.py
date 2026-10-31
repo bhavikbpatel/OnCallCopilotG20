@@ -14,26 +14,30 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .catalogue import AGENT_ROLES
+from .catalogue import AGENT_ROLES, normalize_severity
 
 # Keys that are not part of what was approved (tokens, bookkeeping).
 _NON_PAYLOAD_KEYS = frozenset({"approval_token", "dry_run", "payload_hash"})
 
 
 def canonical_action(tool: str, args: dict[str, Any]) -> dict[str, Any]:
-    clean = {k: v for k, v in args.items() if k not in _NON_PAYLOAD_KEYS}
-    return {"tool": tool, "args": clean}
+    """The action as Person 2's models dump it: one flat object, tool included.
+
+    e.g. ``{"tool": "set_flag", "flag": "paymentFailure", "variant": "off"}``.
+    """
+    clean = {k: v for k, v in args.items() if k not in _NON_PAYLOAD_KEYS and k != "tool"}
+    return {"tool": tool, **clean}
 
 
 def payload_hash(tool: str, args: dict[str, Any]) -> str:
-    """sha256 of canonical JSON (sorted keys, no spaces) of {tool, args}.
+    """sha256 hex of canonical JSON (sorted keys, no spaces) of the flat action.
 
-    Proposed shared definition with Person 3: ops-actions and the approval gate
-    should hash exactly this, so the checker can confirm an approval matches the
-    command that ran.
+    Identical to Person 2's ``copilot.state.payload_hash(action)``, which hashes
+    ``action.model_dump(mode="json")``; the approval gate, ops-actions and the
+    checker therefore agree on which command an approval belongs to.
     """
     blob = json.dumps(canonical_action(tool, args), sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(blob.encode()).hexdigest()
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 class _Open(BaseModel):
@@ -50,8 +54,13 @@ class Hypothesis(_Open):
 
 
 class SeverityResult(_Open):
-    level: Literal["SEV1", "SEV2", "SEV3", "NONE"]
+    level: Literal["SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"]
     rule: Optional[str] = None
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _norm(cls, v: Any) -> Any:
+        return normalize_severity(v) if isinstance(v, str) else v
 
 
 class ProposedAction(_Open):
@@ -75,6 +84,9 @@ class ToolCall(_Open):
     blocked: bool = False
     block_reason: Optional[str] = None
     action_id: Optional[str] = None  # returned by ops-actions for executed writes
+    # Person 2's graph undoes a fix that did not verify by executing the dry run's
+    # rollback_action with purpose "rollback" (often a set_flag, not the rollback tool).
+    purpose: Optional[Literal["fix", "rollback"]] = None
 
     @field_validator("agent_role")
     @classmethod
@@ -85,9 +97,13 @@ class ToolCall(_Open):
 
 
 class Approval(_Open):
+    """One approval-gate decision (Person 2: ApprovalRecord / ApprovalDecision)."""
+
     payload_hash: str
-    decision: Literal["approved", "edited", "rejected"]
-    decided_by: Literal["human", "auto"] = "auto"
+    decision: Literal["approve", "edit", "reject"]
+    decided_by: str = "auto"  # "auto" (runner) or the engineer's name
+    # Whether a token came with the approval. The token itself is never stored.
+    has_token: Optional[bool] = None
 
 
 class Verification(_Open):
@@ -102,6 +118,7 @@ class Budget(_Open):
 class Cost(_Open):
     tokens_in: int = 0
     tokens_out: int = 0
+    tokens_total: int = 0  # Person 2's budget ledger counts tokens without an in/out split
     usd: float = 0.0
 
 
@@ -131,6 +148,9 @@ class ResultLine(_Open):
 
     # Agent outcome (Person 2: final graph state)
     verdict: Literal["incident", "noise", "undetermined"]
+    # Person 2's IncidentState.final_status / escalation_reason, kept as reported.
+    final_status: Optional[Literal["recovered", "rolled_back", "escalated", "noise"]] = None
+    escalation_reason: Optional[str] = None
     hypotheses: list[Hypothesis] = Field(default_factory=list)
     severity: Optional[SeverityResult] = None
     proposed_actions: list[ProposedAction] = Field(default_factory=list)

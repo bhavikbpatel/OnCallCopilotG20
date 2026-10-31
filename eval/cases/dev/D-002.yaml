@@ -23,13 +23,13 @@ expected:
   - - tool: set_flag
       args:
         flag: paymentFailure
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: payment
-  - tool: restart
+  - tool: restart_service
     args:
       service: checkout
   - tool: rollback
@@ -41,7 +41,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV1
+    level: SEV-1
     rule: null
     provisional: true
 notes: 'Highest intensity plus a homepage traffic flood: the flood is a distractor, not a cause.'

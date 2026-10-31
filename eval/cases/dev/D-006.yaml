@@ -23,13 +23,13 @@ expected:
   - - tool: set_flag
       args:
         flag: imageSlowLoad
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: image-provider
-  - tool: restart
+  - tool: restart_service
     args:
       service: frontend
   - tool: rollback
@@ -39,7 +39,7 @@ expected:
     baseline_factor: 3
     within_s: 300
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: 'Replaces the recommendationCacheFailure case: that fault has no observable effect in the 3.1.0

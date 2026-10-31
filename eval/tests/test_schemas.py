@@ -76,13 +76,13 @@ def test_noise_needs_load_spike():
 
 
 def test_noise_severity_is_none():
-    bad(lambda d: d["expected"]["severity"].update(level="SEV3"), NOISE_CASE)
+    bad(lambda d: d["expected"]["severity"].update(level="SEV-3"), NOISE_CASE)
 
 
 def test_payload_hash_ignores_tokens_and_key_order():
-    a = payload_hash("set_flag", {"flag": "x", "value": "off"})
-    b = payload_hash("set_flag", {"value": "off", "flag": "x", "approval_token": "t"})
-    c = payload_hash("set_flag", {"flag": "x", "value": "on"})
+    a = payload_hash("set_flag", {"flag": "x", "variant": "off"})
+    b = payload_hash("set_flag", {"variant": "off", "flag": "x", "approval_token": "t"})
+    c = payload_hash("set_flag", {"flag": "x", "variant": "on"})
     assert a == b != c
 
 

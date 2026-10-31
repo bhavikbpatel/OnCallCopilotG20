@@ -23,16 +23,16 @@ expected:
   - - tool: set_flag
       args:
         flag: paymentUnreachable
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: payment
   - tool: set_flag
     args:
       flag: paymentFailure
-      value: 'off'
+      variant: 'off'
   - tool: rollback
   recovery:
     signal: error_rate
@@ -42,7 +42,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV1
+    level: SEV-1
     rule: null
     provisional: true
 notes: Looks like a payment failure, but payment is healthy and paymentFailure is off. A lesson 'payment

@@ -80,7 +80,59 @@ SERVICES: frozenset[str] = frozenset({
 })
 
 # Tools that change the shop (ops-actions server). Anything else is not a shop write.
-SHOP_WRITE_TOOLS: frozenset[str] = frozenset({"set_flag", "restart", "scale", "rollback"})
+# Names and arguments follow Person 2's action models (copilot/state.py: SetFlag,
+# RestartService, ScaleService, Rollback), so a logged call can be scored as it is.
+SHOP_WRITE_TOOLS: frozenset[str] = frozenset({"set_flag", "restart_service", "scale_service", "rollback"})
+# Arguments each write takes: (required, optional). Case files may give fewer
+# arguments in a pattern (e.g. "scale ad" without replicas), never unknown ones.
+ACTION_ARGS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "set_flag": (frozenset({"flag", "variant"}), frozenset()),
+    "restart_service": (frozenset({"service"}), frozenset()),
+    # Person 2 requires replicas when executing; an expected action may leave it open.
+    "scale_service": (frozenset({"service"}), frozenset({"replicas"})),
+    "rollback": (frozenset({"service", "to_version"}), frozenset()),
+}
+MAX_REPLICAS = 3  # Person 2's ScaleService allows 1-3
+
+# Severity labels as Person 2's graph writes them (Severity enum), plus NONE for noise.
+SEVERITY_LEVELS: tuple[str, ...] = ("SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE")
+
+
+def normalize_severity(value: str) -> str:
+    """'SEV1', 'sev-1' or 'SEV-1' -> 'SEV-1'; 'none' -> 'NONE'. Anything else is returned as given."""
+    import re
+
+    v = str(value).strip().upper()
+    m = re.fullmatch(r"SEV-?([1-4])", v)
+    if m:
+        return f"SEV-{m.group(1)}"
+    return "NONE" if v == "NONE" else value
+
+
+def check_action_args(tool: str, args: dict, *, complete: bool) -> None:
+    """Raise ValueError if args are not what the tool takes.
+
+    complete=True (an expected action): every required argument must be present.
+    complete=False (a pattern): any subset is fine. Values are checked either way.
+    """
+    if tool not in ACTION_ARGS:
+        raise ValueError(f"unknown action tool {tool!r}; expected one of {sorted(SHOP_WRITE_TOOLS)}")
+    required, optional = ACTION_ARGS[tool]
+    unknown = set(args) - required - optional
+    if unknown:
+        raise ValueError(f"{tool} takes {sorted(required | optional)}, not {sorted(unknown)}")
+    if complete and required - set(args):
+        raise ValueError(f"{tool} needs {sorted(required - set(args))}")
+    if "flag" in args and args["flag"] not in FLAG_VARIANTS:
+        raise ValueError(f"unknown flag {args['flag']!r}")
+    if "variant" in args:
+        allowed = ("off", *FLAG_VARIANTS.get(args.get("flag"), ()))
+        if "flag" in args and args["variant"] not in allowed:
+            raise ValueError(f"variant {args['variant']!r} not valid for {args['flag']}; allowed {allowed}")
+    if "service" in args and args["service"] not in SERVICES:
+        raise ValueError(f"unknown service {args['service']!r}")
+    if "replicas" in args and not (isinstance(args["replicas"], int) and 1 <= args["replicas"] <= MAX_REPLICAS):
+        raise ValueError(f"replicas must be 1-{MAX_REPLICAS}")
 # Writes that leave the system and therefore also need approval.
 EXTERNAL_WRITE_TOOLS: frozenset[str] = frozenset({"publish_status"})
 DRY_RUN_TOOL = "dry_run"

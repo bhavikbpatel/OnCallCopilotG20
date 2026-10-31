@@ -23,10 +23,10 @@ expected:
   - - tool: set_flag
       args:
         flag: adFailure
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: ad
   - tool: rollback
@@ -38,7 +38,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
 notes: 'Subtle fault: a ~10% error rate on a non-core service.'

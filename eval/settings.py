@@ -1,6 +1,7 @@
 """Settings for the evaluation harness: model config and secrets.
 
-Secrets come from environment variables, or from ``eval/.env`` (git-ignored).
+Secrets come from environment variables, ``eval/.env`` or the repo-root ``.env``
+(both git-ignored).
 The API key is never printed, logged or written to results.
 """
 from __future__ import annotations
@@ -13,6 +14,7 @@ import yaml
 
 EVAL_DIR = Path(__file__).resolve().parent
 ENV_FILE = EVAL_DIR / ".env"
+ROOT_ENV_FILE = EVAL_DIR.parent / ".env"  # Person 2's runtime keeps OPENAI_API_KEY here
 MODELS_FILE = EVAL_DIR / "config" / "models.yaml"
 
 
@@ -29,15 +31,28 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
+# Person 2's runtime (copilot/runtime.py) reads OPENAI_API_KEY from the repo-root .env;
+# with OpenRouter that is the same course key. It is used for OPENROUTER_API_KEY only
+# when it really is an OpenRouter key, never a direct OpenAI key.
+SECRET_ALIASES: dict[str, tuple[str, ...]] = {"OPENROUTER_API_KEY": ("OPENAI_API_KEY",)}
+OPENROUTER_KEY_PREFIX = "sk-or-"
+
+
 def get_secret(name: str) -> str:
-    """Environment variable first, then eval/.env. Raises if missing or empty."""
-    value = os.environ.get(name) or _read_env_file(ENV_FILE).get(name, "")
-    if not value:
-        raise RuntimeError(
-            f"{name} is not set. Put it in {ENV_FILE} (copy .env.example) "
-            f"or export it in your shell. Never commit it."
-        )
-    return value
+    """Environment, then eval/.env, then the repo-root .env (all git-ignored).
+
+    Raises if missing or empty. The value is never printed.
+    """
+    sources = (os.environ, _read_env_file(ENV_FILE), _read_env_file(ROOT_ENV_FILE))
+    for key in (name, *SECRET_ALIASES.get(name, ())):
+        for source in sources:
+            value = source.get(key, "")
+            if value and (key == name or value.startswith(OPENROUTER_KEY_PREFIX)):
+                return value
+    raise RuntimeError(
+        f"{name} is not set. Put it in {ENV_FILE} (copy .env.example) "
+        f"or export it in your shell. Never commit it."
+    )
 
 
 @lru_cache(maxsize=1)

@@ -17,8 +17,9 @@ from .catalogue import (
     FAULT_TYPES,
     FLAG_VARIANTS,
     SERVICES,
-    SHOP_WRITE_TOOLS,
     accepted_services,
+    check_action_args,
+    normalize_severity,
 )
 
 
@@ -34,23 +35,26 @@ class Action(_Strict):
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("tool")
-    @classmethod
-    def _known_tool(cls, v: str) -> str:
-        if v not in SHOP_WRITE_TOOLS:
-            raise ValueError(f"unknown action tool {v!r}; expected one of {sorted(SHOP_WRITE_TOOLS)}")
-        return v
+    @model_validator(mode="after")
+    def _known_tool_and_args(self) -> "Action":
+        check_action_args(self.tool, self.args, complete=True)
+        return self
 
 
 class ActionPattern(_Strict):
     """Matches any action with this tool whose args include every arg given here.
 
-    ``{tool: restart}`` matches every restart; ``{tool: restart, args: {service: payment}}``
-    matches only restarting payment.
+    ``{tool: restart_service}`` matches every restart; ``{tool: restart_service, args:
+    {service: payment}}`` matches only restarting payment.
     """
 
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _known_tool_and_args(self) -> "ActionPattern":
+        check_action_args(self.tool, self.args, complete=False)
+        return self
 
 
 # ---------------------------------------------------------------- faults and load
@@ -181,9 +185,14 @@ class RecoveryCheck(_Strict):
 
 
 class SeverityExpectation(_Strict):
-    level: Literal["SEV1", "SEV2", "SEV3", "NONE"]
+    level: Literal["SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"]
     rule: Optional[str] = None  # rule ID from Person 1's severity policy
     provisional: bool = True  # true until the policy is agreed
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _norm(cls, v: Any) -> Any:
+        return normalize_severity(v) if isinstance(v, str) else v
 
 
 class Expected(_Strict):

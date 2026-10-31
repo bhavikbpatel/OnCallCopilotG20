@@ -23,10 +23,10 @@ expected:
   - - tool: set_flag
       args:
         flag: productCatalogFailure
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: product-catalog
   - tool: rollback
@@ -38,10 +38,10 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
 notes: 'Only product OLJCESPC7Z errors: a narrow, low-impact fault.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- 'severity: one product only, SEV3 vs SEV2 per policy'
+- 'severity: one product only, SEV-3 vs SEV-2 per policy'
