@@ -5,6 +5,7 @@ sprint backlog, course guide) stay in `../Documents/`.
 
 | Document | Owner | Status |
 |---|---|---|
+| [Implementation plan](eval-implementation-plan.md): build order and design | Person 4 | living document |
 | [Evaluation contract](eval-result-contract.md): what every run must produce | Person 4 | proposal, for review |
 | Evaluation report (4–6 pages) | Person 4 | not started |
 | Experiment log | Person 4 | not started |
