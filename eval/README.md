@@ -18,6 +18,7 @@ different model family only scores what code cannot.
 | `settings.py` | Reads secrets from environment or `eval/.env` (git-ignored) | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
+| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, p95, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
