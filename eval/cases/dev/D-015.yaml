@@ -8,7 +8,7 @@ faults: []
 load:
   profile: flood
 alert:
-  name: FrontendLatencyHigh
+  name: FrontendTrafficHigh
   service: frontend
   provisional: true
 expected:
@@ -17,7 +17,8 @@ expected:
     level: NONE
     rule: null
     provisional: true
-notes: Load spike only. Any write action is harmful.
+notes: 'Load spike only. Any write action is harmful. Measured 31 Oct: the flood raises frontend traffic
+  ~2.8x but NOT latency, so the alert is on traffic.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- does the flood alone fire the latency alert?
+- 'Person 5: real request-rate alert rule (runner sends a synthetic alert until then)'

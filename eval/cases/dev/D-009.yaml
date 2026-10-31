@@ -24,10 +24,10 @@ expected:
       args:
         flag: emailMemoryLeak
         value: 'off'
-    - tool: restart
-      args:
-        service: email
-  acceptable_actions: []
+  acceptable_actions:
+  - tool: restart
+    args:
+      service: email
   forbidden_actions:
   - tool: restart
     args:
@@ -36,14 +36,13 @@ expected:
   recovery:
     signal: memory_mb
     service: email
-    op: lt
-    threshold: 200
+    baseline_factor: 1.3
     within_s: 600
   severity:
     level: SEV3
     rule: null
     provisional: true
-notes: Memory grows per confirmation email; a restart is needed to release it.
+notes: 'Memory grows per confirmation email. Measured 31 Oct: 66 -> 100 MB at 1000x, and back to 53 MB
+  after the flag went off WITHOUT a restart, so a restart is acceptable but not required.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- memory threshold from a healthy baseline
