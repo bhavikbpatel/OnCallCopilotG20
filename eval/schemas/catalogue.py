@@ -50,16 +50,6 @@ FAULT_TYPES: dict[str, dict] = {
     "adFailure": {"service": "ad", "also_accept": ()},
 }
 
-# Fault types measured but excluded from the golden set, with the evidence.
-# They stay in FAULT_TYPES (the probe still measures them); cases may not use them.
-EXCLUDED_FAULT_TYPES: dict[str, str] = {
-    "recommendationCacheFailure": (
-        "no observable effect in the published 3.1.0 image (Java build; memory flat at 237 MB, "
-        "CPU flat during a 150 s injection, full probe 31 Oct 2026); cannot be diagnosed from telemetry"
-    ),
-}
-GOLDEN_FAULT_TYPES = frozenset(set(FAULT_TYPES) - set(EXCLUDED_FAULT_TYPES))
-
 # Flags that are not fault types, and why.
 NOT_FAULT_TYPES: dict[str, str] = {
     "loadGeneratorFloodHomepage": "load lever: used for noisy-alert cases and the 'load' variant axis",

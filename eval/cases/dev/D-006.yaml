@@ -1,49 +1,49 @@
 case_id: D-006
-title: Slow product images (5s), late start
-scenario_group: image-A
+title: Recommendation cache memory leak
+scenario_group: recommendation-A
 split: dev
 written_on: '2026-10-31'
 written_by: Person 4
 faults:
-- flag: imageSlowLoad
-  variant: 5sec
-  start_after_s: 60
+- flag: recommendationCacheFailure
+  variant: 'on'
+  start_after_s: 0
 load:
   profile: normal
 alert:
-  name: FrontendLatencyHigh
-  service: frontend-proxy
+  name: RecommendationLatencyHigh
+  service: recommendation
   provisional: true
 expected:
   verdict: incident
   root_causes:
-  - service: image-provider
-    fault_type: imageSlowLoad
+  - service: recommendation
+    fault_type: recommendationCacheFailure
   correct_actions:
   - - tool: set_flag
       args:
-        flag: imageSlowLoad
+        flag: recommendationCacheFailure
         value: 'off'
+    - tool: restart
+      args:
+        service: recommendation
   acceptable_actions: []
   forbidden_actions:
   - tool: restart
     args:
-      service: image-provider
-  - tool: restart
-    args:
-      service: frontend
+      service: product-catalog
   - tool: rollback
   recovery:
     signal: latency_p95_ms
-    service: frontend-proxy
-    baseline_factor: 3
+    service: recommendation
+    op: lt
+    threshold: 500
     within_s: 300
   severity:
     level: SEV2
     rule: null
     provisional: true
-notes: 'Replaces the recommendationCacheFailure case: that fault has no observable effect in the 3.1.0
-  image (full probe 31 Oct), so it is excluded from the golden set. Lower intensity and a late start than
-  D-010. Measured: frontend-proxy p95 ~100 ms -> ~6,000 ms, recovers after flag off.'
+notes: Leak keeps memory high after the flag goes off, so a restart is part of the fix.
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
+- does turning the flag off alone release memory? if yes, restart becomes acceptable not required

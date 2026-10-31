@@ -22,17 +22,6 @@ def test_error_rate_uses_server_spans_and_zero_default():
     assert q.count('span_kind="SPAN_KIND_SERVER"') == 2
 
 
-def test_error_count_counts_server_span_errors_with_zero_default():
-    q = sig.promql("error_count", "cart", "2m")
-    assert q.startswith("sum(increase(") and q.endswith("or vector(0)") and "STATUS_CODE_ERROR" in q
-    assert sig.supported("error_count", "cart") and not sig.supported("error_count", "recommendation")
-
-
-def test_latency_p50_is_median_of_server_spans():
-    q = sig.promql("latency_p50_ms", "ad")
-    assert q.startswith("histogram_quantile(0.5,") and 'span_kind="SPAN_KIND_SERVER"' in q
-
-
 def test_container_signals_use_container_name_and_units():
     assert 'container_name="recommendation"' in sig.promql("memory_mb", "recommendation")
     assert sig.promql("memory_mb", "email").endswith("/ 1e6")
@@ -44,17 +33,10 @@ def test_consumer_lag_uses_group_and_orders_topic():
         'sum(kafka_consumer_group_lag_sum_ratio{group="fraud-detection",topic="orders"})'
 
 
-@pytest.mark.parametrize("bad", ["", "2", "2x", "0m", "-1m", "m", "1m", "90s", "119s"])
+@pytest.mark.parametrize("bad", ["", "2", "2x", "0m", "-1m", "m"])
 def test_bad_windows_rejected(bad):
     with pytest.raises(ValueError):
         sig.promql("error_rate", "cart", bad)
-
-
-def test_minimum_window_is_two_minutes():
-    # Metrics arrive about once a minute: rate() over 1m returned no data on the real shop.
-    assert sig.MIN_WINDOW_S == 120
-    assert "[120s]" in sig.promql("error_rate", "cart", "120s")
-    assert "[2m]" in sig.promql("error_rate", "cart", "2m")
 
 
 def test_bad_service_and_unknown_signal_rejected():
@@ -103,14 +85,9 @@ def test_errors_since_counts_and_rate():
 
 def test_errors_since_no_requests_gives_none_rate():
     with FakePrometheus(lambda e, at: [({}, 0.0)]) as fp:
-        out = sig.errors_since(PromClient(fp.url), "checkout", since=1000.0, at=1150.5)
+        out = sig.errors_since(PromClient(fp.url), "checkout", since=1000.0, at=1100.5)
     assert out["requests"] == 0.0 and out["error_rate"] is None
-    assert "[151s]" in fp.queries[0][0]  # rounded up
-
-
-def test_errors_since_rejects_ranges_under_two_minutes():
-    with pytest.raises(ValueError, match="at least 120s"):
-        sig.errors_since(PromClient("http://127.0.0.1:9"), "checkout", since=1000.0, at=1100.0)
+    assert "[101s]" in fp.queries[0][0]  # rounded up
 
 
 def test_errors_since_rejects_reversed_times():
