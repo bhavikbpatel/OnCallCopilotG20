@@ -35,7 +35,7 @@ NO_SPAN_METRICS = frozenset({"recommendation", "astronomy-db", "valkey-cart", "k
 # samples inside the window, so shorter windows return "no data" (found 31 Oct).
 MIN_WINDOW_S = 120
 
-SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
+SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
 
 
 def window_seconds(window: str) -> int:
@@ -70,6 +70,11 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
     if signal == "latency_p95_ms":
         return (f'histogram_quantile(0.95, sum by (le) (rate({DURATION_BUCKET}'
                 f'{{service_name="{s}",{SERVER}}}[{w}])))')
+    if signal == "latency_p50_ms":
+        # Median: CPU saturation slows every request, while random noise mostly
+        # hits the slowest few (ad p95 jumped 10x in a control run, 31 Oct).
+        return (f'histogram_quantile(0.5, sum by (le) (rate({DURATION_BUCKET}'
+                f'{{service_name="{s}",{SERVER}}}[{w}])))')
     if signal == "throughput_rps":
         return f'sum(rate({CALLS}{{service_name="{s}",{SERVER}}}[{w}]))'
     if signal == "memory_mb":
@@ -83,7 +88,7 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
 
 def supported(signal: str, service: str) -> bool:
     """Whether this signal can have data for this service in 3.1.0."""
-    if signal in ("error_rate", "error_count", "latency_p95_ms", "throughput_rps"):
+    if signal in ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps"):
         return service not in NO_SPAN_METRICS
     if signal == "consumer_lag":
         return service in KAFKA_CONSUMERS

@@ -28,6 +28,11 @@ def test_error_count_counts_server_span_errors_with_zero_default():
     assert sig.supported("error_count", "cart") and not sig.supported("error_count", "recommendation")
 
 
+def test_latency_p50_is_median_of_server_spans():
+    q = sig.promql("latency_p50_ms", "ad")
+    assert q.startswith("histogram_quantile(0.5,") and 'span_kind="SPAN_KIND_SERVER"' in q
+
+
 def test_container_signals_use_container_name_and_units():
     assert 'container_name="recommendation"' in sig.promql("memory_mb", "recommendation")
     assert sig.promql("memory_mb", "email").endswith("/ 1e6")

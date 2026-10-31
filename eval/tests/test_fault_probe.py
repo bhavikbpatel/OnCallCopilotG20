@@ -108,7 +108,7 @@ def test_single_spike_ignored_but_sustained_change_counts():
 
 def test_recovery_needs_last_two_samples_back_to_normal():
     base = [s(-30, svc={"error_rate": 0.0}), s(0, svc={"error_rate": 0.0})]
-    during = [s(30, svc={"error_rate": 0.5}), s(60, svc={"error_rate": 0.5})]
+    during = [s(30, svc={"error_rate": 0.5}), s(60, svc={"error_rate": 0.55})]
     relapse = [s(200, svc={"error_rate": 0.0}), s(230, svc={"error_rate": 0.4})]
     assert flt.analyse(base, during, relapse, frozenset({"svc"}))["root_recovered_after_clear"] is False
     one_sample = [s(200, svc={"error_rate": 0.0})]
@@ -118,15 +118,15 @@ def test_analyse_root_effect_timing_and_recovery():
     baseline = [s(-30, payment={"error_rate": 0.0}, cart={"error_rate": 0.0}),
                 s(0, payment={"error_rate": 0.0}, cart={"error_rate": 0.0})]
     during = [s(0, payment={"error_rate": 0.0}), s(30, payment={"error_rate": 0.4}, cart={"error_rate": 0.2}),
-              s(60, payment={"error_rate": 0.5}, cart={"error_rate": 0.2})]
+              s(60, payment={"error_rate": 0.5}, cart={"error_rate": 0.25})]
     after = [s(90, payment={"error_rate": 0.1}), s(120, payment={"error_rate": 0.0}, cart={"error_rate": 0.0}),
-             s(150, payment={"error_rate": 0.0}, cart={"error_rate": 0.0})]
+             s(150, payment={"error_rate": 0.01}, cart={"error_rate": 0.01})]
     a = flt.analyse(baseline, during, after, frozenset({"payment"}))
     assert a["root_service_moved"] and a["root_first_effect_s"] == 30
     assert a["root_recovered_after_clear"] is True
     assert a["other_services_moved"] == ["cart"]
     pay = a["movers"][0]
-    assert pay["service"] == "payment" and pay["peak"] == 0.5 and pay["end_after_clear"] == 0.0
+    assert pay["service"] == "payment" and pay["peak"] == 0.5 and pay["end_after_clear"] == 0.01
 
 
 def test_analyse_leak_that_does_not_recover():
@@ -322,9 +322,11 @@ def test_cli_reanalyse_rejects_bad_input(tmp_path, capsys):
 # ---------------------------------------------------------------- regression: real full probe (31 Oct)
 
 REAL_FULL = json.loads((Path(__file__).resolve().parent / "fixtures" / "probe_full_2026-10-31.json").read_text())
-DETECTED_ON_REAL_SHOP = ["paymentFailure", "productCatalogFailure", "adHighCpu", "emailMemoryLeak", "imageSlowLoad",
-                         "paymentUnreachable", "productCatalogLockContention", "intlShippingSlowdown", "adFailure",
-                         "flood"]
+# With the 150 s hold of that run, these show their effect in 2+ distinct data points.
+DETECTED_ON_REAL_SHOP = ["paymentFailure", "productCatalogFailure", "emailMemoryLeak", "imageSlowLoad",
+                         "paymentUnreachable", "productCatalogLockContention", "adFailure"]
+# Visible in that run but in ONE data point only: inconclusive at 150 s (needs the 300 s hold).
+SINGLE_POINT_AT_150S = ["adHighCpu", "intlShippingSlowdown", "flood"]
 
 
 def _real_items():
@@ -349,6 +351,13 @@ def test_real_full_probe_recovery_results():
     assert items["productCatalogLockContention"]["root_recovered_after_clear"] is False
 
 
+@pytest.mark.parametrize("item", SINGLE_POINT_AT_150S)
+def test_real_full_probe_single_point_effects_are_not_counted(item):
+    # One data point cannot be told apart from a one-off spike (ad p95 jumped 10x
+    # in a control run with nothing wrong), so these stay undecided at 150 s.
+    assert not _real_items()[item]["root_service_moved"], item
+
+
 def test_real_full_probe_recommendation_fault_has_no_visible_effect():
     # The published 3.1.0 recommendation image is Java and shows no change for this flag.
     assert not _real_items()["recommendationCacheFailure"]["root_service_moved"]
@@ -358,7 +367,7 @@ def test_real_low_traffic_latency_needs_tenfold_rise():
     base = [s(-30, ad={"latency_p95_ms": 88.0, "throughput_rps": 0.2}),
             s(0, ad={"latency_p95_ms": 88.0, "throughput_rps": 0.2})]
     six_x = [s(30, ad={"latency_p95_ms": 560.0}), s(60, ad={"latency_p95_ms": 560.0})]
-    ten_x = [s(30, ad={"latency_p95_ms": 1000.0}), s(60, ad={"latency_p95_ms": 1000.0})]
+    ten_x = [s(30, ad={"latency_p95_ms": 1000.0}), s(60, ad={"latency_p95_ms": 1050.0})]
     assert flt.analyse(base, six_x, [], frozenset({"ad"}))["movers"] == []
     assert flt.analyse(base, ten_x, [], frozenset({"ad"}))["root_service_moved"]
 
@@ -382,7 +391,7 @@ def test_error_count_only_on_services_quiet_at_rest():
 def test_effect_window_extends_past_clear_by_lag():
     base = [s(-30, svc={"error_rate": 0.0}), s(0, svc={"error_rate": 0.0})]
     during = [s(0, svc={"error_rate": 0.0}), s(120, svc={"error_rate": 0.5})]
-    after = [s(180, svc={"error_rate": 0.5}), s(330, svc={"error_rate": 0.0}), s(360, svc={"error_rate": 0.0})]
+    after = [s(180, svc={"error_rate": 0.5}), s(330, svc={"error_rate": 0.0}), s(360, svc={"error_rate": 0.01})]
     a = flt.analyse(base, during, after, frozenset({"svc"}), effect_until_s=150 + flt.EFFECT_LAG_S)
     assert a["root_first_effect_s"] == 120 and a["root_recovered_after_clear"] is True
     # Without the lag only one moved sample is inside the window: missed (the original bug).
@@ -393,3 +402,32 @@ def test_load_generator_is_never_a_mover():
     base = [s(-30, **{"load-generator": {"memory_mb": 838.0}}), s(0, **{"load-generator": {"memory_mb": 840.0}})]
     up = [s(30, **{"load-generator": {"memory_mb": 1050.0}}), s(60, **{"load-generator": {"memory_mb": 1050.0}})]
     assert flt.analyse(base, up, [], frozenset())["movers"] == []
+
+
+# ---------------------------------------------------------------- regression: real re-probe, 300 s hold (31 Oct)
+
+REAL_REPROBE = json.loads((Path(__file__).resolve().parent / "fixtures" / "probe_reprobe_2026-10-31.json").read_text())
+
+
+def test_real_reprobe_control_clean_despite_single_point_spikes():
+    # The control run had ad p95 spikes of 1,140 and 1,580 ms, each one data point.
+    items = {i["item"]: i for i in flt.reanalyse(REAL_REPROBE)["items"]}
+    assert items["control"]["movers"] == []
+
+
+@pytest.mark.parametrize("item,signal", [("cartFailure", "error_count"), ("kafkaQueueProblems", "consumer_lag")])
+def test_real_reprobe_detects_and_recovers(item, signal):
+    it = {i["item"]: i for i in flt.reanalyse(REAL_REPROBE)["items"]}[item]
+    assert it["root_service_moved"] and it["root_recovered_after_clear"] is True
+    assert any(m["signal"] == signal and m["is_root_service"] for m in it["movers"])
+
+
+def test_distinct_points_collapses_duplicates_but_keeps_repeats_a_minute_apart():
+    vals, times = flt.distinct_points([1140, 1140, 80, 15000, 15000, 15000], [0, 33, 60, 90, 120, 180])
+    assert vals == [1140, 80, 15000, 15000] and times == [0, 60, 90, 180]
+
+
+def test_latency_p50_signal_is_judged_too():
+    base = [s(-30, ad={"latency_p50_ms": 5.0, "throughput_rps": 0.3}), s(0, ad={"latency_p50_ms": 5.0, "throughput_rps": 0.3})]
+    up = [s(30, ad={"latency_p50_ms": 40.0}), s(90, ad={"latency_p50_ms": 45.0})]
+    assert flt.analyse(base, up, [], frozenset({"ad"}))["root_service_moved"]

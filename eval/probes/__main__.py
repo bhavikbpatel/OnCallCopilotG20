@@ -2,7 +2,7 @@
 
     python -m eval.probes discover              # ~4 minutes, includes the noise check
     python -m eval.probes discover --no-noise   # ~10 seconds, read-only
-    python -m eval.probes faults                # ~90 minutes: control, 12 faults, flood
+    python -m eval.probes faults                # ~2 hours: control, 12 faults, flood
     python -m eval.probes faults --only control,paymentFailure   # quick check
     python -m eval.probes reanalyse eval/results/probes/faults-....json  # re-score, no shop needed
 
@@ -33,7 +33,8 @@ def main(argv=None) -> int:
     d.add_argument("--wait", type=float, default=180.0, help="seconds to wait after the no-op write (default 180)")
     f = sub.add_parser("faults", help="inject each fault in turn and measure its effect")
     f.add_argument("--only", help="comma-separated items (default: all). Items: " + ",".join(flt.ITEMS))
-    f.add_argument("--hold", type=float, default=150.0, help="seconds each fault is held (default 150)")
+    f.add_argument("--hold", type=float, default=300.0,
+                   help="seconds each fault is held (default 300: effects need 2+ data points, ~1/min)")
     f.add_argument("--recover", type=float, default=180.0,
                    help="seconds sampled after clearing; at least window + 60 (default 180)")
     f.add_argument("--every", type=float, default=30.0, help="seconds between samples (default 30)")

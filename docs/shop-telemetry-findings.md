@@ -106,20 +106,24 @@ movement on any service.
 | Fault (intensity) | Visible on root service | First seen | Recovers after flag off |
 |---|---|---|---|
 | paymentFailure (50%) | payment error rate 0 -> 0.5-0.75; checkout errors too | ~90-120 s | yes, no restart |
-| cartFailure (50%) | **not visible as a rate**: only EmptyCart fails (~2-3 calls/min); cart error rate ~1% | - | - |
+| cartFailure (50%) | not visible as a rate (only EmptyCart fails, ~2-3 calls/min); **visible as an error count**: cart 0 -> 2-4 errors per window (re-probe, 300 s hold) | ~95 s | yes |
 | productCatalogFailure | product-catalog error rate 0 -> 0.08 (one product only); checkout errors | ~95 s | yes |
 | recommendationCacheFailure | **no visible effect** (memory flat at 237 MB, CPU flat); the Java image appears not to implement it | - | - |
-| kafkaQueueProblems | **weak**: fraud-detection lag reached 96 in one sample (orders are only ~2.5/min) | - | - |
-| adHighCpu | ad p95 7.6 -> 105 ms (14x) | ~30 s | yes |
+| kafkaQueueProblems | weak at 150 s (lag 96 once); **visible with a 300 s hold**: fraud-detection lag 0 -> 110-344 | ~30-90 s | yes |
+| adHighCpu | ad p95 7.6 -> 105 ms in ONE data point, then back to ~41 ms while still on; ad p95 spikes 10x with no fault, so **not conclusive** (p50 re-probe pending) | - | - |
 | emailMemoryLeak (1000x) | email memory 66 -> 100 MB | ~95 s | **yes, without a restart** (fell to 53 MB) |
 | imageSlowLoad (5 s) | frontend-proxy p95 106 -> ~6,000 ms | ~90 s | yes |
 | paymentUnreachable | checkout error rate 0 -> 1.0 (payment itself healthy) | ~60 s | yes |
 | productCatalogLockContention | product-catalog p95 50 -> 15,000 ms; its traffic drops ~80%; wide knock-on slowness | ~60 s | **slowly**: still ~2x after 3 min |
-| intlShippingSlowdown (5 s) | shipping p95 47 -> 7,750 ms (the load generator does send non-US addresses) | ~180 s | yes |
+| intlShippingSlowdown (5 s) | shipping p95 47 -> 7,750 ms (the load generator does send non-US addresses), one data point at 150 s: confirm at 300 s | ~180 s | yes |
 | adFailure | ad error rate 0 -> 0.18 | ~120 s | yes |
-| flood (load only) | frontend traffic 12 -> 34 req/s (2.8x); **latency did not rise** | ~180 s | yes |
+| flood (load only) | frontend traffic 12 -> 34 req/s (2.8x) in one data point at 150 s; **latency did not rise**; confirm at 300 s | ~180 s | yes |
 
 Measurement lessons (built into the probe and its tests):
+- Prometheus gets a new span-metric point about **once a minute**. An effect must show in at
+  least **two different data points** to count; one point cannot be told apart from a one-off
+  spike (ad p95 jumped 10x twice in a control run). With a 150 s hold several faults produced only
+  one point, so the probe now holds each fault **300 s**.
 - Effects appear **90-180 s** after injection (2-minute window plus delivery delay) and
   persist into the first minutes after clearing. Checks must allow for that lag.
 - p95 latency is noisy: frontend swings ~4x and ad ~6x with nothing wrong; with
@@ -130,7 +134,8 @@ Measurement lessons (built into the probe and its tests):
 
 Consequences for the golden set (to agree with the team):
 - recommendationCacheFailure cannot be diagnosed from telemetry in this shop version.
-- kafkaQueueProblems is too weak at normal load to be a fair case as is.
+- kafkaQueueProblems is usable with enough time: lag builds over minutes.
+- adHighCpu is undecided: ad latency is noisy; a median (p50) signal is being tested.
 - The flood alone does not raise latency, so noise cases need an alert that a
   traffic spike actually trips.
 - emailMemoryLeak: a restart is acceptable, not required.
@@ -139,5 +144,5 @@ Consequences for the golden set (to agree with the team):
 
 1. Person 5: agree (or not) the recommendation telemetry fix in section 4.
 2. Person 1: runbook note on background flag-lookup noise.
-3. Person 4: update dev cases from section 6; re-run cartFailure and kafkaQueueProblems with the error-count signal and a longer hold.
+3. Person 4: dev cases updated from section 6 (done 31 Oct); re-run cartFailure and kafkaQueueProblems with the error-count signal and a longer hold.
 4. Team: decide what replaces recommendationCacheFailure (and possibly kafkaQueueProblems) in the golden set.

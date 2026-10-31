@@ -52,6 +52,7 @@ MOVE_THRESHOLDS: dict = {
     "error_rate": (0.05, 0.0),          # +5 percentage points
     "error_count": (2.0, 0.0),          # +2 errors in the window (only on services quiet at rest)
     "latency_p95_ms": (50.0, 5.0),      # +50 ms and 6x (control run: frontend p95 swings ~4x on its own)
+    "latency_p50_ms": (20.0, 2.0),      # +20 ms and 3x (median is far steadier than p95)
     "throughput_rps": (0.2, 1.5),       # rise to 2.5x or more (see THROUGHPUT_DROP for falls)
     "memory_mb": (20.0, 0.2),           # +20 MB and +20%
     "cpu_percent": (20.0, 0.5),         # +20 points and +50%
@@ -69,8 +70,10 @@ THROUGHPUT_DROP = 0.7
 # Below this many requests/s (checkout, payment, email: ~0.02-0.07/s) random gaps
 # look like 75%+ "drops"; traffic drops are only judged on busier services.
 THROUGHPUT_MIN_BASE_RPS = 0.5
-# A signal must stay moved for this many consecutive samples: single spikes
-# (e.g. payment memory's 66 -> 95 -> 66 MB sawtooth) are not effects.
+# A signal must stay moved in this many DIFFERENT data points. Prometheus gets a
+# new span-metric point only about once a minute and the probe samples every 30 s,
+# so consecutive identical readings are the same point and count once. Without
+# this, one random spike (ad p95 1,140 ms in a control run) looked "sustained".
 SUSTAINED_SAMPLES = 2
 # Effects reach Prometheus late (2-minute window + ~60 s delivery): in the full
 # probe they first showed ~90-130 s after injection and lasted into the first
@@ -124,9 +127,27 @@ def _moved(signal: str, base: Optional[float], value: Optional[float],
     return delta >= absolute and rel >= relative
 
 
+# Identical readings closer than this are the same Prometheus point. A value can
+# legitimately repeat across points (lock contention sits at the 15,000 ms bucket
+# ceiling every minute), so repeats further apart count as new points.
+SAME_POINT_WINDOW_S = 45.0
+
+
+def distinct_points(series: list, times: list) -> tuple:
+    """Collapse identical readings taken within SAME_POINT_WINDOW_S of the last kept one."""
+    out_s, out_t = [], []
+    for t, v in zip(times, series):
+        if out_s and v is not None and out_s[-1] == v and t - out_t[-1] < SAME_POINT_WINDOW_S:
+            continue
+        out_s.append(v)
+        out_t.append(t)
+    return out_s, out_t
+
+
 def sustained_runs(signal: str, base: Optional[float], series: list, times: list,
                    need: int = SUSTAINED_SAMPLES, min_factor: Optional[float] = None) -> list:
-    """Runs of at least ``need`` consecutive moved samples, as (start_time, values)."""
+    """Runs of at least ``need`` consecutive moved DATA POINTS, as (start_time, values)."""
+    series, times = distinct_points(series, times)
     runs, current, start = [], [], None
     for t, v in zip(times, series):
         if _moved(signal, base, v, min_factor):
@@ -185,7 +206,7 @@ def analyse(baseline: list, during: list, after: list, root_services: frozenset,
 
         base_rps = _median(series(baseline, "throughput_rps"))
         for signal in sorted(signals):
-            if signal == "latency_p95_ms" and (base_rps is None or base_rps < LATENCY_MIN_RPS):
+            if signal.startswith("latency_") and (base_rps is None or base_rps < LATENCY_MIN_RPS):
                 continue
             factor = (LATENCY_LOW_TRAFFIC_FACTOR if signal == "latency_p95_ms"
                       and base_rps < LATENCY_LOW_TRAFFIC_RPS else None)
@@ -196,7 +217,8 @@ def analyse(baseline: list, during: list, after: list, root_services: frozenset,
                 continue
             peak = _peak(signal, base, [v for _, vals in runs for v in vals])
             first = runs[0][0]
-            tail = [v for v in series(recovery, signal) if v is not None][-SUSTAINED_SAMPLES:]
+            rec_vals, _ = distinct_points(series(recovery, signal), [x["t"] for x in recovery])
+            tail = [v for v in rec_vals if v is not None][-SUSTAINED_SAMPLES:]
             last_after = tail[-1] if tail else None
             recovered = (None if len(tail) < SUSTAINED_SAMPLES
                          else not any(_moved(signal, base, v, factor) for v in tail))
@@ -301,7 +323,7 @@ def probe_item(prom: PromClient, store: FlagStore, item: str, hold_s: float, rec
     return result
 
 
-def run(prom: PromClient, store: FlagStore, items=ITEMS, hold_s: float = 150, recover_s: float = 180,
+def run(prom: PromClient, store: FlagStore, items=ITEMS, hold_s: float = 300, recover_s: float = 180,
         every_s: float = 30, window: str = "2m", clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] = lambda m: None,
         path: Optional[Path] = None) -> dict:
@@ -316,7 +338,7 @@ def run(prom: PromClient, store: FlagStore, items=ITEMS, hold_s: float = 150, re
         "hold_s": hold_s, "recover_s": recover_s, "every_s": every_s, "window": window,
         "variants": {i: PROBE_VARIANTS.get(i) for i in items}, "thresholds": MOVE_THRESHOLDS,
         "throughput_drop": THROUGHPUT_DROP, "throughput_min_base_rps": THROUGHPUT_MIN_BASE_RPS,
-        "sustained_samples": SUSTAINED_SAMPLES, "effect_lag_s": EFFECT_LAG_S,
+        "sustained_samples": SUSTAINED_SAMPLES, "same_point_window_s": SAME_POINT_WINDOW_S, "effect_lag_s": EFFECT_LAG_S,
         "latency_min_rps": LATENCY_MIN_RPS, "error_count_max_base": ERROR_COUNT_MAX_BASE,
         "latency_low_traffic_rps": LATENCY_LOW_TRAFFIC_RPS, "latency_low_traffic_factor": LATENCY_LOW_TRAFFIC_FACTOR},
         "items": []}
