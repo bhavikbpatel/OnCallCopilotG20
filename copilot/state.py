@@ -4,39 +4,39 @@ from __future__ import annotations
 import hashlib
 import json
 import operator
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing_extensions import TypedDict
 
 from copilot.memory.schemas import MemoryContext, Precondition
+from eval.schemas import catalogue
 
 EVIDENCE_PER_HYPOTHESIS = 5
 MESSAGES_KEPT = 20
 
 
-# ---------- enums ----------
+# ---------- enums (generated from the eval fault catalogue: one source of truth for names) ----------
 
-class ServiceName(StrEnum):
-    FRONTEND = "frontend"
-    CHECKOUT = "checkout"
-    PAYMENT = "payment"
-    CART = "cart"
-    VALKEY = "valkey"
-    PRODUCT_CATALOG = "product-catalog"
-    RECOMMENDATION = "recommendation"
-    AD = "ad"
-    EMAIL = "email"
-    IMAGE_PROVIDER = "image-provider"
-    KAFKA = "kafka"
-    ACCOUNTING = "accounting"
-    FRAUD_DETECTION = "fraud-detection"
-    SHIPPING = "shipping"
-    CURRENCY = "currency"
+def _enum_name(value: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", value).replace("-", "_").upper()
+
+
+def _str_enum(name: str, values: list[str]) -> type[StrEnum]:
+    return StrEnum(name, {_enum_name(v): v for v in values}, module=__name__)
+
+
+# Shop services as they appear in telemetry (service_name / container_name), e.g. "valkey-cart".
+ServiceName = _str_enum("ServiceName", sorted(catalogue.SERVICES))
+# Every flagd flag in the pinned shop; set_flag may only touch these.
+FlagName = _str_enum("FlagName", sorted(catalogue.FLAG_VARIANTS))
+# Golden-set fault types (scored against the case spec) plus "noise" for no-fault alerts.
+FaultType = _str_enum("FaultType", [*catalogue.FAULT_TYPES, "noise"])
 
 
 class FaultFamily(StrEnum):
@@ -45,20 +45,6 @@ class FaultFamily(StrEnum):
     DEPENDENCY_LATENCY = "dependency_latency"
     RESOURCE_SATURATION = "resource_saturation"
     NONE = "none"
-
-
-class FaultType(StrEnum):
-    PAYMENT_FAILURE = "paymentFailure"
-    CART_FAILURE = "cartFailure"
-    PRODUCT_CATALOG_FAILURE = "productCatalogFailure"
-    RECOMMENDATION_CACHE_FAILURE = "recommendationCacheFailure"
-    KAFKA_QUEUE_PROBLEMS = "kafkaQueueProblems"
-    AD_HIGH_CPU = "adHighCpu"
-    EMAIL_MEMORY_LEAK = "emailMemoryLeak"
-    IMAGE_SLOW_LOAD = "imageSlowLoad"
-    BAD_DEPLOY = "bad_deploy"
-    DEPENDENCY_LATENCY = "dependency_latency"
-    NOISE = "noise"
 
 
 class Severity(StrEnum):
@@ -150,8 +136,15 @@ class RunbookAdvice(BaseModel):
 
 class SetFlag(BaseModel):
     tool: Literal["set_flag"] = "set_flag"
-    flag: FaultType
-    variant: Literal["on", "off"]
+    flag: FlagName
+    variant: str                       # "off" or one of the flag's variants, e.g. "50%" (needed to undo)
+
+    @model_validator(mode="after")
+    def _known_variant(self) -> "SetFlag":
+        allowed = ("off", *catalogue.FLAG_VARIANTS[self.flag])
+        if self.variant not in allowed:
+            raise ValueError(f"variant {self.variant!r} not valid for {self.flag}; allowed {allowed}")
+        return self
 
 
 class RestartService(BaseModel):
@@ -355,6 +348,8 @@ class IncidentState(TypedDict, total=False):
     expected_effect: str
     dry_run: DryRunResult | None
     approval: ApprovalRecord | None
+    executed_at: datetime | None           # when the fix ran; recovery counts errors since then
+    failed_actions: Annotated[list[str], operator.add]   # payload hashes of fixes that were rolled back
     outcome: ActionOutcome | None
     status_note: StatusNote | None
     postmortem: Postmortem | None

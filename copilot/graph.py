@@ -71,7 +71,7 @@ def build_graph(deps: CopilotDeps, checkpointer: BaseCheckpointSaver | None = No
     g.add_conditional_edges("approval_gate", r["after_approval"],
                             ["execute", "dry_run", "commander_hypothesize", "escalate"])
     g.add_conditional_edges("execute", r["after_execute"], ["verify", "commander_hypothesize", "escalate"])
-    g.add_conditional_edges("verify", r["after_verify"], ["comms", "rollback"])
+    g.add_conditional_edges("verify", r["after_verify"], ["comms", "rollback", "escalate"])
     g.add_conditional_edges("rollback", r["ok_or_escalate"]("dry_run"), ["dry_run", "escalate"])
     g.add_edge("escalate", "comms")
     g.add_edge("comms", "review")

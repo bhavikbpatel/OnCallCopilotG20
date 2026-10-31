@@ -32,8 +32,22 @@ class Passage(BaseModel):
     score: float
 
 
+class RecoveryCount(BaseModel):
+    errors: float | None
+    requests: float | None
+    error_rate: float | None          # None when there were no requests: "no data" is never "healthy"
+
+
 class TelemetryClient(_PreconditionTelemetry, Protocol):
     async def service_health(self, window: str = "5m") -> list[ServiceHealth]: ...
+
+    async def signal_value(self, signal: str, service: str, window: str = "2m") -> float | None:
+        """Current value of one agreed signal (eval/telemetry/signals.py); None if no data."""
+        ...
+
+    async def errors_since(self, service: str, since: datetime) -> RecoveryCount:
+        """Server-span errors/requests since `since` — recovery check on low-traffic services."""
+        ...
 
 
 class RunbooksClient(Protocol):

@@ -69,7 +69,9 @@ def make_routes(settings: AppSettings):
             return _replan_or_escalate(state, settings)
         return "verify"
 
-    def after_verify(state: IncidentState) -> Literal["comms", "rollback"]:
+    def after_verify(state: IncidentState) -> Literal["comms", "rollback", "escalate"]:
+        if _escalating(state):            # recovery could not be judged: never roll back on missing data
+            return "escalate"
         return "comms" if state["outcome"].verified else "rollback"
 
     return {

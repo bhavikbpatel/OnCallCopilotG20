@@ -31,12 +31,6 @@ class AppSettings(BaseModel):
     prompts_dir: Path = ROOT / "config" / "prompts"
     mcp_servers_path: Path = ROOT / "config" / "mcp_servers.yaml"
     permissions_path: Path = ROOT / "config" / "permissions.yaml"
-    promql: dict[str, str] = Field(default_factory=lambda: {
-        "error_rate_by_service": "sum by (service) (rate(http_server_errors_total[$window])) "
-                                 "/ sum by (service) (rate(http_server_requests_total[$window]))",
-        "latency_p95_by_service": "histogram_quantile(0.95, sum by (service, le) "
-                                  "(rate(http_server_duration_milliseconds_bucket[$window])))",
-    })
     embedding_model: str | None = None   # e.g. "openai/text-embedding-3-small"; None → incident search by metadata only
     embedding_dims: int | None = 1536
     limits: BudgetLimits = Field(default_factory=BudgetLimits)
@@ -44,6 +38,8 @@ class AppSettings(BaseModel):
     max_parallel_diagnosis: int = 3
     verify_window_s: int = 300          # demo; eval mode uses a shorter window
     verify_poll_s: int = 15
+    verify_initial_delay_s: int = 40    # Prometheus lags 12–40 s behind real time
+    verify_min_requests: int = 5        # fewer requests since the fix → too little traffic to judge
     review_enabled: bool = True         # False on held-out runs: nothing is written to long-term memory
     memory_read_only: bool = False      # True after the playbook is frozen (E3)
     config_hash: str = ""

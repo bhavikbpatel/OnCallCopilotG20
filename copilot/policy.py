@@ -5,9 +5,10 @@ Severity table is a placeholder until role 1 publishes the written policy.
 from __future__ import annotations
 
 from copilot.state import (
-    Action, BudgetLedger, BudgetLimits, FaultType, RestartService, Rollback, ScaleService, ServiceName,
+    Action, BudgetLedger, BudgetLimits, FlagName, RestartService, Rollback, ScaleService, ServiceName,
     SetFlag, Severity,
 )
+from eval.schemas import catalogue
 
 CUSTOMER_FACING = {ServiceName.FRONTEND, ServiceName.CHECKOUT, ServiceName.PAYMENT, ServiceName.CART}
 
@@ -20,7 +21,8 @@ SEVERITY_TABLE: list[tuple[bool, float, Severity]] = [
     (False, 0.0, Severity.SEV4),
 ]
 
-FLAG_ALLOW_LIST = {f for f in FaultType if f not in (FaultType.BAD_DEPLOY, FaultType.DEPENDENCY_LATENCY, FaultType.NOISE)}
+# Only fault flags may be toggled; load / red-team / agentic flags are off limits.
+FLAG_ALLOW_LIST = {FlagName(f) for f in catalogue.FAULT_TYPES}
 RESTART_ALLOW_LIST = {ServiceName.RECOMMENDATION, ServiceName.EMAIL, ServiceName.AD, ServiceName.CART}
 SCALE_ALLOW_LIST = {ServiceName.AD, ServiceName.RECOMMENDATION, ServiceName.FRONTEND}
 ROLLBACK_ALLOW_LIST = set(ServiceName)

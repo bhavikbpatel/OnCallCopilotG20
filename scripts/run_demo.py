@@ -22,7 +22,7 @@ from dotenv import load_dotenv  # noqa: E402
 from langchain_core.tools import tool  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
-from copilot.clients import ServiceHealth  # noqa: E402
+from copilot.clients import RecoveryCount, ServiceHealth  # noqa: E402
 from copilot.config import ROOT, load_settings  # noqa: E402
 from copilot.deps import CopilotDeps  # noqa: E402
 from copilot.graph import build_graph  # noqa: E402
@@ -73,15 +73,27 @@ class StubTelemetry:
     def __init__(self, recovers: bool):
         self.recovers, self.fixed = recovers, False
 
+    @property
+    def _healthy(self) -> bool:
+        return self.fixed and self.recovers
+
     async def service_health(self, window="5m"):
         return [ServiceHealth(service="checkout", error_rate=0.12), ServiceHealth(service="payment", error_rate=0.31),
-                ServiceHealth(service="cart", error_rate=0.001)]
+                ServiceHealth(service="cart", error_rate=0.0)]
 
     async def recent_changes(self, since):
-        return [{"kind": "flag", "flag": "paymentFailure", "at": NOW}]
+        return [{"kind": "flag", "flag": "paymentFailure", "variant": "50%", "at": NOW}]
 
     async def query_scalar(self, query):
-        return 0.001 if (self.fixed and self.recovers) else 0.12
+        return 0.0 if self._healthy else 0.12
+
+    async def signal_value(self, signal, service, window="2m"):
+        return 0.0 if self._healthy else 0.12
+
+    async def errors_since(self, service, since):
+        requests = 12.0
+        errors = 0.0 if self._healthy else 6.0
+        return RecoveryCount(errors=errors, requests=requests, error_rate=errors / requests)
 
 
 class StubRunbooks:
@@ -92,16 +104,19 @@ class StubRunbooks:
 class StubOps:
     def __init__(self, telemetry: StubTelemetry):
         self.telemetry = telemetry
+        self.flags = {"paymentFailure": "50%"}            # the injected fault
 
     async def dry_run(self, action):
         undo = None
-        if action.tool == "set_flag":
-            undo = SetFlag(flag=action.flag, variant="on" if action.variant == "off" else "off")
-        return DryRunResult(would_do=action.model_dump_json(), expected_effect="see action", rollback_action=undo)
+        if action.tool == "set_flag":                      # undo = restore the flag's current variant
+            undo = SetFlag(flag=action.flag, variant=self.flags.get(action.flag, "off"))
+        return DryRunResult(would_do=action.model_dump_json(), expected_effect="see action",
+                            current_state={"flags": dict(self.flags)}, rollback_action=undo)
 
     async def execute(self, action, token):
-        if action.tool == "set_flag" and action.flag == "paymentFailure":
-            self.telemetry.fixed = action.variant == "off"
+        if action.tool == "set_flag":
+            self.flags[action.flag] = action.variant
+            self.telemetry.fixed = self.flags.get("paymentFailure") == "off"
         print(f"   [shop] executed {action.model_dump_json()} with token {token}")
         return {"ok": True}
 
@@ -152,7 +167,7 @@ def ask_review(payload: dict, auto: bool) -> dict:
 
 async def main(args: argparse.Namespace) -> None:
     load_dotenv(ROOT / ".env")
-    settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3})
+    settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3, "verify_initial_delay_s": 0})
     telemetry = StubTelemetry(recovers=not args.no_recovery)
 
     async with make_checkpointer() as saver, make_store() as store:

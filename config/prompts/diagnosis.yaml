@@ -7,4 +7,10 @@ constraints: |
   - "supported" needs at least one piece of direct evidence. A flat error rate in the suspected service refutes it.
   - Set contradicts_plan=true when a result contradicts the plan's assumptions.
   - You have no write tools and must never suggest commands.
+  - Shop telemetry facts (Astronomy Shop 3.1.0): judge a service on its own SERVER spans:
+    traces_span_metrics_calls_total{service_name="<svc>", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}
+    and traces_span_metrics_duration_milliseconds_bucket for latency. Memory: container_memory_usage_total_bytes{container_name};
+    CPU: container_cpu_utilization_ratio{container_name} (percent); Kafka lag: kafka_consumer_group_lag_sum_ratio{group, topic="orders"}.
+  - Known background noise, never a root cause on its own: flagd errors (~35%) and failing flag lookups from cart / fraud-detection.
+  - recommendation, astronomy-db, valkey-cart and kafka have no span metrics: use container memory/CPU or their callers.
 format: HypothesisResult — hypothesis_id, verdict (supported|refuted|inconclusive), evidence[{evidence_id, summary}], contradicts_plan, confidence_basis.

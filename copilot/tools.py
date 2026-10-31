@@ -18,8 +18,9 @@ import yaml
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
-from copilot.clients import Passage, ServiceHealth, ToolError
+from copilot.clients import Passage, RecoveryCount, ServiceHealth, ToolError
 from copilot.state import Action, Alert, DryRunResult, Postmortem, Severity
+from eval.telemetry import signals
 
 
 def load_server_connections(path: Path) -> dict[str, dict[str, Any]]:
@@ -101,8 +102,11 @@ def _last_value(series: dict[str, Any]) -> float | None:
 
 
 class McpTelemetry:
-    def __init__(self, toolbox: McpToolbox, promql: dict[str, str]):
-        self.toolbox, self.promql = toolbox, promql
+    """PromQL comes from eval/telemetry/signals.py (measured on the pinned shop): server spans,
+    `traces_span_metrics_*` by `service_name`. Same queries the eval harness scores recovery with."""
+
+    def __init__(self, toolbox: McpToolbox):
+        self.toolbox = toolbox
 
     async def _query(self, query: str, lookback: timedelta = timedelta(minutes=5)) -> list[dict[str, Any]]:
         end = datetime.now(timezone.utc)
@@ -123,13 +127,39 @@ class McpTelemetry:
         return out
 
     async def service_health(self, window: str = "5m") -> list[ServiceHealth]:
-        errors = await self._query(self.promql["error_rate_by_service"].replace("$window", window))
-        latency = await self._query(self.promql["latency_p95_by_service"].replace("$window", window))
-        p95 = {s.get("labels", {}).get("service"): _last_value(s) for s in latency}
-        return [ServiceHealth(service=s.get("labels", {}).get("service", "unknown"),
-                              error_rate=_last_value(s) or 0.0,
-                              latency_p95_ms=p95.get(s.get("labels", {}).get("service")))
-                for s in errors]
+        """All instrumented services in two queries (per-service form of signals.error_rate / latency_p95_ms)."""
+        w = signals._check_window(window)
+        calls, server, error = signals.CALLS, signals.SERVER, signals.ERROR
+        errors = await self._query(
+            f"(sum by (service_name) (rate({calls}{{{server},{error}}}[{w}])) "
+            f"or (sum by (service_name) (rate({calls}{{{server}}}[{w}])) * 0))"
+            f" / sum by (service_name) (rate({calls}{{{server}}}[{w}]))")
+        latency = await self._query(
+            f"histogram_quantile(0.95, sum by (service_name, le) "
+            f"(rate({signals.DURATION_BUCKET}{{{server}}}[{w}])))")
+
+        def name(s: dict[str, Any]) -> str:
+            return s.get("labels", {}).get("service_name", "unknown")
+
+        p95 = {name(s): _last_value(s) for s in latency}
+        return [ServiceHealth(service=name(s), error_rate=_last_value(s) or 0.0, latency_p95_ms=p95.get(name(s)))
+                for s in errors if name(s) != "flagd"]       # flagd: permanent background errors, not a suspect
+
+    async def signal_value(self, signal: str, service: str, window: str = "2m") -> float | None:
+        if not signals.supported(signal, service):
+            return None
+        return await self.query_scalar(signals.promql(signal, service, window))
+
+    async def errors_since(self, service: str, since: datetime) -> RecoveryCount:
+        """Same counting as signals.errors_since, issued through the telemetry MCP server."""
+        if not signals.supported("error_rate", service):
+            return RecoveryCount(errors=None, requests=None, error_rate=None)
+        seconds = max(1, int((datetime.now(timezone.utc) - since).total_seconds()))
+        sel = f'service_name="{signals._svc(service)}",{signals.SERVER}'
+        err = await self.query_scalar(
+            f"sum(increase({signals.CALLS}{{{sel},{signals.ERROR}}}[{seconds}s])) or vector(0)")
+        req = await self.query_scalar(f"sum(increase({signals.CALLS}{{{sel}}}[{seconds}s]))")
+        return RecoveryCount(errors=err, requests=req, error_rate=(err / req) if (err is not None and req) else None)
 
 
 class McpRunbooks:

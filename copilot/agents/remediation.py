@@ -18,6 +18,7 @@ from copilot.policy import is_allowed
 from copilot.state import (
     Action, ActionOutcome, ApprovalDecision, ApprovalRecord, EvidenceRef, IncidentState, payload_hash,
 )
+from eval.telemetry import signals
 
 _action_adapter = TypeAdapter(Action)
 
@@ -31,13 +32,20 @@ class ActionProposal(BaseModel):
 def make_propose_action(deps: CopilotDeps):
     @guarded("propose_action")
     async def propose_action(state: IncidentState) -> dict[str, Any]:
-        view = remediation_view(state) | {"last_rejection": state["approval"].reason
-                                          if state.get("approval") and state["approval"].decision == "reject" else None}
+        outcome = state.get("outcome")
+        view = remediation_view(state) | {
+            "last_rejection": state["approval"].reason
+            if state.get("approval") and state["approval"].decision == "reject" else None,
+            "already_failed_and_rolled_back": [outcome.action.model_dump(mode="json")]
+            if outcome and outcome.rolled_back else [],
+        }
         proposal, cost = await structured_call(deps, "remediation", "propose_action", ActionProposal, view)
         if proposal.action is None:
             reason = f"no safe action: {proposal.rationale}"
             return {"escalation_reason": reason, "budget": cost, "timeline": [event("propose_action", "escalate", reason)]}
         allowed, why = is_allowed(proposal.action)
+        if allowed and payload_hash(proposal.action) in state.get("failed_actions", []):
+            allowed, why = False, f"{proposal.action.model_dump_json()} already failed and was rolled back"
         if not allowed:
             return {"escalation_reason": why, "budget": cost, "timeline": [event("propose_action", "escalate", why)]}
         return {
@@ -121,6 +129,7 @@ def make_execute(deps: CopilotDeps):
                 for h in supported]
             update |= {
                 "hypotheses": refuted,
+                "failed_actions": [prev.approved_hash],
                 "outcome": prev.model_copy(update={"rolled_back": True}),
                 "replan_reason": "fix did not recover the metric; rolled back",
                 "proposed_action": None,
@@ -128,6 +137,7 @@ def make_execute(deps: CopilotDeps):
             }
         else:
             update |= {
+                "executed_at": now(),
                 "outcome": ActionOutcome(action=action, approved_hash=approval.payload_hash, verified=False, rolled_back=False),
                 "timeline": [event("execute", "action", f"Executed {action.model_dump_json()}: {result}")],
             }
@@ -136,30 +146,59 @@ def make_execute(deps: CopilotDeps):
     return execute
 
 
+SIGNAL_ALIASES = {"latency_p95": "latency_p95_ms", "cpu": "cpu_percent", "memory": "memory_mb"}
+
+
+async def _measure(deps: CopilotDeps, state: IncidentState) -> tuple[float | None, bool, str, int]:
+    """One recovery reading → (value, judgeable, description, tool calls).
+
+    error_rate counts errors since the fix (checkout sees ~2.5 requests/min, too few for a fixed window);
+    other signals use the agreed signal map. Unknown signals fall back to the alert rule's own query.
+    """
+    alert, s = state["alert"], deps.settings
+    signal = SIGNAL_ALIASES.get(alert.signal, alert.signal)
+    if signal == "error_rate":
+        c = await deps.telemetry.errors_since(alert.service, state["executed_at"])
+        judgeable = c.error_rate is not None and (c.requests or 0) >= s.verify_min_requests
+        return c.error_rate, judgeable, f"{alert.service} error_rate since fix = {c.error_rate} " \
+                                        f"({c.errors}/{c.requests} requests)", 2
+    if signal in signals.SIGNALS:
+        value = await deps.telemetry.signal_value(signal, alert.service)
+        return value, value is not None, f"{alert.service} {signal} = {value}", 1
+    value = await deps.telemetry.query_scalar(alert.query)
+    return value, value is not None, f"{alert.query} = {value}", 1
+
+
 def make_verify(deps: CopilotDeps):
     async def verify(state: IncidentState) -> dict[str, Any]:
-        """Code decides recovery: the alert's own query back under its threshold within the window."""
+        """Code decides recovery. Never rolls back on missing data: too little traffic → escalate."""
         alert, s = state["alert"], deps.settings
         poll_s = max(1, s.verify_poll_s)
         max_polls = max(1, s.verify_window_s // poll_s + 1)
-        polls, value = 0, None
+        await asyncio.sleep(s.verify_initial_delay_s)
+        calls, polls = 0, 0
+        value, judgeable, desc = None, False, ""
         while polls < max_polls:
-            value = await deps.telemetry.query_scalar(alert.query)
-            polls += 1
-            emit({"node": "verify", "value": value, "threshold": alert.threshold})
-            if value is not None and value < alert.threshold:
+            value, judgeable, desc, n = await _measure(deps, state)
+            calls, polls = calls + n, polls + 1
+            emit({"node": "verify", "reading": desc, "threshold": alert.threshold})
+            if judgeable and value < alert.threshold:
                 break
             if polls < max_polls:
                 await asyncio.sleep(poll_s)
 
-        recovered = value is not None and value < alert.threshold
-        outcome = state["outcome"].model_copy(update={"verified": recovered})
-        text = f"{'recovered' if recovered else 'NOT recovered'}: {alert.query} = {value} (threshold {alert.threshold})"
-        update: dict[str, Any] = {"outcome": outcome, "budget": spend("remediation", tool_calls=polls),
-                                  "timeline": [event("verify", "verdict", text)]}
+        recovered = judgeable and value < alert.threshold
+        update: dict[str, Any] = {"outcome": state["outcome"].model_copy(update={"verified": recovered}),
+                                  "budget": spend("remediation", tool_calls=calls)}
         if recovered:
+            text = f"recovered: {desc} < {alert.threshold}"
             update["final_status"] = "recovered"
-        return update
+        elif judgeable:
+            text = f"NOT recovered: {desc} ≥ {alert.threshold}"
+        else:
+            text = f"recovery could not be judged (too little data): {desc}"
+            update["escalation_reason"] = text
+        return update | {"timeline": [event("verify", "verdict", text)]}
     return verify
 
 

@@ -18,6 +18,8 @@ max_replans: 2
 max_parallel_diagnosis: 3
 verify_window_s: 300
 verify_poll_s: 15
+verify_initial_delay_s: 40   # Prometheus lags 12–40 s
+verify_min_requests: 5       # below this since the fix: too little traffic to judge → escalate, never roll back
 review_enabled: true
 memory_read_only: false
 

@@ -47,7 +47,7 @@ async def copilot_runtime(settings: AppSettings | None = None) -> AsyncIterator[
     async with make_checkpointer(dsn) as saver, make_store(dsn, embed=embed, dims=settings.embedding_dims) as store:
         deps = CopilotDeps(
             settings=settings,
-            telemetry=McpTelemetry(toolbox, settings.promql),
+            telemetry=McpTelemetry(toolbox),
             runbooks=McpRunbooks(toolbox),
             ops=McpOps(toolbox),
             tickets=McpTickets(toolbox),
