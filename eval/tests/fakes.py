@@ -104,3 +104,66 @@ class FakeTime:
                 self.hooks.pop(at)()
         self.t = target
         return self.t >= self.stop_at
+
+
+class FakePrometheus:
+    """Mimics the Prometheus HTTP API endpoints the harness uses.
+
+    ``responder(expr, at)`` returns a list of (labels, value) for /api/v1/query,
+    or raises ValueError to simulate a bad query (HTTP 400).
+    """
+
+    def __init__(self, responder, labels: dict | None = None, version: str = "3.13.1"):
+        self.responder = responder
+        self.labels = labels or {}
+        self.version = version
+        self.queries: list = []
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _send(self, code, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                from urllib.parse import parse_qs, urlparse
+                u = urlparse(self.path)
+                q = {k: v[0] for k, v in parse_qs(u.query).items()}
+                if u.path == "/api/v1/status/buildinfo":
+                    return self._send(200, {"status": "success", "data": {"version": fake.version}})
+                if u.path.startswith("/api/v1/label/") and u.path.endswith("/values"):
+                    name = u.path[len("/api/v1/label/"):-len("/values")]
+                    return self._send(200, {"status": "success", "data": fake.labels.get(name, [])})
+                if u.path == "/api/v1/query":
+                    at = float(q["time"]) if "time" in q else None
+                    fake.queries.append((q["query"], at))
+                    try:
+                        rows = fake.responder(q["query"], at)
+                    except ValueError as exc:
+                        return self._send(400, {"status": "error", "error": str(exc)})
+                    if rows == "scalar":
+                        return self._send(200, {"status": "success",
+                                                "data": {"resultType": "scalar", "result": [0, "42"]}})
+                    result = [{"metric": lab, "value": [0, str(val)]} for lab, val in rows]
+                    return self._send(200, {"status": "success",
+                                            "data": {"resultType": "vector", "result": result}})
+                self._send(404, {"status": "error", "error": "not found"})
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.server.shutdown()
+        self.server.server_close()

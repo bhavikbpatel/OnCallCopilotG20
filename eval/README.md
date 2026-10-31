@@ -17,6 +17,8 @@ different model family only scores what code cannot.
 | `config/models.yaml` | OpenRouter judge model (different family from the agents) | done |
 | `settings.py` | Reads secrets from environment or `eval/.env` (git-ignored) | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
+| `telemetry/prom.py` | Prometheus client (standard library only) | done |
+| `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
@@ -57,6 +59,16 @@ saves a ground-truth record in `eval/results/ground_truth/`. Before evaluation
 runs, make sure the flag UI's scheduler (http://localhost:8080/feature/scheduler)
 is stopped; if anything else changes a flag, the run is marked contaminated.
 See `../docs/eval-implementation-plan.md` for the design.
+
+## Live-shop probes
+
+```bash
+cd OnCallCopilotG20
+python -m eval.probes discover --no-noise   # ~10 s, read-only
+python -m eval.probes discover              # ~4 min, adds the flag-write noise check
+```
+
+Reports go to `eval/results/probes/` (git-ignored).
 
 ## Regenerate the JSON Schemas after changing a schema
 
