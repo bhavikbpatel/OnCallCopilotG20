@@ -123,13 +123,29 @@ class Cost(_Open):
 
 
 class RecoveryObservation(BaseModel):
-    """Filled by the runner from Prometheus, never by the agent."""
+    """Filled by the runner from Prometheus (eval/recovery), never by the agent.
+
+    ``recovered`` is None when recovery could not be judged (no data, too little
+    traffic, no baseline, Prometheus unreachable); ``reason`` then says why.
+    "No data" is never counted as healthy.
+    """
 
     model_config = ConfigDict(extra="forbid")
     checked: bool = False
     recovered: Optional[bool] = None
     value: Optional[float] = None
     query: Optional[str] = None
+    signal: Optional[str] = None
+    service: Optional[str] = None
+    measure: Optional[Literal["window", "since_fix"]] = None
+    op: Optional[Literal["lt", "gt"]] = None
+    limit: Optional[float] = None  # the threshold, or baseline_factor x baseline
+    baseline: Optional[float] = None  # measured just before injection (baseline form only)
+    errors: Optional[float] = None  # since_fix only
+    requests: Optional[float] = None  # since_fix only
+    points: list[tuple[float, float]] = Field(default_factory=list)  # (unix time, value), distinct readings
+    reason: Optional[str] = None
+    observed_at: Optional[float] = None  # unix time of the reading the verdict rests on
 
 
 class ResultLine(_Open):

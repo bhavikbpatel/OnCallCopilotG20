@@ -49,12 +49,14 @@ Also read the PR's existing comments and reviews (GitHub page, or
 `gh api repos/bhavikbpatel/OnCallCopilotG20/pulls/<n>/reviews`) so you check whether earlier points
 were addressed.
 
-## 3. Run the tests (Python 3.12)
+## 3. Run the tests (Python 3.12 or newer)
 
-The team uses Python 3.12 (the graph needs 3.11+).
+Any Python 3.12 or newer is fine (the team's Macs use 3.12; the graph needs 3.11+). Use the
+newest version you have; write down which one you ran in the review.
 
 ```bash
-python3.12 -m venv .venv && source .venv/bin/activate
+python3 --version                          # must be 3.12 or newer
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 python -m pytest -q tests                  # copilot tests
 (cd eval && python -m pytest -q)           # eval tests; live ones skip unless EVAL_LIVE=1
@@ -202,7 +204,7 @@ suggested fix.
 
 ```markdown
 Review of `<commit sha>` (<branch>). Checked against the capstone minimum bar, the shared specs and
-correctness. Tests: <ran on Python 3.12: N passed / not run, and why>.
+correctness. Tests: <ran on Python 3.x (3.12 or newer): N passed / not run, and why>.
 
 **Done well**
 - ...
@@ -230,7 +232,7 @@ that turns out to be wrong, correct it in a follow-up comment on the same PR.
 
 Before you click "Create pull request":
 
-1. Merge or rebase the latest `main`; run all tests (section 3) on Python 3.12.
+1. Merge or rebase the latest `main`; run all tests (section 3) on Python 3.12 or newer.
 2. Walk the checklist (section 4) for every file you changed.
 3. Write the PR description: what changed, why, which backlog task it covers, how you tested it,
    what is still a placeholder, and any team decision it touches (section 6).

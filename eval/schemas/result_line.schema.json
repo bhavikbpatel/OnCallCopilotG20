@@ -166,7 +166,7 @@
     },
     "RecoveryObservation": {
       "additionalProperties": false,
-      "description": "Filled by the runner from Prometheus, never by the agent.",
+      "description": "Filled by the runner from Prometheus (eval/recovery), never by the agent.\n\n``recovered`` is None when recovery could not be judged (no data, too little\ntraffic, no baseline, Prometheus unreachable); ``reason`` then says why.\n\"No data\" is never counted as healthy.",
       "properties": {
         "checked": {
           "default": false,
@@ -208,6 +208,151 @@
           ],
           "default": null,
           "title": "Query"
+        },
+        "signal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signal"
+        },
+        "service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service"
+        },
+        "measure": {
+          "anyOf": [
+            {
+              "enum": [
+                "window",
+                "since_fix"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Measure"
+        },
+        "op": {
+          "anyOf": [
+            {
+              "enum": [
+                "lt",
+                "gt"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Op"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        },
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline"
+        },
+        "errors": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Errors"
+        },
+        "requests": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requests"
+        },
+        "points": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          "title": "Points",
+          "type": "array"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed At"
         }
       },
       "title": "RecoveryObservation",

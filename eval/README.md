@@ -19,8 +19,9 @@ different model family only scores what code cannot.
 | `adapters/copilot_state.py` | Person 2's final `IncidentState` -> result line | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
-| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery | done |
+| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines, error breakdown, noise check. `faults`: inject each fault, measure which signals move, how fast, and whether they recover after the flag is cleared | done |
+| `recovery/` | Independent recovery check from Prometheus for the result line: errors since the fix (low-traffic paths) or the signal past its limit in 2 distinct data points; threshold or factor x pre-injection baseline; "cannot judge" (never "healthy") when there is no data, too little traffic or no baseline | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
