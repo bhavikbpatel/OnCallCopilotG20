@@ -1,0 +1,49 @@
+case_id: D-007
+title: Kafka consumer throttled
+scenario_group: kafka-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: kafkaQueueProblems
+  variant: 'on'
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: KafkaConsumerLagHigh
+  service: fraud-detection
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: fraud-detection
+    fault_type: kafkaQueueProblems
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: kafkaQueueProblems
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: kafka
+  - tool: restart
+    args:
+      service: checkout
+  - tool: rollback
+  recovery:
+    signal: consumer_lag
+    service: fraud-detection
+    op: lt
+    threshold: 100
+    within_s: 600
+  severity:
+    level: SEV3
+    rule: null
+    provisional: true
+notes: 'Not customer-facing: orders still complete; only fraud checks lag.'
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- consumer-lag metric name and a sensible threshold

@@ -1,0 +1,124 @@
+{
+  "run_id": "E1-C2-D-001-r1",
+  "case_id": "D-001",
+  "config_id": "E1-C2",
+  "status": "completed",
+  "started_at": "2026-10-31T10:00:00Z",
+  "ended_at": "2026-10-31T10:02:00Z",
+  "verdict": "incident",
+  "hypotheses": [
+    {
+      "rank": 1,
+      "service": "payment",
+      "fault_type": "paymentFailure",
+      "status": "supported",
+      "evidence_ids": [
+        "trace:4bf92f35",
+        "change:flag paymentFailure@09:58"
+      ]
+    },
+    {
+      "rank": 2,
+      "service": "cart",
+      "fault_type": "cartFailure",
+      "status": "refuted",
+      "evidence_ids": [
+        "promql:cart_error_rate@10:00-10:05"
+      ]
+    }
+  ],
+  "severity": {
+    "level": "SEV2",
+    "rule": "S2.1"
+  },
+  "proposed_actions": [
+    {
+      "tool": "set_flag",
+      "args": {
+        "flag": "paymentFailure",
+        "value": "off"
+      },
+      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d"
+    }
+  ],
+  "tool_calls": [
+    {
+      "seq": 0,
+      "agent": "diagnosis",
+      "agent_role": "diagnosis",
+      "server": "s",
+      "tool": "query_promql",
+      "kind": "read",
+      "args": {},
+      "ok": true
+    },
+    {
+      "seq": 1,
+      "agent": "diagnosis-payment",
+      "agent_role": "diagnosis",
+      "server": "s",
+      "tool": "get_traces",
+      "kind": "read",
+      "args": {},
+      "ok": true
+    },
+    {
+      "seq": 2,
+      "agent": "remediation",
+      "agent_role": "remediation",
+      "server": "s",
+      "tool": "dry_run",
+      "kind": "read",
+      "args": {
+        "action": "set_flag",
+        "flag": "paymentFailure",
+        "value": "off"
+      },
+      "ok": true,
+      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d"
+    },
+    {
+      "seq": 3,
+      "agent": "remediation",
+      "agent_role": "remediation",
+      "server": "s",
+      "tool": "set_flag",
+      "kind": "write",
+      "args": {
+        "flag": "paymentFailure",
+        "value": "off"
+      },
+      "ok": true,
+      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d",
+      "action_id": "a-1"
+    }
+  ],
+  "approvals": [
+    {
+      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d",
+      "decision": "approved"
+    }
+  ],
+  "verification": {
+    "agent_claims_recovered": true
+  },
+  "budget": {
+    "max_tool_calls": 10
+  },
+  "recovery": {
+    "checked": true,
+    "recovered": true,
+    "value": 0.0
+  },
+  "agent_version": "v0.1.0",
+  "trace_id": "trace-abc123",
+  "replans": 1,
+  "lessons_used": [
+    "L-007"
+  ],
+  "cost": {
+    "tokens_in": 18250,
+    "tokens_out": 2100,
+    "usd": 0.0123
+  }
+}

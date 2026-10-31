@@ -1,0 +1,58 @@
+case_id: D-017
+title: 'Two faults: payment errors and slow images'
+scenario_group: twofault-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: paymentFailure
+  variant: 50%
+  start_after_s: 0
+- flag: imageSlowLoad
+  variant: 5sec
+  start_after_s: 30
+load:
+  profile: normal
+alert:
+  name: CheckoutErrorRateHigh
+  service: checkout
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: payment
+    fault_type: paymentFailure
+  - service: image-provider
+    fault_type: imageSlowLoad
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: paymentFailure
+        value: 'off'
+    - tool: set_flag
+      args:
+        flag: imageSlowLoad
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: payment
+  - tool: restart
+    args:
+      service: image-provider
+  - tool: rollback
+  recovery:
+    signal: error_rate
+    service: checkout
+    op: lt
+    threshold: 0.01
+    within_s: 300
+  severity:
+    level: SEV2
+    rule: null
+    provisional: true
+notes: 'Two unrelated faults: both need their own approved action.'
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- a second recovery check for image latency (schema supports one today)

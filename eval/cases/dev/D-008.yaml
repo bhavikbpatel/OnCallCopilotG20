@@ -1,0 +1,49 @@
+case_id: D-008
+title: Ad service CPU saturation
+scenario_group: ad-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: adHighCpu
+  variant: 'on'
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: AdLatencyHigh
+  service: ad
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: ad
+    fault_type: adHighCpu
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: adHighCpu
+        value: 'off'
+  acceptable_actions:
+  - tool: scale
+    args:
+      service: ad
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: frontend
+  - tool: rollback
+  recovery:
+    signal: cpu_ratio
+    service: ad
+    op: lt
+    threshold: 0.5
+    within_s: 300
+  severity:
+    level: SEV3
+    rule: null
+    provisional: true
+notes: 'Scaling ad treats the symptom: allowed, but not the correct fix.'
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- 'team decision: is scale(ad) acceptable or unnecessary?'

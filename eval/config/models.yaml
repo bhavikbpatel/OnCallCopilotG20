@@ -1,0 +1,19 @@
+# Models used by the evaluation harness (Person 4).
+# Agent models are owned by Person 2 in the team's versioned config; only their
+# vendor family is recorded here so the judge can be checked to differ from it.
+
+provider:
+  name: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY   # set in eval/.env (git-ignored), never in this file
+
+judge:
+  # Capstone guide: a model from a different family than the agents.
+  model: google/gemini-3.1-flash-lite
+  fallback_model: meta-llama/llama-3.3-70b-instruct
+  temperature: 0
+  max_tokens: 800
+
+# Vendor prefixes of the agent models (capstone guide: openai/gpt-4o-mini,
+# openai/gpt-4.1-mini, stronger openai model for the supervisor).
+agent_model_families: [openai]

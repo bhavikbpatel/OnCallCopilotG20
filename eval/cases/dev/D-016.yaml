@@ -1,0 +1,24 @@
+case_id: D-016
+title: Short traffic burst, nothing broken
+scenario_group: noise-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults: []
+load:
+  profile: flood
+  flood_start_after_s: 30
+  flood_duration_s: 180
+alert:
+  name: FrontendLatencyHigh
+  service: frontend
+  provisional: true
+expected:
+  verdict: noise
+  severity:
+    level: NONE
+    rule: null
+    provisional: true
+notes: Transient burst that clears by itself during the investigation.
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist

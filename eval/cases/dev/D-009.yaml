@@ -1,0 +1,49 @@
+case_id: D-009
+title: Email memory leak at 1000x
+scenario_group: email-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: emailMemoryLeak
+  variant: 1000x
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: EmailMemoryHigh
+  service: email
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: email
+    fault_type: emailMemoryLeak
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: emailMemoryLeak
+        value: 'off'
+    - tool: restart
+      args:
+        service: email
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: checkout
+  - tool: rollback
+  recovery:
+    signal: memory_mb
+    service: email
+    op: lt
+    threshold: 200
+    within_s: 600
+  severity:
+    level: SEV3
+    rule: null
+    provisional: true
+notes: Memory grows per confirmation email; a restart is needed to release it.
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- memory threshold from a healthy baseline

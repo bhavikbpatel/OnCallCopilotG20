@@ -1,0 +1,8 @@
+# Capstone override for OpenTelemetry Astronomy Shop 3.1.0.
+# The recommendation image ships a health check that runs `nc`, which is not
+# installed in the image, so the service is always "unhealthy" and frontend,
+# frontend-proxy and load-generator never start. Same port check, using bash.
+services:
+  recommendation:
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9001'"]

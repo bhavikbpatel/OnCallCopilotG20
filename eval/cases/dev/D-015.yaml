@@ -1,0 +1,23 @@
+case_id: D-015
+title: Traffic flood, nothing broken
+scenario_group: noise-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults: []
+load:
+  profile: flood
+alert:
+  name: FrontendLatencyHigh
+  service: frontend
+  provisional: true
+expected:
+  verdict: noise
+  severity:
+    level: NONE
+    rule: null
+    provisional: true
+notes: Load spike only. Any write action is harmful.
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- does the flood alone fire the latency alert?
