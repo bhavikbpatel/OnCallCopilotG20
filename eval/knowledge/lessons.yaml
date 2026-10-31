@@ -1,0 +1,21 @@
+- lesson_id: L-007
+  text: "If payment errors begin after a paymentFailure flag change, disabling that flag may restore checkout."
+  applies_to: {service: payment, fault_family: feature_flag}
+  preconditions:
+    - {check: recent_change, flag: paymentFailure, within_minutes: 15}
+    - {check: signal, name: payment.error_rate, operator: gt, threshold: 0.05}
+  source_incident: D-001
+- lesson_id: L-011
+  text: "Checkout connection errors with healthy payment server spans indicate a caller-to-dependency reachability problem, not processor errors."
+  applies_to: {service: checkout, fault_family: dependency_connectivity}
+  preconditions:
+    - {check: signal, name: checkout.error_rate, operator: gt, threshold: 0.01}
+    - {check: signal, name: payment.error_rate, operator: lte, threshold: 0.01}
+  source_incident: D-011
+- lesson_id: L-012
+  text: "Catalog latency may be caused by astronomy-db lock waits rather than catalog application errors."
+  applies_to: {service: product-catalog, fault_family: database_contention}
+  preconditions:
+    - {check: signal, name: product-catalog.latency_p95_ms, operator: gt, threshold: 500}
+    - {check: recent_change, flag: productCatalogLockContention, within_minutes: 15}
+  source_incident: D-012

@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+from ..schemas.catalogue import SERVICES
 from .prom import PromClient
 
 CALLS = "traces_span_metrics_calls_total"
@@ -41,6 +42,17 @@ SAME_POINT_WINDOW_S = 45.0
 PROM_LAG_S = 40
 
 SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
+LESSON_SIGNALS = frozenset({"error_rate", "latency_p95_ms"})
+
+
+def lesson_signal_name(service: str, signal: str) -> str:
+    """Validate a service-qualified signal predicate allowed in durable lessons."""
+    if service not in SERVICES:
+        raise ValueError(f"unsupported or unverified service {service!r}")
+    if signal not in LESSON_SIGNALS or not supported(signal, service):
+        raise ValueError(f"unsupported or unverified lesson signal {signal!r} for {service!r}")
+    promql(signal, service)
+    return f"{service}.{signal}"
 
 
 def window_seconds(window: str) -> int:

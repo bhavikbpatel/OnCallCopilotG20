@@ -1,0 +1,8 @@
+# Knowledge and memory demo
+
+1. Load a development case such as D-001, D-011 or D-012 and show the alert, affected service and evidence timestamps. All diagnosis tool calls are read-only.
+2. Search with the alert text and service filter. The local retriever generates service-scoped diagnostic subqueries (errors, latency, flag changes, memory or backlog), fuses BM25/vector candidates, and reranks only the top 20 candidates. Show the top five passage IDs and metadata. Explain that the vectorizer and reranker are deterministic lexical stand-ins; production BGE/Qdrant/cross-encoder adapters remain deployment work.
+3. Demonstrate memory review: add a lesson as `pending` and show it is not returned; approve it as a named reviewer; run every structured precondition against the current telemetry snapshot.
+4. For D-011, present the misleading paymentFailure lesson while checkout-to-payment connection errors are present and payment server errors are flat. The lesson must be rejected because its required payment errors and recent flag change are absent.
+5. If diagnosis supports a fix, show its typed arguments, dry-run output, expected effect and rollback. RB-014 is intentionally non-actionable (`fix: null`); the fixed workflow must not infer a write from it and must retrieve a matching service-specific runbook. Pause for a human to approve the exact command/hash; execute only after approval and verify with fresh metrics/traces. Otherwise take no action.
+6. Report the independently observed outcome and the memory-on/off comparison; do not present synthetic incidents as real production events or expose held-out cases.

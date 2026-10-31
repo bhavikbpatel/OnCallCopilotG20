@@ -19,9 +19,14 @@ different model family only scores what code cannot.
 | `adapters/copilot_state.py` | Person 2's final `IncidentState` -> result line | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
-| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery | done |
+| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery; lesson predicates use supported service-scoped signals | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines, error breakdown, noise check. `faults`: inject each fault, measure which signals move, how fast, and whether they recover after the flag is cleared | done |
 | `recovery/` | Independent recovery check from Prometheus for the result line: errors since the fix (low-traffic paths) or the signal past its limit in 2 distinct data points; threshold or factor x pre-injection baseline; "cannot judge" (never "healthy") when there is no data, too little traffic or no baseline | done |
+| `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
+| `knowledge/retrieval.py` | Markdown ingestion, metadata filters, generated diagnostic subqueries, BM25 + TF-IDF vector RRF + top-20 deterministic reranker | local baseline |
+| `knowledge/memory.py` | SQLite accepted-incident store, lesson review/deletion lifecycle and fail-closed preconditions | local baseline |
+| `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
+| `knowledge/retrieval_queries.json` | 41 labelled development queries for Recall@5 | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
@@ -75,6 +80,27 @@ python -m eval.probes reanalyse eval/results/probes/faults-....json   # re-score
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).
+
+## Knowledge and memory baseline
+
+```bash
+cd OnCallCopilotG20 && python -m eval.knowledge.evaluate
+cd OnCallCopilotG20 && python -m pytest eval/tests/test_knowledge.py
+```
+
+The evaluator compares keyword-only BM25 against generated-query hybrid
+retrieval on the labelled development set. Recall@5 is a dev-only measurement,
+not evidence of held-out generalization; relevant labels may include multiple
+sections that answer an alert. The TF-IDF vector index and deterministic
+reranker are dependency-light placeholders, not the planned
+BGE/Qdrant/cross-encoder production stack. `knowledge/lessons.yaml` contains
+proposals only; call `MemoryStore.load_proposals()` and require a named reviewer
+to approve lessons before retrieval. Signal predicates must use names registered
+in `telemetry/signals.py`; supported signals are restricted to service-qualified
+error rate and p95 latency. Unknown metrics (including DB lock wait, which the
+pinned shop does not confirm) are rejected. See `../docs/memory-policy.md`,
+`../docs/severity-policy.md` and `../docs/knowledge-demo.md`. No held-out cases
+are included.
 
 ## Regenerate the JSON Schemas after changing a schema
 
