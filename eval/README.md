@@ -16,7 +16,7 @@ different model family only scores what code cannot.
 | `cases/dev/` | 20 development cases. Shared: anyone may use these to debug | done |
 | `config/models.yaml` | OpenRouter judge model (different family from the agents) | done |
 | `settings.py` | Reads secrets from environment or `eval/.env` (git-ignored) | done |
-| `injector/` | Fault injector (flagd), intensity, timing, load, clean-up | next |
+| `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
@@ -39,8 +39,24 @@ cp eval/.env.example eval/.env                          # then fill in the key
 ## Run the tests
 
 ```bash
-cd OnCallCopilotG20/eval && python -m pytest
+cd OnCallCopilotG20/eval && python -m pytest                 # unit + contract tests (no shop needed)
+cd OnCallCopilotG20/eval && EVAL_LIVE=1 python -m pytest -m live -v   # live tests: shop must be running
 ```
+
+## Fault injector
+
+```bash
+cd OnCallCopilotG20
+python -m eval.injector status                    # every flag; active ones marked
+python -m eval.injector inject D-001 --duration 600
+python -m eval.injector clear                     # put every flag back to rest
+```
+
+`inject` always clears on exit (normal end, error, Ctrl+C, closed terminal) and
+saves a ground-truth record in `eval/results/ground_truth/`. Before evaluation
+runs, make sure the flag UI's scheduler (http://localhost:8080/feature/scheduler)
+is stopped; if anything else changes a flag, the run is marked contaminated.
+See `../docs/eval-implementation-plan.md` for the design.
 
 ## Regenerate the JSON Schemas after changing a schema
 
