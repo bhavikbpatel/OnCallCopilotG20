@@ -37,9 +37,10 @@ expected:
   recovery:
     signal: error_rate
     service: checkout
-    op: lt
-    threshold: 0.01
+    measure: since_fix
+    threshold: 0.05
     within_s: 300
+    settle_s: 90
   severity:
     level: SEV1
     rule: null

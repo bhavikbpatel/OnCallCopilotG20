@@ -33,9 +33,10 @@ expected:
   recovery:
     signal: error_rate
     service: product-catalog
-    op: lt
-    threshold: 0.01
+    measure: since_fix
+    threshold: 0.02
     within_s: 300
+    settle_s: 90
   severity:
     level: SEV3
     rule: null

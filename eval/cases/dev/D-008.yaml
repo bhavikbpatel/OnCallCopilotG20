@@ -34,10 +34,9 @@ expected:
       service: frontend
   - tool: rollback
   recovery:
-    signal: cpu_ratio
+    signal: latency_p95_ms
     service: ad
-    op: lt
-    threshold: 0.5
+    baseline_factor: 3
     within_s: 300
   severity:
     level: SEV3
@@ -47,3 +46,5 @@ notes: 'Scaling ad treats the symptom: allowed, but not the correct fix.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
 - 'team decision: is scale(ad) acceptable or unnecessary?'
+- 'adHighCpu effect not yet conclusive: ad p95 is noisy (10x spikes with no fault); p50 re-probe at 300
+  s decides the signal, or the case is excluded'

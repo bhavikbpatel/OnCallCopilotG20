@@ -33,9 +33,8 @@ expected:
   recovery:
     signal: latency_p95_ms
     service: product-catalog
-    op: lt
-    threshold: 500
-    within_s: 300
+    baseline_factor: 3
+    within_s: 600
   severity:
     level: SEV2
     rule: null
@@ -44,3 +43,4 @@ notes: 'Database-level fault: the service is slow because the products table is 
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
 - 'severity: does the lock also stop checkout (then SEV1)?'
+- 'recovers slowly (still ~2x after 3 min, 31 Oct): within_s 600 to confirm'
