@@ -46,6 +46,10 @@ def models() -> dict:
     judge_family = cfg["judge"]["model"].split("/")[0]
     fallback_family = cfg["judge"]["fallback_model"].split("/")[0]
     agent_families = set(cfg["agent_model_families"])
+    allowed = set(cfg.get("allowed_models", []))
+    for key in ("model", "fallback_model"):
+        if allowed and cfg["judge"][key] not in allowed:
+            raise ValueError(f"judge {key} {cfg['judge'][key]!r} is not in allowed_models")
     if {judge_family, fallback_family} & agent_families:
         raise ValueError(
             f"judge models must come from a different family than the agents {sorted(agent_families)}"
