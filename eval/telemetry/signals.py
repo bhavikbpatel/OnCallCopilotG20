@@ -31,12 +31,23 @@ KAFKA_CONSUMERS = frozenset({"fraud-detection", "accounting"})
 # (recommendation sends nothing; databases and kafka have no spans.)
 NO_SPAN_METRICS = frozenset({"recommendation", "astronomy-db", "valkey-cart", "kafka"})
 
-SIGNALS = ("error_rate", "latency_p95_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
+# Span metrics reach Prometheus about once a minute; rate()/increase() need two
+# samples inside the window, so shorter windows return "no data" (found 31 Oct).
+MIN_WINDOW_S = 120
+
+SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
+
+
+def window_seconds(window: str) -> int:
+    if not window or window[-1] not in "smh" or not window[:-1].isdigit() or int(window[:-1]) <= 0:
+        raise ValueError(f"window must look like '2m', '300s' or '1h', got {window!r}")
+    return int(window[:-1]) * {"s": 1, "m": 60, "h": 3600}[window[-1]]
 
 
 def _check_window(window: str) -> str:
-    if not window or window[-1] not in "smh" or not window[:-1].isdigit() or int(window[:-1]) <= 0:
-        raise ValueError(f"window must look like '2m', '300s' or '1h', got {window!r}")
+    if window_seconds(window) < MIN_WINDOW_S:
+        raise ValueError(f"window {window!r} is shorter than {MIN_WINDOW_S}s: metrics arrive about once a "
+                         f"minute, so rate() would return no data")
     return window
 
 
@@ -52,8 +63,17 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
     if signal == "error_rate":
         return (f'(sum(rate({CALLS}{{service_name="{s}",{SERVER},{ERROR}}}[{w}])) or vector(0))'
                 f' / sum(rate({CALLS}{{service_name="{s}",{SERVER}}}[{w}]))')
+    if signal == "error_count":
+        # Errors in the window. For low-volume operations (cartFailure breaks only
+        # EmptyCart, ~2-3 calls/min) a rate stays tiny while the count is clear.
+        return f'sum(increase({CALLS}{{service_name="{s}",{SERVER},{ERROR}}}[{w}])) or vector(0)'
     if signal == "latency_p95_ms":
         return (f'histogram_quantile(0.95, sum by (le) (rate({DURATION_BUCKET}'
+                f'{{service_name="{s}",{SERVER}}}[{w}])))')
+    if signal == "latency_p50_ms":
+        # Median: CPU saturation slows every request, while random noise mostly
+        # hits the slowest few (ad p95 jumped 10x in a control run, 31 Oct).
+        return (f'histogram_quantile(0.5, sum by (le) (rate({DURATION_BUCKET}'
                 f'{{service_name="{s}",{SERVER}}}[{w}])))')
     if signal == "throughput_rps":
         return f'sum(rate({CALLS}{{service_name="{s}",{SERVER}}}[{w}]))'
@@ -68,7 +88,7 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
 
 def supported(signal: str, service: str) -> bool:
     """Whether this signal can have data for this service in 3.1.0."""
-    if signal in ("error_rate", "latency_p95_ms", "throughput_rps"):
+    if signal in ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps"):
         return service not in NO_SPAN_METRICS
     if signal == "consumer_lag":
         return service in KAFKA_CONSUMERS
@@ -91,6 +111,9 @@ def _range(since: float, at: float) -> str:
     seconds = int(math.ceil(at - since))
     if seconds <= 0:
         raise ValueError("'since' must be before 'at'")
+    if seconds < MIN_WINDOW_S:
+        raise ValueError(f"need at least {MIN_WINDOW_S}s between 'since' and 'at' (metrics arrive about "
+                         f"once a minute); got {seconds}s")
     return f"{seconds}s"
 
 

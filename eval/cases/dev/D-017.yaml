@@ -44,10 +44,11 @@ expected:
   - tool: rollback
   recovery:
     signal: error_rate
-    service: checkout
-    op: lt
-    threshold: 0.01
+    service: payment
+    measure: since_fix
+    threshold: 0.05
     within_s: 300
+    settle_s: 90
   severity:
     level: SEV2
     rule: null
@@ -56,3 +57,4 @@ notes: 'Two unrelated faults: both need their own approved action.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
 - a second recovery check for image latency (schema supports one today)
+- 'Person 2 graph supports one action per incident: two-fault cases may be a known limit'

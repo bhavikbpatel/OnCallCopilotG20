@@ -13,6 +13,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .catalogue import (
+    EXCLUDED_FAULT_TYPES,
     FAULT_TYPES,
     FLAG_VARIANTS,
     SERVICES,
@@ -66,6 +67,8 @@ class FaultSpec(_Strict):
     def _check(self) -> "FaultSpec":
         if self.flag not in FAULT_TYPES:
             raise ValueError(f"{self.flag!r} is not one of the 12 fault types")
+        if self.flag in EXCLUDED_FAULT_TYPES:
+            raise ValueError(f"{self.flag} is excluded from the golden set: {EXCLUDED_FAULT_TYPES[self.flag]}")
         if self.variant not in FLAG_VARIANTS[self.flag]:
             raise ValueError(
                 f"variant {self.variant!r} not valid for {self.flag}; "
@@ -128,15 +131,53 @@ class RootCause(_Strict):
 class RecoveryCheck(_Strict):
     """Checked independently by the harness, never taken from the agent.
 
-    ``signal`` is a named signal the runner maps to a PromQL query, so cases do not
-    hard-code metric names before they are confirmed on the running shop.
+    ``signal`` is a named signal from eval/telemetry/signals.py. Two ways to judge:
+
+    - ``measure: window`` (default): the signal's value ``within_s`` after the fix,
+      compared either with a fixed ``threshold`` or with ``baseline_factor`` times
+      the value the runner measured just before injecting. Use the baseline form
+      for latency and memory: healthy levels differ a lot between sessions
+      (ad p95 was 7.6 ms in one run and 88 ms in another).
+    - ``measure: since_fix``: errors/rates counted from ``settle_s`` after the fix
+      until ``within_s`` after it. Use this on low-traffic paths (checkout sees
+      ~2.5 requests/min) and for rare operations (cartFailure breaks only EmptyCart).
+      ``settle_s`` skips errors that happened before the fix but arrive late
+      (metrics reach Prometheus 60-120 s behind).
     """
 
-    signal: Literal["error_rate", "latency_p95_ms", "memory_mb", "cpu_ratio", "consumer_lag"]
+    signal: Literal["error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb",
+                    "cpu_percent", "consumer_lag"]
     service: str
+    measure: Literal["window", "since_fix"] = "window"
     op: Literal["lt", "gt"] = "lt"
-    threshold: float
+    threshold: Optional[float] = None
+    baseline_factor: Optional[float] = Field(None, gt=0)
     within_s: int = Field(300, gt=0)
+    settle_s: int = Field(90, ge=0)
+
+    @field_validator("service")
+    @classmethod
+    def _svc(cls, v: str) -> str:
+        if v not in SERVICES:
+            raise ValueError(f"unknown service {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _check(self) -> "RecoveryCheck":
+        if (self.threshold is None) == (self.baseline_factor is None):
+            raise ValueError("give exactly one of threshold or baseline_factor")
+        if self.measure == "since_fix":
+            if self.signal not in ("error_rate", "error_count"):
+                raise ValueError("since_fix only applies to error_rate and error_count")
+            if self.baseline_factor is not None:
+                raise ValueError("since_fix uses a fixed threshold, not baseline_factor")
+            if self.within_s - self.settle_s < 120:
+                raise ValueError("since_fix needs at least 120 s between settle_s and within_s "
+                                 "(metrics arrive about once a minute)")
+        if self.signal == "cpu_percent":
+            raise ValueError("cpu_percent behaves like a slow running average in this shop and "
+                             "cannot show recovery; use latency instead")
+        return self
 
 
 class SeverityExpectation(_Strict):
