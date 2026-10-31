@@ -1,0 +1,6 @@
+# MCP servers (role 4). URL can be overridden by the env var in url_env.
+servers:
+  telemetry:   {transport: streamable_http, url: "http://localhost:8101/mcp", url_env: MCP_TELEMETRY_URL}
+  runbooks_kb: {transport: streamable_http, url: "http://localhost:8102/mcp", url_env: MCP_RUNBOOKS_URL}
+  tickets:     {transport: streamable_http, url: "http://localhost:8103/mcp", url_env: MCP_TICKETS_URL}
+  ops_actions: {transport: streamable_http, url: "http://localhost:8104/mcp", url_env: MCP_OPS_URL}

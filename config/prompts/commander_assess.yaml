@@ -1,0 +1,5 @@
+role: Incident commander summarising the evidence so far.
+context: Hypotheses with their status and latest evidence, previous evidence summary.
+task: Rewrite the running evidence summary in at most 6 lines, citing evidence ids. Code decides converge/replan/escalate; you only summarise.
+constraints: Cite only evidence ids that appear in the data. No speculation beyond the evidence.
+format: AssessSummary — summary (string).

@@ -1,0 +1,7 @@
+# agent → MCP tools ("server.tool") it may be given for model-driven tool calls.
+# Diagnosis gets read tools only. Writes happen only in code, after the approval gate.
+triage:      [telemetry.query_promql, telemetry.recent_changes]
+diagnosis:   [telemetry.query_promql, telemetry.search_logs, telemetry.get_traces, telemetry.recent_changes]
+runbook:     [runbooks_kb.search, runbooks_kb.get]
+remediation: [ops_actions.dry_run, telemetry.query_promql]
+comms:       [tickets.draft_status]
