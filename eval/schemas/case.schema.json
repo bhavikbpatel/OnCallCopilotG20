@@ -22,7 +22,7 @@
     },
     "ActionPattern": {
       "additionalProperties": false,
-      "description": "Matches any action with this tool whose args include every arg given here.\n\n``{tool: restart}`` matches every restart; ``{tool: restart, args: {service: payment}}``\nmatches only restarting payment.",
+      "description": "Matches any action with this tool whose args include every arg given here.\n\n``{tool: restart_service}`` matches every restart; ``{tool: restart_service, args:\n{service: payment}}`` matches only restarting payment.",
       "properties": {
         "tool": {
           "title": "Tool",
@@ -334,9 +334,10 @@
       "properties": {
         "level": {
           "enum": [
-            "SEV1",
-            "SEV2",
-            "SEV3",
+            "SEV-1",
+            "SEV-2",
+            "SEV-3",
+            "SEV-4",
             "NONE"
           ],
           "title": "Level",

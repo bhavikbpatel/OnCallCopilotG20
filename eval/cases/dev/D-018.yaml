@@ -28,20 +28,20 @@ expected:
   - - tool: set_flag
       args:
         flag: cartFailure
-        value: 'off'
+        variant: 'off'
     - tool: set_flag
       args:
         flag: adHighCpu
-        value: 'off'
+        variant: 'off'
   acceptable_actions:
-  - tool: scale
+  - tool: scale_service
     args:
       service: ad
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: cart
-  - tool: restart
+  - tool: restart_service
     args:
       service: valkey-cart
   - tool: rollback
@@ -53,7 +53,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: Two faults with different signal types (errors vs CPU).

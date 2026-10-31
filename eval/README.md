@@ -15,7 +15,8 @@ different model family only scores what code cannot.
 | `checkers/checks.py` | Code checks: root cause top-1/top-3, correct action, harmful/unnecessary/forbidden actions, approvals, dry run, permissions, budget, loops, recovery, severity | done |
 | `cases/dev/` | 20 development cases. Shared: anyone may use these to debug | done |
 | `config/models.yaml` | OpenRouter judge model (different family from the agents) | done |
-| `settings.py` | Reads secrets from environment or `eval/.env` (git-ignored) | done |
+| `settings.py` | Reads secrets from environment, `eval/.env` or the repo-root `.env` (both git-ignored) | done |
+| `adapters/copilot_state.py` | Person 2's final `IncidentState` -> result line | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
 | `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery | done |
@@ -91,7 +92,8 @@ cd OnCallCopilotG20 && python -m eval.schemas.export
 5. Failed and timed-out runs are reported, never dropped.
 6. If anything changes after seeing held-out results, those cases become
    development cases and the report says so.
-7. API keys go only in `eval/.env` or the shell environment, never in a committed file.
+7. API keys go only in `eval/.env`, the repo-root `.env` or the shell environment, never in a committed file.
+   The harness uses Person 2's `OPENAI_API_KEY` as the OpenRouter key only if it starts with `sk-or-`.
 
 ## Target shop
 

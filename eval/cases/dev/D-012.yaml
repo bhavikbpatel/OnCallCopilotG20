@@ -23,10 +23,10 @@ expected:
   - - tool: set_flag
       args:
         flag: productCatalogLockContention
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: astronomy-db
   - tool: rollback
@@ -36,11 +36,11 @@ expected:
     baseline_factor: 3
     within_s: 600
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: 'Database-level fault: the service is slow because the products table is locked.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- 'severity: does the lock also stop checkout (then SEV1)?'
+- 'severity: does the lock also stop checkout (then SEV-1)?'
 - 'recovers slowly (still ~2x after 3 min, 31 Oct): within_s 600 to confirm'

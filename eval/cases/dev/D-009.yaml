@@ -23,13 +23,13 @@ expected:
   - - tool: set_flag
       args:
         flag: emailMemoryLeak
-        value: 'off'
+        variant: 'off'
   acceptable_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: email
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: checkout
   - tool: rollback
@@ -39,7 +39,7 @@ expected:
     baseline_factor: 1.3
     within_s: 600
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
 notes: 'Memory grows per confirmation email. Measured 31 Oct: 66 -> 100 MB at 1000x, and back to 53 MB

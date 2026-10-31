@@ -28,7 +28,7 @@
     }
   ],
   "severity": {
-    "level": "SEV2",
+    "level": "SEV-2",
     "rule": "S2.1"
   },
   "proposed_actions": [
@@ -36,9 +36,9 @@
       "tool": "set_flag",
       "args": {
         "flag": "paymentFailure",
-        "value": "off"
+        "variant": "off"
       },
-      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d"
+      "payload_hash": "cc90ac088f3ffc5c44d44083f71106feefd9c05e239d58f9adb08bc99c1880cb"
     }
   ],
   "tool_calls": [
@@ -72,10 +72,10 @@
       "args": {
         "action": "set_flag",
         "flag": "paymentFailure",
-        "value": "off"
+        "variant": "off"
       },
       "ok": true,
-      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d"
+      "payload_hash": "cc90ac088f3ffc5c44d44083f71106feefd9c05e239d58f9adb08bc99c1880cb"
     },
     {
       "seq": 3,
@@ -86,17 +86,17 @@
       "kind": "write",
       "args": {
         "flag": "paymentFailure",
-        "value": "off"
+        "variant": "off"
       },
       "ok": true,
-      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d",
+      "payload_hash": "cc90ac088f3ffc5c44d44083f71106feefd9c05e239d58f9adb08bc99c1880cb",
       "action_id": "a-1"
     }
   ],
   "approvals": [
     {
-      "payload_hash": "sha256:8e22ef943d424bc6e814526aca773b3add5fe7c531b1ac8b4ec4210138d4f64d",
-      "decision": "approved"
+      "payload_hash": "cc90ac088f3ffc5c44d44083f71106feefd9c05e239d58f9adb08bc99c1880cb",
+      "decision": "approve"
     }
   ],
   "verification": {

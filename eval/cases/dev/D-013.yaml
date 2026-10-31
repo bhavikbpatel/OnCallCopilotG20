@@ -23,10 +23,10 @@ expected:
   - - tool: set_flag
       args:
         flag: intlShippingSlowdown
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: shipping
   - tool: rollback
@@ -36,7 +36,7 @@ expected:
     baseline_factor: 3
     within_s: 300
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
 notes: 'Only non-US addresses are slowed: a minority of users. Measured 31 Oct: shipping p95 47 -> 7,750

@@ -41,4 +41,4 @@ def test_email_leak_restart_is_acceptable_not_required():
     for cid in ("D-009", "D-020"):
         exp = cases[cid].expected
         assert [a.tool for a in exp.correct_actions[0]] == ["set_flag"]
-        assert any(a.tool == "restart" for a in exp.acceptable_actions)
+        assert any(a.tool == "restart_service" for a in exp.acceptable_actions)
