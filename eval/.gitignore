@@ -1,0 +1,16 @@
+# Run outputs stay local (dev summaries go in docs/ instead)
+results/*
+!results/.gitkeep
+
+# Safety net: held-out cases and red-team attacks must NEVER be committed.
+# They live outside the repo (see eval/README.md).
+heldout/
+redteam/
+private/
+*heldout*
+*redteam*
+
+__pycache__/
+.pytest_cache/
+*.pyc
+.env

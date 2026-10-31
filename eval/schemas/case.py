@@ -1,0 +1,226 @@
+"""Golden-set case specification.
+
+One YAML file per case. The expected outcome is written before the agent ever
+runs on the case. Held-out cases use the same format but live outside the repo.
+"""
+from __future__ import annotations
+
+import datetime as dt
+from pathlib import Path
+from typing import Any, Literal, Optional
+
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .catalogue import (
+    FAULT_TYPES,
+    FLAG_VARIANTS,
+    SERVICES,
+    SHOP_WRITE_TOOLS,
+    accepted_services,
+)
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+# ---------------------------------------------------------------- actions
+
+class Action(_Strict):
+    """A shop-changing action, e.g. set_flag(paymentFailure, off)."""
+
+    tool: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("tool")
+    @classmethod
+    def _known_tool(cls, v: str) -> str:
+        if v not in SHOP_WRITE_TOOLS:
+            raise ValueError(f"unknown action tool {v!r}; expected one of {sorted(SHOP_WRITE_TOOLS)}")
+        return v
+
+
+class ActionPattern(_Strict):
+    """Matches any action with this tool whose args include every arg given here.
+
+    ``{tool: restart}`` matches every restart; ``{tool: restart, args: {service: payment}}``
+    matches only restarting payment.
+    """
+
+    tool: str
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------- faults and load
+
+class FaultSpec(_Strict):
+    flag: str
+    variant: str
+    start_after_s: int = Field(0, ge=0)
+    mode: Literal["steady", "intermittent"] = "steady"
+    on_s: Optional[int] = Field(None, gt=0)
+    off_s: Optional[int] = Field(None, gt=0)
+
+    @model_validator(mode="after")
+    def _check(self) -> "FaultSpec":
+        if self.flag not in FAULT_TYPES:
+            raise ValueError(f"{self.flag!r} is not one of the 12 fault types")
+        if self.variant not in FLAG_VARIANTS[self.flag]:
+            raise ValueError(
+                f"variant {self.variant!r} not valid for {self.flag}; "
+                f"choose from {FLAG_VARIANTS[self.flag]}"
+            )
+        if self.mode == "intermittent" and not (self.on_s and self.off_s):
+            raise ValueError("intermittent faults need on_s and off_s")
+        if self.mode == "steady" and (self.on_s or self.off_s):
+            raise ValueError("on_s/off_s only apply to intermittent faults")
+        return self
+
+
+class LoadSpec(_Strict):
+    """normal = default Locust traffic; flood = loadGeneratorFloodHomepage on."""
+
+    profile: Literal["normal", "flood"] = "normal"
+    flood_start_after_s: int = Field(0, ge=0)
+    flood_duration_s: Optional[int] = Field(None, gt=0)  # None = until the case is cleared
+
+    @model_validator(mode="after")
+    def _check(self) -> "LoadSpec":
+        if self.profile == "normal" and (self.flood_start_after_s or self.flood_duration_s):
+            raise ValueError("flood_* settings only apply when profile is 'flood'")
+        return self
+
+
+class AlertSpec(_Strict):
+    """The alert expected to open the incident. Names must match the Prometheus rules."""
+
+    name: str
+    service: str
+    provisional: bool = True  # true until Person 5's alert rules exist
+
+    @field_validator("service")
+    @classmethod
+    def _svc(cls, v: str) -> str:
+        if v not in SERVICES:
+            raise ValueError(f"unknown service {v!r}")
+        return v
+
+
+# ---------------------------------------------------------------- expectations
+
+class RootCause(_Strict):
+    service: str
+    fault_type: str
+
+    @model_validator(mode="after")
+    def _check(self) -> "RootCause":
+        if self.fault_type not in FAULT_TYPES:
+            raise ValueError(f"unknown fault_type {self.fault_type!r}")
+        if self.service not in accepted_services(self.fault_type):
+            raise ValueError(
+                f"service {self.service!r} is not the root cause of {self.fault_type} "
+                f"(expected one of {sorted(accepted_services(self.fault_type))})"
+            )
+        return self
+
+
+class RecoveryCheck(_Strict):
+    """Checked independently by the harness, never taken from the agent.
+
+    ``signal`` is a named signal the runner maps to a PromQL query, so cases do not
+    hard-code metric names before they are confirmed on the running shop.
+    """
+
+    signal: Literal["error_rate", "latency_p95_ms", "memory_mb", "cpu_ratio", "consumer_lag"]
+    service: str
+    op: Literal["lt", "gt"] = "lt"
+    threshold: float
+    within_s: int = Field(300, gt=0)
+
+
+class SeverityExpectation(_Strict):
+    level: Literal["SEV1", "SEV2", "SEV3", "NONE"]
+    rule: Optional[str] = None  # rule ID from Person 1's severity policy
+    provisional: bool = True  # true until the policy is agreed
+
+
+class Expected(_Strict):
+    verdict: Literal["incident", "noise"]
+    root_causes: list[RootCause] = Field(default_factory=list)
+    # Alternatives: the run is correct if ANY one option is fully satisfied.
+    correct_actions: list[list[Action]] = Field(default_factory=list)
+    # Not required, but not counted as unnecessary either.
+    acceptable_actions: list[Action] = Field(default_factory=list)
+    # Executing any of these counts as harmful.
+    forbidden_actions: list[ActionPattern] = Field(default_factory=list)
+    recovery: Optional[RecoveryCheck] = None
+    severity: SeverityExpectation
+
+    @property
+    def should_act(self) -> bool:
+        return self.verdict == "incident"
+
+
+class Case(_Strict):
+    case_id: str = Field(pattern=r"^[DH]-\d{3}$")
+    title: str
+    scenario_group: str
+    split: Literal["dev", "heldout"]
+    written_on: dt.date
+    written_by: str = "Person 4"
+    faults: list[FaultSpec] = Field(default_factory=list)
+    load: LoadSpec = Field(default_factory=LoadSpec)
+    alert: AlertSpec
+    expected: Expected
+    notes: str = ""
+    needs_verification: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "Case":
+        prefix = {"dev": "D-", "heldout": "H-"}[self.split]
+        if not self.case_id.startswith(prefix):
+            raise ValueError(f"{self.split} case IDs must start with {prefix}")
+
+        exp = self.expected
+        if exp.verdict == "noise":
+            if self.faults:
+                raise ValueError("noise cases inject no faults")
+            if self.load.profile != "flood":
+                raise ValueError("noise cases need a load spike (load.profile: flood)")
+            if exp.root_causes or exp.correct_actions:
+                raise ValueError("noise cases have no root cause and no correct action")
+            if exp.severity.level != "NONE":
+                raise ValueError("noise cases have severity NONE")
+        else:
+            if not self.faults:
+                raise ValueError("incident cases need at least one fault")
+            if not exp.correct_actions:
+                raise ValueError("incident cases need at least one correct action option")
+            if exp.recovery is None:
+                raise ValueError("incident cases need a recovery check")
+            injected = sorted(f.flag for f in self.faults)
+            expected = sorted(rc.fault_type for rc in exp.root_causes)
+            if injected != expected:
+                raise ValueError(
+                    f"root_causes {expected} must match the injected faults {injected}"
+                )
+        return self
+
+
+def load_case(path: str | Path) -> Case:
+    path = Path(path)
+    data = yaml.safe_load(path.read_text())
+    case = Case.model_validate(data)
+    if path.stem != case.case_id:
+        raise ValueError(f"{path.name}: file name must be {case.case_id}.yaml")
+    return case
+
+
+def load_cases(directory: str | Path) -> list[Case]:
+    cases = [load_case(p) for p in sorted(Path(directory).glob("*.yaml"))]
+    ids = [c.case_id for c in cases]
+    dupes = {i for i in ids if ids.count(i) > 1}
+    if dupes:
+        raise ValueError(f"duplicate case IDs: {sorted(dupes)}")
+    return cases

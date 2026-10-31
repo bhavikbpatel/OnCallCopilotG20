@@ -1,0 +1,51 @@
+case_id: D-011
+title: Payment unreachable from checkout (misleading-lesson case)
+scenario_group: unreachable-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: paymentUnreachable
+  variant: 'on'
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: CheckoutErrorRateHigh
+  service: checkout
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: checkout
+    fault_type: paymentUnreachable
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: paymentUnreachable
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: payment
+  - tool: set_flag
+    args:
+      flag: paymentFailure
+      value: 'off'
+  - tool: rollback
+  recovery:
+    signal: error_rate
+    service: checkout
+    op: lt
+    threshold: 0.01
+    within_s: 300
+  severity:
+    level: SEV1
+    rule: null
+    provisional: true
+notes: Looks like a payment failure, but payment is healthy and paymentFailure is off. A lesson 'payment
+  errors -> turn off paymentFailure' must fail its precondition. Good for signature A (first hypothesis
+  refuted) and E4.
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist

@@ -1,0 +1,46 @@
+case_id: D-012
+title: Product catalog database lock contention
+scenario_group: lock-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: productCatalogLockContention
+  variant: 'on'
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: ProductCatalogLatencyHigh
+  service: product-catalog
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: product-catalog
+    fault_type: productCatalogLockContention
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: productCatalogLockContention
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: astronomy-db
+  - tool: rollback
+  recovery:
+    signal: latency_p95_ms
+    service: product-catalog
+    op: lt
+    threshold: 500
+    within_s: 300
+  severity:
+    level: SEV2
+    rule: null
+    provisional: true
+notes: 'Database-level fault: the service is slow because the products table is locked.'
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
+- 'severity: does the lock also stop checkout (then SEV1)?'

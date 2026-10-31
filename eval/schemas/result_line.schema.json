@@ -1,0 +1,528 @@
+{
+  "$defs": {
+    "Approval": {
+      "additionalProperties": true,
+      "properties": {
+        "payload_hash": {
+          "title": "Payload Hash",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "approved",
+            "edited",
+            "rejected"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "decided_by": {
+          "default": "auto",
+          "enum": [
+            "human",
+            "auto"
+          ],
+          "title": "Decided By",
+          "type": "string"
+        }
+      },
+      "required": [
+        "payload_hash",
+        "decision"
+      ],
+      "title": "Approval",
+      "type": "object"
+    },
+    "Budget": {
+      "additionalProperties": true,
+      "properties": {
+        "max_tool_calls": {
+          "exclusiveMinimum": 0,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_tool_calls"
+      ],
+      "title": "Budget",
+      "type": "object"
+    },
+    "Cost": {
+      "additionalProperties": true,
+      "properties": {
+        "tokens_in": {
+          "default": 0,
+          "title": "Tokens In",
+          "type": "integer"
+        },
+        "tokens_out": {
+          "default": 0,
+          "title": "Tokens Out",
+          "type": "integer"
+        },
+        "usd": {
+          "default": 0.0,
+          "title": "Usd",
+          "type": "number"
+        }
+      },
+      "title": "Cost",
+      "type": "object"
+    },
+    "Hypothesis": {
+      "additionalProperties": true,
+      "properties": {
+        "rank": {
+          "minimum": 1,
+          "title": "Rank",
+          "type": "integer"
+        },
+        "service": {
+          "title": "Service",
+          "type": "string"
+        },
+        "fault_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fault Type"
+        },
+        "status": {
+          "enum": [
+            "open",
+            "supported",
+            "refuted"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rank",
+        "service",
+        "status"
+      ],
+      "title": "Hypothesis",
+      "type": "object"
+    },
+    "ProposedAction": {
+      "additionalProperties": true,
+      "properties": {
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "payload_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Hash"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ProposedAction",
+      "type": "object"
+    },
+    "RecoveryObservation": {
+      "additionalProperties": false,
+      "description": "Filled by the runner from Prometheus, never by the agent.",
+      "properties": {
+        "checked": {
+          "default": false,
+          "title": "Checked",
+          "type": "boolean"
+        },
+        "recovered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recovered"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query"
+        }
+      },
+      "title": "RecoveryObservation",
+      "type": "object"
+    },
+    "SeverityResult": {
+      "additionalProperties": true,
+      "properties": {
+        "level": {
+          "enum": [
+            "SEV1",
+            "SEV2",
+            "SEV3",
+            "NONE"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule"
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "title": "SeverityResult",
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": true,
+      "description": "One entry from Person 3's hooks log, including blocked calls.",
+      "properties": {
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "agent": {
+          "title": "Agent",
+          "type": "string"
+        },
+        "agent_role": {
+          "title": "Agent Role",
+          "type": "string"
+        },
+        "server": {
+          "title": "Server",
+          "type": "string"
+        },
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "read",
+            "write"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        },
+        "payload_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Hash"
+        },
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "blocked": {
+          "default": false,
+          "title": "Blocked",
+          "type": "boolean"
+        },
+        "block_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Block Reason"
+        },
+        "action_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Id"
+        }
+      },
+      "required": [
+        "seq",
+        "agent",
+        "agent_role",
+        "server",
+        "tool",
+        "kind",
+        "ok"
+      ],
+      "title": "ToolCall",
+      "type": "object"
+    },
+    "Verification": {
+      "additionalProperties": true,
+      "properties": {
+        "agent_claims_recovered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Claims Recovered"
+        },
+        "rolled_back": {
+          "default": false,
+          "title": "Rolled Back",
+          "type": "boolean"
+        }
+      },
+      "title": "Verification",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "case_id": {
+      "title": "Case Id",
+      "type": "string"
+    },
+    "config_id": {
+      "title": "Config Id",
+      "type": "string"
+    },
+    "repeat": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Repeat",
+      "type": "integer"
+    },
+    "agent_version": {
+      "default": "unknown",
+      "title": "Agent Version",
+      "type": "string"
+    },
+    "config_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Config Hash"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "budget_exhausted",
+        "timeout",
+        "error"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "ended_at": {
+      "format": "date-time",
+      "title": "Ended At",
+      "type": "string"
+    },
+    "trace_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trace Id"
+    },
+    "verdict": {
+      "enum": [
+        "incident",
+        "noise",
+        "undetermined"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "hypotheses": {
+      "items": {
+        "$ref": "#/$defs/Hypothesis"
+      },
+      "title": "Hypotheses",
+      "type": "array"
+    },
+    "severity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SeverityResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "proposed_actions": {
+      "items": {
+        "$ref": "#/$defs/ProposedAction"
+      },
+      "title": "Proposed Actions",
+      "type": "array"
+    },
+    "verification": {
+      "$ref": "#/$defs/Verification"
+    },
+    "replans": {
+      "default": 0,
+      "title": "Replans",
+      "type": "integer"
+    },
+    "lessons_used": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Lessons Used",
+      "type": "array"
+    },
+    "lessons_rejected": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Lessons Rejected",
+      "type": "array"
+    },
+    "tool_calls": {
+      "items": {
+        "$ref": "#/$defs/ToolCall"
+      },
+      "title": "Tool Calls",
+      "type": "array"
+    },
+    "approvals": {
+      "items": {
+        "$ref": "#/$defs/Approval"
+      },
+      "title": "Approvals",
+      "type": "array"
+    },
+    "budget": {
+      "$ref": "#/$defs/Budget"
+    },
+    "cost": {
+      "$ref": "#/$defs/Cost"
+    },
+    "recovery": {
+      "$ref": "#/$defs/RecoveryObservation"
+    }
+  },
+  "required": [
+    "run_id",
+    "case_id",
+    "config_id",
+    "status",
+    "started_at",
+    "ended_at",
+    "verdict",
+    "budget"
+  ],
+  "title": "ResultLine",
+  "type": "object"
+}

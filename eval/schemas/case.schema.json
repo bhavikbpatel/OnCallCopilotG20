@@ -1,0 +1,405 @@
+{
+  "$defs": {
+    "Action": {
+      "additionalProperties": false,
+      "description": "A shop-changing action, e.g. set_flag(paymentFailure, off).",
+      "properties": {
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "Action",
+      "type": "object"
+    },
+    "ActionPattern": {
+      "additionalProperties": false,
+      "description": "Matches any action with this tool whose args include every arg given here.\n\n``{tool: restart}`` matches every restart; ``{tool: restart, args: {service: payment}}``\nmatches only restarting payment.",
+      "properties": {
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ActionPattern",
+      "type": "object"
+    },
+    "AlertSpec": {
+      "additionalProperties": false,
+      "description": "The alert expected to open the incident. Names must match the Prometheus rules.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "service": {
+          "title": "Service",
+          "type": "string"
+        },
+        "provisional": {
+          "default": true,
+          "title": "Provisional",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "service"
+      ],
+      "title": "AlertSpec",
+      "type": "object"
+    },
+    "Expected": {
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "enum": [
+            "incident",
+            "noise"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "root_causes": {
+          "items": {
+            "$ref": "#/$defs/RootCause"
+          },
+          "title": "Root Causes",
+          "type": "array"
+        },
+        "correct_actions": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Action"
+            },
+            "type": "array"
+          },
+          "title": "Correct Actions",
+          "type": "array"
+        },
+        "acceptable_actions": {
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "title": "Acceptable Actions",
+          "type": "array"
+        },
+        "forbidden_actions": {
+          "items": {
+            "$ref": "#/$defs/ActionPattern"
+          },
+          "title": "Forbidden Actions",
+          "type": "array"
+        },
+        "recovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecoveryCheck"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "severity": {
+          "$ref": "#/$defs/SeverityExpectation"
+        }
+      },
+      "required": [
+        "verdict",
+        "severity"
+      ],
+      "title": "Expected",
+      "type": "object"
+    },
+    "FaultSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "flag": {
+          "title": "Flag",
+          "type": "string"
+        },
+        "variant": {
+          "title": "Variant",
+          "type": "string"
+        },
+        "start_after_s": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Start After S",
+          "type": "integer"
+        },
+        "mode": {
+          "default": "steady",
+          "enum": [
+            "steady",
+            "intermittent"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "on_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On S"
+        },
+        "off_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Off S"
+        }
+      },
+      "required": [
+        "flag",
+        "variant"
+      ],
+      "title": "FaultSpec",
+      "type": "object"
+    },
+    "LoadSpec": {
+      "additionalProperties": false,
+      "description": "normal = default Locust traffic; flood = loadGeneratorFloodHomepage on.",
+      "properties": {
+        "profile": {
+          "default": "normal",
+          "enum": [
+            "normal",
+            "flood"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "flood_start_after_s": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Flood Start After S",
+          "type": "integer"
+        },
+        "flood_duration_s": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flood Duration S"
+        }
+      },
+      "title": "LoadSpec",
+      "type": "object"
+    },
+    "RecoveryCheck": {
+      "additionalProperties": false,
+      "description": "Checked independently by the harness, never taken from the agent.\n\n``signal`` is a named signal the runner maps to a PromQL query, so cases do not\nhard-code metric names before they are confirmed on the running shop.",
+      "properties": {
+        "signal": {
+          "enum": [
+            "error_rate",
+            "latency_p95_ms",
+            "memory_mb",
+            "cpu_ratio",
+            "consumer_lag"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "service": {
+          "title": "Service",
+          "type": "string"
+        },
+        "op": {
+          "default": "lt",
+          "enum": [
+            "lt",
+            "gt"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "threshold": {
+          "title": "Threshold",
+          "type": "number"
+        },
+        "within_s": {
+          "default": 300,
+          "exclusiveMinimum": 0,
+          "title": "Within S",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "signal",
+        "service",
+        "threshold"
+      ],
+      "title": "RecoveryCheck",
+      "type": "object"
+    },
+    "RootCause": {
+      "additionalProperties": false,
+      "properties": {
+        "service": {
+          "title": "Service",
+          "type": "string"
+        },
+        "fault_type": {
+          "title": "Fault Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "fault_type"
+      ],
+      "title": "RootCause",
+      "type": "object"
+    },
+    "SeverityExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "enum": [
+            "SEV1",
+            "SEV2",
+            "SEV3",
+            "NONE"
+          ],
+          "title": "Level",
+          "type": "string"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule"
+        },
+        "provisional": {
+          "default": true,
+          "title": "Provisional",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "title": "SeverityExpectation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "pattern": "^[DH]-\\d{3}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "scenario_group": {
+      "title": "Scenario Group",
+      "type": "string"
+    },
+    "split": {
+      "enum": [
+        "dev",
+        "heldout"
+      ],
+      "title": "Split",
+      "type": "string"
+    },
+    "written_on": {
+      "format": "date",
+      "title": "Written On",
+      "type": "string"
+    },
+    "written_by": {
+      "default": "Person 4",
+      "title": "Written By",
+      "type": "string"
+    },
+    "faults": {
+      "items": {
+        "$ref": "#/$defs/FaultSpec"
+      },
+      "title": "Faults",
+      "type": "array"
+    },
+    "load": {
+      "$ref": "#/$defs/LoadSpec"
+    },
+    "alert": {
+      "$ref": "#/$defs/AlertSpec"
+    },
+    "expected": {
+      "$ref": "#/$defs/Expected"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    },
+    "needs_verification": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Needs Verification",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "title",
+    "scenario_group",
+    "split",
+    "written_on",
+    "alert",
+    "expected"
+  ],
+  "title": "Case",
+  "type": "object"
+}

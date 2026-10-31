@@ -1,0 +1,48 @@
+case_id: D-004
+title: Cart failures at 90%
+scenario_group: cart-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: cartFailure
+  variant: 90%
+  start_after_s: 120
+load:
+  profile: normal
+alert:
+  name: CartErrorRateHigh
+  service: cart
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: cart
+    fault_type: cartFailure
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: cartFailure
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: cart
+  - tool: restart
+    args:
+      service: valkey-cart
+  - tool: rollback
+  recovery:
+    signal: error_rate
+    service: cart
+    op: lt
+    threshold: 0.01
+    within_s: 300
+  severity:
+    level: SEV2
+    rule: null
+    provisional: true
+notes: High intensity, late start.
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist

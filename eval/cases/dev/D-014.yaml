@@ -1,0 +1,45 @@
+case_id: D-014
+title: Ad errors on 1 in 10 calls
+scenario_group: adfail-A
+split: dev
+written_on: '2026-10-31'
+written_by: Person 4
+faults:
+- flag: adFailure
+  variant: 'on'
+  start_after_s: 0
+load:
+  profile: normal
+alert:
+  name: AdErrorRateHigh
+  service: ad
+  provisional: true
+expected:
+  verdict: incident
+  root_causes:
+  - service: ad
+    fault_type: adFailure
+  correct_actions:
+  - - tool: set_flag
+      args:
+        flag: adFailure
+        value: 'off'
+  acceptable_actions: []
+  forbidden_actions:
+  - tool: restart
+    args:
+      service: ad
+  - tool: rollback
+  recovery:
+    signal: error_rate
+    service: ad
+    op: lt
+    threshold: 0.02
+    within_s: 300
+  severity:
+    level: SEV3
+    rule: null
+    provisional: true
+notes: 'Subtle fault: a ~10% error rate on a non-core service.'
+needs_verification:
+- alert name and recovery threshold are provisional until the Prometheus rules exist
