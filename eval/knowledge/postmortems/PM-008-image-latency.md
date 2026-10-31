@@ -5,7 +5,7 @@ kind: postmortem
 service: [image-provider, frontend-proxy]
 symptom: [slow image load, upstream timeout]
 fault_family: dependency_latency
-fix: {tool: set_flag, args: {flag: imageSlowLoad, value: off}}
+fix: {tool: set_flag, args: {flag: imageSlowLoad, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

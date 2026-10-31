@@ -23,24 +23,25 @@ expected:
   - - tool: set_flag
       args:
         flag: cartFailure
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: cart
-  - tool: restart
+  - tool: restart_service
     args:
       service: valkey-cart
   - tool: rollback
   recovery:
-    signal: error_rate
+    signal: error_count
     service: cart
-    op: lt
-    threshold: 0.01
+    measure: since_fix
+    threshold: 1
     within_s: 300
+    settle_s: 90
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: High intensity, late start.

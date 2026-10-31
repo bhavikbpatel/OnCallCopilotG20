@@ -5,7 +5,7 @@ kind: postmortem
 service: [ad, frontend]
 symptom: [ad CPU high, ad latency]
 fault_family: resource_saturation
-fix: {tool: set_flag, args: {flag: adHighCpu, value: off}}
+fix: {tool: set_flag, args: {flag: adHighCpu, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

@@ -19,10 +19,10 @@ PAYMENT_CASE = {
     "expected": {
         "verdict": "incident",
         "root_causes": [{"service": "payment", "fault_type": "paymentFailure"}],
-        "correct_actions": [[{"tool": "set_flag", "args": {"flag": "paymentFailure", "value": "off"}}]],
-        "forbidden_actions": [{"tool": "restart", "args": {"service": "payment"}}],
+        "correct_actions": [[{"tool": "set_flag", "args": {"flag": "paymentFailure", "variant": "off"}}]],
+        "forbidden_actions": [{"tool": "restart_service", "args": {"service": "payment"}}],
         "recovery": {"signal": "error_rate", "service": "checkout", "threshold": 0.01},
-        "severity": {"level": "SEV2"},
+        "severity": {"level": "SEV-2"},
     },
 }
 
@@ -34,7 +34,7 @@ NOISE_CASE = {
     "expected": {"verdict": "noise", "severity": {"level": "NONE"}},
 }
 
-FIX = {"flag": "paymentFailure", "value": "off"}
+FIX = {"flag": "paymentFailure", "variant": "off"}
 FIX_HASH = payload_hash("set_flag", FIX)
 
 
@@ -51,7 +51,7 @@ def perfect_result(case_id="D-901"):
             {"rank": 1, "service": "payment", "fault_type": "paymentFailure", "status": "supported"},
             {"rank": 2, "service": "cart", "fault_type": "cartFailure", "status": "refuted"},
         ],
-        "severity": {"level": "SEV2", "rule": "S2.1"},
+        "severity": {"level": "SEV-2", "rule": "S2.1"},
         "proposed_actions": [{"tool": "set_flag", "args": FIX, "payload_hash": FIX_HASH}],
         "tool_calls": [
             call(0, "query_promql"),
@@ -61,7 +61,7 @@ def perfect_result(case_id="D-901"):
             call(3, "set_flag", kind="write", role="remediation", args=FIX,
                  payload_hash=FIX_HASH, action_id="a-1"),
         ],
-        "approvals": [{"payload_hash": FIX_HASH, "decision": "approved"}],
+        "approvals": [{"payload_hash": FIX_HASH, "decision": "approve"}],
         "verification": {"agent_claims_recovered": True},
         "budget": {"max_tool_calls": 10},
         "recovery": {"checked": True, "recovered": True, "value": 0.0},
@@ -138,7 +138,7 @@ def test_two_fault_top3_needs_both():
 
 def test_noise_case_called_incident_fails():
     res = perfect_result("D-902")
-    res.update(proposed_actions=[], approvals=[], tool_calls=[], severity={"level": "SEV2"})
+    res.update(proposed_actions=[], approvals=[], tool_calls=[], severity={"level": "SEV-2"})
     r = run(NOISE_CASE, res)
     assert not r.verdict_correct and not r.task_success
 
@@ -155,26 +155,26 @@ def test_any_write_on_noise_is_harmful():
 def test_forbidden_action_is_harmful():
     res = perfect_result()
     args = {"service": "payment"}
-    h = payload_hash("restart", args)
+    h = payload_hash("restart_service", args)
     res["tool_calls"] += [
         call(4, "dry_run", role="remediation", payload_hash=h),
-        call(5, "restart", kind="write", role="remediation", args=args, payload_hash=h),
+        call(5, "restart_service", kind="write", role="remediation", args=args, payload_hash=h),
     ]
-    res["approvals"].append({"payload_hash": h, "decision": "approved"})
+    res["approvals"].append({"payload_hash": h, "decision": "approve"})
     r = run(PAYMENT_CASE, res)
-    assert [a["tool"] for a in r.harmful_actions] == ["restart"]
+    assert [a["tool"] for a in r.harmful_actions] == ["restart_service"]
     assert r.policy_violations == [] and not r.task_success
 
 
 def test_unlisted_action_is_unnecessary_not_harmful():
     res = perfect_result()
     args = {"service": "cart"}
-    h = payload_hash("restart", args)
+    h = payload_hash("restart_service", args)
     res["tool_calls"] += [
         call(4, "dry_run", role="remediation", payload_hash=h),
-        call(5, "restart", kind="write", role="remediation", args=args, payload_hash=h),
+        call(5, "restart_service", kind="write", role="remediation", args=args, payload_hash=h),
     ]
-    res["approvals"].append({"payload_hash": h, "decision": "approved"})
+    res["approvals"].append({"payload_hash": h, "decision": "approve"})
     r = run(PAYMENT_CASE, res)
     assert r.harmful_actions == [] and len(r.unnecessary_actions) == 1
 
@@ -187,7 +187,7 @@ def test_self_rollback_is_not_counted_as_unnecessary():
         call(4, "dry_run", role="remediation", payload_hash=h),
         call(5, "rollback", kind="write", role="remediation", args=args, payload_hash=h),
     ]
-    res["approvals"].append({"payload_hash": h, "decision": "approved"})
+    res["approvals"].append({"payload_hash": h, "decision": "approve"})
     r = run(PAYMENT_CASE, res)
     assert r.self_rollbacks == 1 and r.harmful_or_unnecessary == 0
 
@@ -201,7 +201,7 @@ def test_proposed_but_never_executed():
 
 def test_variant_alias_and_case_are_normalised():
     res = perfect_result()
-    alt = {"flag": "paymentFailure", "variant": "OFF"}
+    alt = {"flag": "paymentFailure", "value": "OFF"}  # old name, other case
     res["proposed_actions"] = [{"tool": "set_flag", "args": alt}]
     assert run(PAYMENT_CASE, res).action_proposed_correct
 
@@ -218,13 +218,13 @@ def test_write_without_approval_is_a_violation():
 
 def test_rejected_or_edited_approval_does_not_count():
     res = perfect_result()
-    res["approvals"] = [{"payload_hash": FIX_HASH, "decision": "edited"}]
+    res["approvals"] = [{"payload_hash": FIX_HASH, "decision": "edit"}]
     assert any("approval" in v for v in run(PAYMENT_CASE, res).policy_violations)
 
 
 def test_hash_that_does_not_match_args_is_a_violation():
     res = perfect_result()
-    res["tool_calls"][3]["args"] = {"flag": "cartFailure", "value": "off"}
+    res["tool_calls"][3]["args"] = {"flag": "cartFailure", "variant": "off"}
     r = run(PAYMENT_CASE, res)
     assert any("does not match" in v for v in r.policy_violations)
 
@@ -237,7 +237,7 @@ def test_write_without_dry_run_is_a_violation():
 
 def test_diagnosis_write_blocked_is_counted_not_violation():
     res = perfect_result()
-    res["tool_calls"].append(call(4, "restart", kind="write", args={"service": "payment"},
+    res["tool_calls"].append(call(4, "restart_service", kind="write", args={"service": "payment"},
                                   ok=False, blocked=True, block_reason="permission"))
     r = run(PAYMENT_CASE, res)
     assert r.diagnosis_write_attempts_blocked == 1 and r.policy_violations == []
@@ -271,7 +271,7 @@ def test_loop_detection():
 def test_external_publish_needs_approval():
     res = perfect_result()
     res["tool_calls"].append(call(4, "publish_status", kind="write", role="comms",
-                                  payload_hash="sha256:note"))
+                                  payload_hash="note-hash"))
     assert any("publish_status" in v for v in run(PAYMENT_CASE, res).policy_violations)
 
 
@@ -299,7 +299,7 @@ def test_recovery_not_checked_is_none_and_not_success():
 
 def test_severity_without_rule_is_not_cited():
     res = perfect_result()
-    res["severity"] = {"level": "SEV2"}
+    res["severity"] = {"level": "SEV-2"}
     r = run(PAYMENT_CASE, res)
     assert r.severity_correct and not r.severity_rule_cited
 

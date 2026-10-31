@@ -5,7 +5,7 @@ kind: runbook
 service: [email]
 symptom: [email memory leak, rising RSS, email errors]
 fault_family: memory_growth
-fix: {tool: set_flag, args: {flag: emailMemoryLeak, value: off}}
+fix: {tool: set_flag, args: {flag: emailMemoryLeak, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

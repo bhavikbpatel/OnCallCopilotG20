@@ -5,7 +5,7 @@ kind: runbook
 service: [ad, frontend]
 symptom: [ad 5xx, ad request failures, frontend ad errors]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: adFailure, value: off}}
+fix: {tool: set_flag, args: {flag: adFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

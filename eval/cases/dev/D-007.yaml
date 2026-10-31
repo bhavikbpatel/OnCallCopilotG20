@@ -23,13 +23,13 @@ expected:
   - - tool: set_flag
       args:
         flag: kafkaQueueProblems
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: kafka
-  - tool: restart
+  - tool: restart_service
     args:
       service: checkout
   - tool: rollback
@@ -37,13 +37,13 @@ expected:
     signal: consumer_lag
     service: fraud-detection
     op: lt
-    threshold: 100
+    threshold: 20
     within_s: 600
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
-notes: 'Not customer-facing: orders still complete; only fraud checks lag.'
+notes: 'Not customer-facing: orders still complete; only fraud checks lag. Measured 31 Oct (300 s hold):
+  fraud-detection lag 0 -> 110-344, back to 0 after the flag went off. Builds slowly (orders ~2.5/min).'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- consumer-lag metric name and a sensible threshold

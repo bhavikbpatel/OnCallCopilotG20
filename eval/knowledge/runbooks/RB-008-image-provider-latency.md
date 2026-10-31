@@ -5,7 +5,7 @@ kind: runbook
 service: [image-provider, frontend-proxy]
 symptom: [slow product images, image provider latency, proxy upstream timeout]
 fault_family: dependency_latency
-fix: {tool: set_flag, args: {flag: imageSlowLoad, value: off}}
+fix: {tool: set_flag, args: {flag: imageSlowLoad, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

@@ -5,7 +5,7 @@ kind: runbook
 service: [ad]
 symptom: [ad CPU saturation, high ad latency, CPU ratio above baseline]
 fault_family: resource_saturation
-fix: {tool: set_flag, args: {flag: adHighCpu, value: off}}
+fix: {tool: set_flag, args: {flag: adHighCpu, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

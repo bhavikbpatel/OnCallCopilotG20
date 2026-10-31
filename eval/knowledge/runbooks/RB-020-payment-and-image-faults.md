@@ -5,7 +5,7 @@ kind: runbook
 service: [payment, checkout, image-provider, frontend-proxy]
 symptom: [payment errors and slow images, concurrent checkout and image failures, two service faults]
 fault_family: concurrent_independent_faults
-fix: {tool: set_flag, args: {flag: paymentFailure, value: off}}
+fix: {tool: set_flag, args: {flag: paymentFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

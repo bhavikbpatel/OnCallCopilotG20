@@ -23,27 +23,25 @@ expected:
   - - tool: set_flag
       args:
         flag: imageSlowLoad
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: image-provider
-  - tool: restart
+  - tool: restart_service
     args:
       service: frontend
   - tool: rollback
   recovery:
     signal: latency_p95_ms
     service: frontend-proxy
-    op: lt
-    threshold: 1000
+    baseline_factor: 3
     within_s: 300
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: Delay is injected by Envoy in front of image-provider; image-provider itself is healthy.
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- which latency series shows the image delay

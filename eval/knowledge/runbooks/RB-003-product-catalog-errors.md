@@ -5,7 +5,7 @@ kind: runbook
 service: [product-catalog]
 symptom: [product catalog 5xx, missing product response, catalog errors]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: productCatalogFailure, value: off}}
+fix: {tool: set_flag, args: {flag: productCatalogFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

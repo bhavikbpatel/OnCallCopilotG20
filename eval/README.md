@@ -15,16 +15,18 @@ different model family only scores what code cannot.
 | `checkers/checks.py` | Code checks: root cause top-1/top-3, correct action, harmful/unnecessary/forbidden actions, approvals, dry run, permissions, budget, loops, recovery, severity | done |
 | `cases/dev/` | 20 development cases. Shared: anyone may use these to debug | done |
 | `config/models.yaml` | OpenRouter judge model (different family from the agents) | done |
-| `settings.py` | Reads secrets from environment or `eval/.env` (git-ignored) | done |
+| `settings.py` | Reads secrets from environment, `eval/.env` or the repo-root `.env` (both git-ignored) | done |
+| `adapters/copilot_state.py` | Person 2's final `IncidentState` -> result line | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
-| `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
+| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery; lesson predicates use supported service-scoped signals | done |
+| `probes/` | Live-shop probes. `discover`: metric names, baselines, error breakdown, noise check. `faults`: inject each fault, measure which signals move, how fast, and whether they recover after the flag is cleared | done |
+| `recovery/` | Independent recovery check from Prometheus for the result line: errors since the fix (low-traffic paths) or the signal past its limit in 2 distinct data points; threshold or factor x pre-injection baseline; "cannot judge" (never "healthy") when there is no data, too little traffic or no baseline | done |
 | `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
 | `knowledge/retrieval.py` | Markdown ingestion, metadata filters, generated diagnostic subqueries, BM25 + TF-IDF vector RRF + top-20 deterministic reranker | local baseline |
 | `knowledge/memory.py` | SQLite accepted-incident store, lesson review/deletion lifecycle and fail-closed preconditions | local baseline |
-| `telemetry/signals.py` | Service-scoped error-rate and p95 signal queries shared with lesson preconditions | local mapping |
 | `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
-| `knowledge/retrieval_queries.json` | 36 labelled development queries for Recall@5 | done |
+| `knowledge/retrieval_queries.json` | 41 labelled development queries for Recall@5 | done |
 | `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
@@ -72,6 +74,9 @@ See `../docs/eval-implementation-plan.md` for the design.
 cd OnCallCopilotG20
 python -m eval.probes discover --no-noise   # ~10 s, read-only
 python -m eval.probes discover              # ~4 min, adds the flag-write noise check
+python -m eval.probes faults --only control,paymentFailure   # ~13 min quick check
+python -m eval.probes faults                # ~90 min: control, 12 faults, flood
+python -m eval.probes reanalyse eval/results/probes/faults-....json   # re-score with current rules
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).
@@ -91,7 +96,8 @@ reranker are dependency-light placeholders, not the planned
 BGE/Qdrant/cross-encoder production stack. `knowledge/lessons.yaml` contains
 proposals only; call `MemoryStore.load_proposals()` and require a named reviewer
 to approve lessons before retrieval. Signal predicates must use names registered
-in `telemetry/signals.py`; unknown metrics (including DB lock wait, which the
+in `telemetry/signals.py`; supported signals are restricted to service-qualified
+error rate and p95 latency. Unknown metrics (including DB lock wait, which the
 pinned shop does not confirm) are rejected. See `../docs/memory-policy.md`,
 `../docs/severity-policy.md` and `../docs/knowledge-demo.md`. No held-out cases
 are included.
@@ -113,7 +119,8 @@ cd OnCallCopilotG20 && python -m eval.schemas.export
 5. Failed and timed-out runs are reported, never dropped.
 6. If anything changes after seeing held-out results, those cases become
    development cases and the report says so.
-7. API keys go only in `eval/.env` or the shell environment, never in a committed file.
+7. API keys go only in `eval/.env`, the repo-root `.env` or the shell environment, never in a committed file.
+   The harness uses Person 2's `OPENAI_API_KEY` as the OpenRouter key only if it starts with `sk-or-`.
 
 ## Target shop
 

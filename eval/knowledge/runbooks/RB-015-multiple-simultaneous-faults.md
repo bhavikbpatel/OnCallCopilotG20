@@ -5,7 +5,7 @@ kind: runbook
 service: [payment, image-provider, cart, ad, checkout, frontend]
 symptom: [multiple service errors, independent fault signals, partial recovery]
 fault_family: concurrent_faults
-fix: {tool: set_flag, args: {flag: paymentFailure, value: off}}
+fix: {tool: set_flag, args: {flag: paymentFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

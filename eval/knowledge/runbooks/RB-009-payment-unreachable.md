@@ -5,7 +5,7 @@ kind: runbook
 service: [checkout, payment]
 symptom: [payment unreachable, checkout connection refused, downstream timeout]
 fault_family: dependency_connectivity
-fix: {tool: set_flag, args: {flag: paymentUnreachable, value: off}}
+fix: {tool: set_flag, args: {flag: paymentUnreachable, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

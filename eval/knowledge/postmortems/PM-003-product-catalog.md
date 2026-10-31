@@ -5,7 +5,7 @@ kind: postmortem
 service: [product-catalog]
 symptom: [catalog 5xx, product request failure]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: productCatalogFailure, value: off}}
+fix: {tool: set_flag, args: {flag: productCatalogFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

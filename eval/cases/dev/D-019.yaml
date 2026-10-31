@@ -26,21 +26,22 @@ expected:
   - - tool: set_flag
       args:
         flag: paymentFailure
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: payment
   - tool: rollback
   recovery:
     signal: error_rate
-    service: checkout
-    op: lt
-    threshold: 0.01
+    service: payment
+    measure: since_fix
+    threshold: 0.05
     within_s: 420
+    settle_s: 90
   severity:
-    level: SEV2
+    level: SEV-2
     rule: null
     provisional: true
 notes: 'Fault flips on and off every minute: tests the agent does not conclude ''recovered'' too early.'

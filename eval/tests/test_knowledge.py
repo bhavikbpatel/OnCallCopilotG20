@@ -170,7 +170,7 @@ def test_incident_memory_requires_accepted_postmortem_and_can_be_deleted():
             store.save_incident("INC-1", "summary", {}, {"tool": "exec"}, "recovered", [], "reviewer")
         store.save_incident(
             "INC-1", "redacted summary", {"service": "payment"},
-            {"tool": "set_flag", "args": {"flag": "paymentFailure", "value": "off"}},
+            {"tool": "set_flag", "args": {"flag": "paymentFailure", "variant": "off"}},
             "recovered", [{"time": "T+1", "event": "verified"}], "on-call reviewer",
         )
         incident = store.get_incident("INC-1")
@@ -211,18 +211,16 @@ def test_lesson_can_be_deleted_by_named_reviewer():
 
 
 def test_signal_registry_uses_discovered_span_metric_names():
-    from eval.telemetry.signals import lesson_signal_name, signal_query
-    from eval.probes.discover import CANDIDATES
+    from eval.telemetry.signals import lesson_signal_name, promql
 
     assert lesson_signal_name("payment", "error_rate") == "payment.error_rate"
-    assert signal_query("payment", "error_rate") == (
-        CANDIDATES["error_rate"]["server_spans"].replace("{svc}", "payment")
-    )
-    assert signal_query("product-catalog", "latency_p95_ms") == (
-        CANDIDATES["latency_p95_ms"]["server_spans"].replace("{svc}", "product-catalog")
-    )
+    assert "service_name=\"payment\"" in promql("error_rate", "payment")
+    assert 'span_kind="SPAN_KIND_SERVER"' in promql("error_rate", "payment")
+    assert "service_name=\"product-catalog\"" in promql("latency_p95_ms", "product-catalog")
     with pytest.raises(ValueError, match="unverified"):
-        signal_query("astronomy-db", "wait_ms")
+        lesson_signal_name("astronomy-db", "wait_ms")
+    with pytest.raises(ValueError, match="unsupported or unverified"):
+        lesson_signal_name("recommendation", "latency_p95_ms")
 
 
 @pytest.mark.parametrize(

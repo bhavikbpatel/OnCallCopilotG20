@@ -5,7 +5,7 @@ kind: runbook
 service: [payment, checkout]
 symptom: [payment 100 percent errors, checkout outage, payment failure under load]
 fault_family: payment_failure_high_impact
-fix: {tool: set_flag, args: {flag: paymentFailure, value: off}}
+fix: {tool: set_flag, args: {flag: paymentFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

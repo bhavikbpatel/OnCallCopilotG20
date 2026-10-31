@@ -5,7 +5,7 @@ kind: runbook
 service: [shipping, checkout]
 symptom: [international shipping latency, slow shipping quote, checkout shipping delay]
 fault_family: dependency_latency
-fix: {tool: set_flag, args: {flag: intlShippingSlowdown, value: off}}
+fix: {tool: set_flag, args: {flag: intlShippingSlowdown, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

@@ -5,7 +5,7 @@ kind: runbook
 service: [kafka, fraud-detection, accounting]
 symptom: [Kafka consumer lag, delayed fraud checks, queue backlog]
 fault_family: queue_backlog
-fix: {tool: set_flag, args: {flag: kafkaQueueProblems, value: off}}
+fix: {tool: set_flag, args: {flag: kafkaQueueProblems, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

@@ -5,7 +5,7 @@ kind: postmortem
 service: [product-catalog, astronomy-db]
 symptom: [database lock wait, catalog latency]
 fault_family: database_contention
-fix: {tool: set_flag, args: {flag: productCatalogLockContention, value: off}}
+fix: {tool: set_flag, args: {flag: productCatalogLockContention, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

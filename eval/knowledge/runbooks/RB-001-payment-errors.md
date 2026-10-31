@@ -5,7 +5,7 @@ kind: runbook
 service: [payment, checkout]
 symptom: [payment 5xx, checkout error rate, payment feature flag]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: paymentFailure, value: off}}
+fix: {tool: set_flag, args: {flag: paymentFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

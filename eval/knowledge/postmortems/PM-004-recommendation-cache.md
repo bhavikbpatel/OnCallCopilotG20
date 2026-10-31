@@ -5,7 +5,7 @@ kind: postmortem
 service: [recommendation]
 symptom: [recommendation latency, cache error]
 fault_family: cache_or_memory
-fix: {tool: set_flag, args: {flag: recommendationCacheFailure, value: off}}
+fix: {tool: set_flag, args: {flag: recommendationCacheFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

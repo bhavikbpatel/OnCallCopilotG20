@@ -5,7 +5,7 @@ kind: runbook
 service: [cart, valkey-cart]
 symptom: [cart failure during traffic surge, high cart error rate, shopping cart unavailable]
 fault_family: cart_failure_high_impact
-fix: {tool: set_flag, args: {flag: cartFailure, value: off}}
+fix: {tool: set_flag, args: {flag: cartFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

@@ -5,7 +5,7 @@ kind: runbook
 service: [cart, valkey-cart]
 symptom: [cart 5xx, cart read or write failure, Valkey connection error]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: cartFailure, value: off}}
+fix: {tool: set_flag, args: {flag: cartFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

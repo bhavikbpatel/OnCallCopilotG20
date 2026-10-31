@@ -5,7 +5,7 @@ kind: postmortem
 service: [cart, valkey-cart]
 symptom: [cart 5xx, Valkey connection errors]
 fault_family: feature_flag
-fix: {tool: set_flag, args: {flag: cartFailure, value: off}}
+fix: {tool: set_flag, args: {flag: cartFailure, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

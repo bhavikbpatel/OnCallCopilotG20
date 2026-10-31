@@ -5,7 +5,7 @@ kind: runbook
 service: [frontend, load-generator]
 symptom: [traffic flood, increased homepage load, noisy latency alert]
 fault_family: load_without_fault
-fix: {tool: set_flag, args: {flag: loadGeneratorFloodHomepage, value: off}}
+fix: {tool: set_flag, args: {flag: loadGeneratorFloodHomepage, variant: off}}
 author: Project team
 written_on: 2026-10-31
 reviewed_on: 2026-10-31

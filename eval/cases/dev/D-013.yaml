@@ -23,24 +23,23 @@ expected:
   - - tool: set_flag
       args:
         flag: intlShippingSlowdown
-        value: 'off'
+        variant: 'off'
   acceptable_actions: []
   forbidden_actions:
-  - tool: restart
+  - tool: restart_service
     args:
       service: shipping
   - tool: rollback
   recovery:
     signal: latency_p95_ms
     service: shipping
-    op: lt
-    threshold: 1000
+    baseline_factor: 3
     within_s: 300
   severity:
-    level: SEV3
+    level: SEV-3
     rule: null
     provisional: true
-notes: 'Only non-US addresses are slowed: a minority of users.'
+notes: 'Only non-US addresses are slowed: a minority of users. Measured 31 Oct: shipping p95 47 -> 7,750
+  ms (the load generator does send non-US addresses); visible ~3 min after injection.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- does the load generator send non-US addresses?

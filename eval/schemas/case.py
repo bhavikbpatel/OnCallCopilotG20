@@ -13,11 +13,13 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .catalogue import (
+    EXCLUDED_FAULT_TYPES,
     FAULT_TYPES,
     FLAG_VARIANTS,
     SERVICES,
-    SHOP_WRITE_TOOLS,
     accepted_services,
+    check_action_args,
+    normalize_severity,
 )
 
 
@@ -33,23 +35,26 @@ class Action(_Strict):
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("tool")
-    @classmethod
-    def _known_tool(cls, v: str) -> str:
-        if v not in SHOP_WRITE_TOOLS:
-            raise ValueError(f"unknown action tool {v!r}; expected one of {sorted(SHOP_WRITE_TOOLS)}")
-        return v
+    @model_validator(mode="after")
+    def _known_tool_and_args(self) -> "Action":
+        check_action_args(self.tool, self.args, complete=True)
+        return self
 
 
 class ActionPattern(_Strict):
     """Matches any action with this tool whose args include every arg given here.
 
-    ``{tool: restart}`` matches every restart; ``{tool: restart, args: {service: payment}}``
-    matches only restarting payment.
+    ``{tool: restart_service}`` matches every restart; ``{tool: restart_service, args:
+    {service: payment}}`` matches only restarting payment.
     """
 
     tool: str
     args: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _known_tool_and_args(self) -> "ActionPattern":
+        check_action_args(self.tool, self.args, complete=False)
+        return self
 
 
 # ---------------------------------------------------------------- faults and load
@@ -66,6 +71,8 @@ class FaultSpec(_Strict):
     def _check(self) -> "FaultSpec":
         if self.flag not in FAULT_TYPES:
             raise ValueError(f"{self.flag!r} is not one of the 12 fault types")
+        if self.flag in EXCLUDED_FAULT_TYPES:
+            raise ValueError(f"{self.flag} is excluded from the golden set: {EXCLUDED_FAULT_TYPES[self.flag]}")
         if self.variant not in FLAG_VARIANTS[self.flag]:
             raise ValueError(
                 f"variant {self.variant!r} not valid for {self.flag}; "
@@ -125,24 +132,76 @@ class RootCause(_Strict):
         return self
 
 
+# Signals where a higher value is healthier. For every other signal lower is better.
+HIGHER_IS_BETTER = frozenset({"throughput_rps"})
+
+
 class RecoveryCheck(_Strict):
     """Checked independently by the harness, never taken from the agent.
 
-    ``signal`` is a named signal the runner maps to a PromQL query, so cases do not
-    hard-code metric names before they are confirmed on the running shop.
+    ``signal`` is a named signal from eval/telemetry/signals.py. Two ways to judge:
+
+    - ``measure: window`` (default): the signal's value ``within_s`` after the fix,
+      compared either with a fixed ``threshold`` or with ``baseline_factor`` times
+      the value the runner measured just before injecting. Use the baseline form
+      for latency and memory: healthy levels differ a lot between sessions
+      (ad p95 was 7.6 ms in one run and 88 ms in another).
+    - ``measure: since_fix``: errors/rates counted from ``settle_s`` after the fix
+      until ``within_s`` after it. Use this on low-traffic paths (checkout sees
+      ~2.5 requests/min) and for rare operations (cartFailure breaks only EmptyCart).
+      ``settle_s`` skips errors that happened before the fix but arrive late
+      (metrics reach Prometheus 60-120 s behind).
     """
 
-    signal: Literal["error_rate", "latency_p95_ms", "memory_mb", "cpu_ratio", "consumer_lag"]
+    signal: Literal["error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb",
+                    "cpu_percent", "consumer_lag"]
     service: str
+    measure: Literal["window", "since_fix"] = "window"
     op: Literal["lt", "gt"] = "lt"
-    threshold: float
+    threshold: Optional[float] = None
+    baseline_factor: Optional[float] = Field(None, gt=0)
     within_s: int = Field(300, gt=0)
+    settle_s: int = Field(90, ge=0)
+
+    @field_validator("service")
+    @classmethod
+    def _svc(cls, v: str) -> str:
+        if v not in SERVICES:
+            raise ValueError(f"unknown service {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _check(self) -> "RecoveryCheck":
+        if (self.threshold is None) == (self.baseline_factor is None):
+            raise ValueError("give exactly one of threshold or baseline_factor")
+        if self.measure == "since_fix":
+            if self.signal not in ("error_rate", "error_count"):
+                raise ValueError("since_fix only applies to error_rate and error_count")
+            if self.baseline_factor is not None:
+                raise ValueError("since_fix uses a fixed threshold, not baseline_factor")
+            if self.within_s - self.settle_s < 120:
+                raise ValueError("since_fix needs at least 120 s between settle_s and within_s "
+                                 "(metrics arrive about once a minute)")
+        higher_is_better = self.signal in HIGHER_IS_BETTER
+        if higher_is_better != (self.op == "gt"):
+            want = "gt" if higher_is_better else "lt"
+            raise ValueError(f"{self.signal}: recovered means {'above' if higher_is_better else 'below'} "
+                             f"the limit, so op must be {want!r}")
+        if self.signal == "cpu_percent":
+            raise ValueError("cpu_percent behaves like a slow running average in this shop and "
+                             "cannot show recovery; use latency instead")
+        return self
 
 
 class SeverityExpectation(_Strict):
-    level: Literal["SEV1", "SEV2", "SEV3", "NONE"]
+    level: Literal["SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"]
     rule: Optional[str] = None  # rule ID from Person 1's severity policy
     provisional: bool = True  # true until the policy is agreed
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _norm(cls, v: Any) -> Any:
+        return normalize_severity(v) if isinstance(v, str) else v
 
 
 class Expected(_Strict):
