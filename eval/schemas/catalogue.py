@@ -31,13 +31,17 @@ FLAG_VARIANTS: dict[str, tuple[str, ...]] = {
     "recommendationCacheFailure": ("on",),
 }
 
-# The 12 fault types used in the golden set: flag -> root-cause service.
+# The 12 fault types of the golden-set plan: flag -> root-cause service.
 # Services listed under "also_accept" are judged equally correct for that fault.
+# Note: recommendationCacheFailure is in this list but no case uses it: it has no
+# observable effect in 3.1.0 (full probe, 31 Oct; docs/shop-telemetry-findings.md).
+# Whether to remove or replace it is an open team decision; it stays here until then
+# because Person 2's flag allow-list and FaultType enum are built from this dict.
 FAULT_TYPES: dict[str, dict] = {
     "paymentFailure": {"service": "payment", "also_accept": ()},
     "cartFailure": {"service": "cart", "also_accept": ("valkey-cart",)},
     "productCatalogFailure": {"service": "product-catalog", "also_accept": ()},
-    "recommendationCacheFailure": {"service": "recommendation", "also_accept": ()},
+    "recommendationCacheFailure": {"service": "recommendation", "also_accept": ()},  # unused: no visible effect in 3.1.0
     "kafkaQueueProblems": {"service": "fraud-detection", "also_accept": ("kafka",)},
     "adHighCpu": {"service": "ad", "also_accept": ()},
     "emailMemoryLeak": {"service": "email", "also_accept": ()},
