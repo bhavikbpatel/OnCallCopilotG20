@@ -19,7 +19,7 @@ different model family only scores what code cannot.
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines per service, flag-write noise check | done (discovery) |
-| `knowledge/runbooks/`, `knowledge/postmortems/` | 15 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
+| `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
 | `knowledge/retrieval.py` | Markdown ingestion, metadata filters, BM25 + TF-IDF vector RRF + deterministic reranker | local baseline |
 | `knowledge/memory.py` | SQLite lesson proposals/review lifecycle and fail-closed precondition checks | local baseline |
 | `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md` | done |

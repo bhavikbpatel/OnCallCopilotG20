@@ -34,5 +34,10 @@
   {"id":"Q-033","query":"international quote latency and domestic behavior verification","service":"shipping","relevant":["RB-011#verification"]},
   {"id":"Q-034","query":"ad 5xx errors and frontend core operation success share","service":"ad","relevant":["RB-012#checks"]},
   {"id":"Q-035","query":"adFailure active and user impact severity","service":"ad","relevant":["RB-012#preconditions"]},
-  {"id":"Q-036","query":"traffic spike no service errors high request volume healthy dependency traces","service":"frontend","relevant":["RB-013#checks"]}
+  {"id":"Q-036","query":"traffic spike no service errors high request volume healthy dependency traces","service":"frontend","relevant":["RB-013#checks"]},
+  {"id":"Q-037","query":"total payment errors during high traffic distinguish processor failure from connectivity","service":"payment","relevant":["RB-016#checks"]},
+  {"id":"Q-038","query":"cart errors during traffic surge compare Valkey traces and traffic volume","service":"cart","relevant":["RB-017#checks"]},
+  {"id":"Q-039","query":"partial ad failures while core frontend shopping flows remain healthy","service":"ad","relevant":["RB-018#symptoms"]},
+  {"id":"Q-040","query":"international shipping route delayed compare with domestic quotes","service":"shipping","relevant":["RB-019#checks"]},
+  {"id":"Q-041","query":"payment and image faults need separate evidence and separate approvals","service":"image-provider","relevant":["RB-020#action"]}
 ]

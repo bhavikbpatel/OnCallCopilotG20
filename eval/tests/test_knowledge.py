@@ -13,7 +13,7 @@ from eval.knowledge.severity import classify
 def test_corpus_has_required_runbooks_and_seed_postmortems():
     passages = load_passages(ROOT)
     docs = {passage.doc_id for passage in passages}
-    assert len([item for item in docs if item.startswith("RB-")]) == 15
+    assert len([item for item in docs if item.startswith("RB-")]) == 20
     assert len([item for item in docs if item.startswith("PM-")]) == 10
     assert all(passage.fix["tool"] == "set_flag" for passage in passages)
 
