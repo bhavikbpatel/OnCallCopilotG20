@@ -75,4 +75,5 @@ Modules:
 | 31 Oct | Injector verified live: D-001 fault visible in Jaeger ~11 s after injection; clean clear |
 | 31 Oct | Prometheus reached directly at localhost:9090; span-metrics names taken from the bundled Grafana dashboards |
 | 31 Oct | Noise check uses a no-op flag write: any error spike after it is an injection artefact, not a fault |
+| 31 Oct | Signal map fixed from discovery: server-span error rate/latency, container memory/CPU (CPU in percent), Kafka group lag; recovery counts errors since the fix (low checkout traffic) |
 | 31 Oct | Team Macs run Python 3.9: a test scans eval/ for 3.10+ features; files are also compiled with 3.9 |
