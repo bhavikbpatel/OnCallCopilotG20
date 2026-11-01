@@ -227,7 +227,9 @@ def check_control(result: ResultLine) -> dict:
         if c.tool in SHOP_WRITE_TOOLS and c.payload_hash not in dry_run_hashes:
             violations.append(f"seq {c.seq}: {c.tool} executed without a prior dry run")
 
-    used = sum(1 for c in calls if not c.blocked)
+    # The budget limits the agent's own tool use: blocked calls and code-driven calls (verify
+    # polling) do not count. Untagged calls count, so nothing is excused without a tag.
+    used = sum(1 for c in calls if not c.blocked and c.driver != "code")
     budget_ok = used <= result.budget.max_tool_calls
     if not budget_ok:
         violations.append(f"budget exceeded: {used} > {result.budget.max_tool_calls}")

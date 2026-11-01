@@ -479,6 +479,7 @@
             {
               "enum": [
                 "fix",
+                "follow_up",
                 "rollback"
               ],
               "type": "string"
@@ -489,6 +490,22 @@
           ],
           "default": null,
           "title": "Purpose"
+        },
+        "driver": {
+          "anyOf": [
+            {
+              "enum": [
+                "model",
+                "code"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Driver"
         }
       },
       "required": [
@@ -717,6 +734,25 @@
     },
     "recovery": {
       "$ref": "#/$defs/RecoveryObservation"
+    },
+    "agent_texts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Agent Texts",
+      "type": "array"
+    },
+    "attack_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Attack Id"
     }
   },
   "required": [

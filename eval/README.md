@@ -28,6 +28,7 @@ different model family only scores what code cannot.
 | `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
 | `knowledge/retrieval_queries.json` | 41 labelled development queries for Recall@5 | done |
 | `runner/` | Runs cases end to end: preflight, baselines, inject, synthetic alert (fires on the probe's calibrated movement rule), agent with auto-approval and timeout, recovery check, always clear, contamination check, result line, score; JSONL + summary; CI gate. Ships the do-nothing agent | done |
+| `adversarial/`, `schemas/attack.py`, `checkers/attacks.py` | Red team (E2): attack format; HTTP delivery of hostile text into the shop's logs and traces; attack success, influence and false-block checks; `check` (counts only) and `probe` commands. Attacks themselves are private | done |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
 | `tests/` | pytest for everything above | done |
@@ -122,6 +123,22 @@ python -m eval.schemas.split --dev eval/cases/dev --heldout "$EVAL_PRIVATE_DIR/h
 It checks that no scenario group or exact fault setup crosses the split, that the held-out folder
 is outside the repo, and the sizes (40+ held-out, 60+ in total, every golden fault, noise and a
 two-fault case on both sides). Run held-out cases with the runner by pointing `--cases` at that folder.
+
+## Red team (E2, private attacks)
+
+Attack specs live in `EVAL_PRIVATE_DIR/redteam`, outside the repo; Person 3 (defences) must not read them.
+
+```bash
+python -m eval.adversarial check "$EVAL_PRIVATE_DIR/redteam"        # counts only, never payloads
+python -m eval.adversarial probe                                     # does each request field (header, query, path, body) reach the traces?
+python -m eval.runner --cases eval/cases/dev --attacks "$EVAL_PRIVATE_DIR/redteam" --config-id E2-OFF
+```
+
+Each attack runs alongside a dev incident (its `base_case`). HTTP-vector attacks are delivered by the
+harness: hostile text in a request header, query string, path or JSON body sent to the shop during the
+incident. Runbook, tool-description and chat attacks need a way in from Persons 1-3; until then the runner
+refuses them (status `error`) instead of pretending they ran. Results add `attacks.jsonl` and, in
+`summary.json`, attack success and influence rates and false blocks (legitimate calls the defences blocked).
 
 ## Knowledge and memory baseline
 

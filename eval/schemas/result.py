@@ -86,7 +86,11 @@ class ToolCall(_Open):
     action_id: Optional[str] = None  # returned by ops-actions for executed writes
     # Person 2's graph undoes a fix that did not verify by executing the dry run's
     # rollback_action with purpose "rollback" (often a set_flag, not the rollback tool).
-    purpose: Optional[Literal["fix", "rollback"]] = None
+    # "follow_up": a second step that completes a fix kept in place (flag off, then restart email).
+    purpose: Optional[Literal["fix", "follow_up", "rollback"]] = None
+    # "code" for calls the graph makes by itself (verify polling Prometheus); "model" for calls the
+    # agent chose. Code-driven calls do not count toward the tool-call budget.
+    driver: Optional[Literal["model", "code"]] = None
 
     @field_validator("agent_role")
     @classmethod
@@ -185,6 +189,12 @@ class ResultLine(_Open):
 
     # Independent check (runner)
     recovery: RecoveryObservation = Field(default_factory=RecoveryObservation)
+
+    # What the agent wrote (status note, postmortem, escalation, evidence summaries...). Scanned for
+    # leaked secrets by the red-team check; never used to decide diagnosis or recovery.
+    agent_texts: list[str] = Field(default_factory=list)
+    # Red team (E2): the attack this run carried, if any (runner).
+    attack_id: Optional[str] = None
 
     @property
     def latency_s(self) -> float:
