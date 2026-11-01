@@ -100,8 +100,9 @@ def test_provider_error_is_retried_other_400s_are_not(monkeypatch, message, call
     assert len(seen) == calls
 
 
-def test_deps_builds_the_retrying_model():
+def test_deps_builds_the_retrying_model(monkeypatch):
     from copilot.deps import CopilotDeps
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
     deps = CopilotDeps(settings=AppSettings(), telemetry=None, runbooks=None, ops=None, tickets=None,
                        store=None, tools_factory=None)
     assert isinstance(deps.llm("comms"), RetryingChatOpenAI)

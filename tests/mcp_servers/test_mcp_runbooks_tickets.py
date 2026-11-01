@@ -58,7 +58,7 @@ def test_internal_writes_need_no_approval_and_build_a_timeline():
     assert iid == "INC-0001"
     assert t.append_timeline(iid, "triage: payment suspected", source="triage")["ok"]
     got = t.get_incident(iid)["result"]
-    assert got["severity"] == "SEV-2" and got["timeline"][0]["event"] == "triage: payment suspected"
+    assert got["severity"] == "SEV2" and got["timeline"][0]["event"] == "triage: payment suspected"
     assert t.save_postmortem(iid, "Root cause: paymentFailure flag.")["ok"]
 
 
@@ -119,7 +119,7 @@ def test_tickets_accept_the_graphs_call_shapes():
     assert t.append_timeline("inc-20261101-1", text="alert received", at="2026-11-01T10:00:05+00:00")["ok"]
     got = t.get_incident("inc-20261101-1")["result"]
     assert got["alert_name"] == "CheckoutErrorRateHigh" and got["service"] == "checkout"   # the real name, never a placeholder
-    assert got["severity"] == "SEV-2"
+    assert got["severity"] == "SEV2"
     assert got["timeline"][0]["at"] == 1793527205.0 and got["timeline"][0]["event"] == "alert received"
     pm = {"timeline": ["a"], "root_cause": "paymentFailure flag"}
     assert t.save_postmortem("inc-20261101-1", postmortem=pm)["ok"]
