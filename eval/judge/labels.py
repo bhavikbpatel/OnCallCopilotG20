@@ -9,7 +9,9 @@ Writes two files into ``--out``:
 
 The sheet never shows the judge's scores, so a labeller is not anchored by them. Only dev cases
 (``D-``) are allowed: calibration on held-out outputs is refused (capstone guide p. 5; Person 4
-guide section 10). Runs that carried a red-team attack, and runs without a status note, are skipped.
+guide section 10). With ``--allow-demo``, runs of Person 2's demo graph (``DEMO-``, stub shop) are
+accepted too, for a preliminary kappa before real dev runs exist; the kappa report then says so.
+Held-out (and any other) case IDs are refused either way. Runs that carried a red-team attack, and runs without a status note, are skipped.
 An existing ``labels.csv`` is never overwritten, because hand labels cannot be regenerated.
 """
 from __future__ import annotations
@@ -24,6 +26,7 @@ from ..schemas.result import ResultLine
 from .judge import DIMENSIONS, JudgeItem, build_item
 
 DEV_PREFIX = "D-"
+DEMO_PREFIX = "DEMO-"   # Person 2's demo graph on a stub shop: never a golden-set case
 HUMAN_COLUMNS = tuple(f"human_{d}" for d in DIMENSIONS)
 SHEET_COLUMNS = ("item_id", "case_id", "config_id", "final_status", "independent_recovery_check",
                  "agent_hypotheses", "actions_executed", "status_note", "cited_evidence",
@@ -40,6 +43,8 @@ class ExportReport:
     skipped_no_note: int = 0
     skipped_attack: int = 0
     skipped_duplicate: int = 0
+    dev: int = 0
+    demo: int = 0
     files: list[str] = field(default_factory=list)
 
 
@@ -55,12 +60,20 @@ def read_results(paths: Iterable[Path]) -> list[ResultLine]:
     return out
 
 
-def select_items(results: list[ResultLine], report: ExportReport) -> list[JudgeItem]:
-    not_dev = sum(1 for r in results if not r.case_id.startswith(DEV_PREFIX))
-    if not_dev:
+def source(case_id: str) -> str:
+    # 'dev', 'demo' or 'other' (held-out or unknown)
+    if case_id.startswith(DEMO_PREFIX):
+        return "demo"
+    return "dev" if case_id.startswith(DEV_PREFIX) else "other"
+
+
+def select_items(results: list[ResultLine], report: ExportReport, *, allow_demo: bool = False) -> list[JudgeItem]:
+    allowed = {"dev", "demo"} if allow_demo else {"dev"}
+    refused = sum(1 for r in results if source(r.case_id) not in allowed)
+    if refused:
         # Counts only: never name a held-out case.
-        raise NotDevError(f"{not_dev} result line(s) are not dev cases ({DEV_PREFIX}...); "
-                          "judge calibration uses dev outputs only")
+        what = f"dev ({DEV_PREFIX}...) or demo ({DEMO_PREFIX}...)" if allow_demo else f"dev cases ({DEV_PREFIX}...)"
+        raise NotDevError(f"{refused} result line(s) are not {what}; judge calibration never uses held-out outputs")
     items, seen = [], set()
     for r in results:
         if r.attack_id:
@@ -75,6 +88,7 @@ def select_items(results: list[ResultLine], report: ExportReport) -> list[JudgeI
             continue
         seen.add(r.run_id)
         items.append(item)
+        setattr(report, source(r.case_id), getattr(report, source(r.case_id)) + 1)
     report.items = len(items)
     return items
 
@@ -101,9 +115,9 @@ def sheet_row(item: JudgeItem) -> dict[str, str]:
             **{c: "" for c in HUMAN_COLUMNS}, "labeller": "", "comment": ""}
 
 
-def export(result_files: list[Path], out_dir: Path) -> ExportReport:
+def export(result_files: list[Path], out_dir: Path, *, allow_demo: bool = False) -> ExportReport:
     report = ExportReport()
-    items = select_items(read_results(result_files), report)
+    items = select_items(read_results(result_files), report, allow_demo=allow_demo)
     out_dir.mkdir(parents=True, exist_ok=True)
     labels = out_dir / "labels.csv"
     if labels.exists():
