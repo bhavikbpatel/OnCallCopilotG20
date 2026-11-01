@@ -53,10 +53,10 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-2
+    level: SEV2
     rule: S2.1
     provisional: true
 notes: 'Two faults with different signal types (cart errors vs fraud-detection consumer lag). Cart is
-  the higher-impact fault, so the case severity is SEV-2/S2.1.'
+  the higher-impact fault, so the case severity is SEV2/S2.1.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist

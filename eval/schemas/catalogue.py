@@ -109,27 +109,27 @@ ACTION_ARGS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 MAX_REPLICAS = 3  # Person 2's ScaleService allows 1-3
 
 # Severity labels as Person 2's graph writes them (Severity enum), plus NONE for noise.
-SEVERITY_LEVELS: tuple[str, ...] = ("SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE")
+SEVERITY_LEVELS: tuple[str, ...] = ("SEV1", "SEV2", "SEV3", "SEV4", "NONE")
 
 
 # Rule IDs from Person 1's severity policy (docs/severity-policy.md) and the level each one gives.
 SEVERITY_RULES: dict[str, str] = {
-    "S1.1": "SEV-1",   # broad sustained critical-path impact
-    "S2.1": "SEV-2",   # sustained material impact
-    "S3.0": "SEV-3",   # insufficient evidence
-    "S3.1": "SEV-3",   # localized / short / below threshold
+    "S1.1": "SEV1",   # broad critical-path impact
+    "S2.1": "SEV2",   # sustained or ongoing material impact
+    "S3.0": "SEV3",   # insufficient evidence
+    "S3.1": "SEV3",   # localized / below threshold
     "S0.1": "NONE",    # verified no impact
 }
 
 
 def normalize_severity(value: str) -> str:
-    """'SEV1', 'sev-1' or 'SEV-1' -> 'SEV-1'; 'none' -> 'NONE'. Anything else is returned as given."""
+    """Normalize hyphenated and compact severity inputs to canonical ``SEV1`` form."""
     import re
 
     v = str(value).strip().upper()
     m = re.fullmatch(r"SEV-?([1-4])", v)
     if m:
-        return f"SEV-{m.group(1)}"
+        return f"SEV{m.group(1)}"
     return "NONE" if v == "NONE" else value
 
 

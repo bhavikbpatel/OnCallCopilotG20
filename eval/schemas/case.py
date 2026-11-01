@@ -195,7 +195,7 @@ class RecoveryCheck(_Strict):
 
 
 class SeverityExpectation(_Strict):
-    level: Literal["SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"]
+    level: Literal["SEV1", "SEV2", "SEV3", "SEV4", "NONE"]
     rule: Optional[str] = None  # rule ID from Person 1's severity policy
     provisional: bool = True  # true until the policy is agreed
 

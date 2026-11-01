@@ -28,8 +28,8 @@
     }
   ],
   "severity": {
-    "level": "SEV-2",
-    "rule": "S2.1"
+    "level": "SEV1",
+    "rule": "S1.1"
   },
   "proposed_actions": [
     {

@@ -38,7 +38,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-3
+    level: SEV3
     rule: S3.1
     provisional: true
 notes: 'Subtle fault: a ~10% error rate on a non-core service.'
