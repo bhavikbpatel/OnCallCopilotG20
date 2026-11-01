@@ -29,10 +29,10 @@ def test_dev_cases_use_measured_recovery_checks():
     signals = {c.expected.recovery.signal for c in cases.values() if c.expected.recovery}
     assert "cpu_percent" not in signals  # cannot show recovery in this shop
     # Low-traffic checkout path and rare cart operations are judged since the fix.
-    for cid in ("D-001", "D-003", "D-011"):
+    for cid in ("D-001", "D-003", "D-011", "D-013"):
         assert cases[cid].expected.recovery.measure == "since_fix", cid
     # Latency and memory are judged against the run's own baseline.
-    for cid in ("D-006", "D-009", "D-010", "D-013"):
+    for cid in ("D-006", "D-009", "D-010", "D-012"):
         assert cases[cid].expected.recovery.baseline_factor is not None, cid
     # Slow recoveries measured in the 300 s re-probe get longer windows.
     for cid in ("D-006", "D-010"):
@@ -51,4 +51,4 @@ def test_email_leak_flag_off_alone_or_with_restart_is_correct():
 def test_no_dev_case_uses_an_excluded_fault():
     cases = load_cases(DEV_DIR)
     assert not {f.flag for c in cases for f in c.faults} & set(EXCLUDED_FAULT_TYPES)
-    assert "adHighCpu" in EXCLUDED_FAULT_TYPES
+    assert {"adHighCpu", "intlShippingSlowdown", "recommendationCacheFailure"} <= set(EXCLUDED_FAULT_TYPES)

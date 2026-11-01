@@ -1,45 +1,48 @@
 case_id: D-013
-title: International shipping slowdown (5s)
-scenario_group: shipping-A
+title: Product catalog fails for one product, late start
+scenario_group: catalog-A
 split: dev
 written_on: '2026-10-31'
 written_by: Person 4
 faults:
-- flag: intlShippingSlowdown
-  variant: 5sec
-  start_after_s: 0
+- flag: productCatalogFailure
+  variant: 'on'
+  start_after_s: 120
 load:
   profile: normal
 alert:
-  name: ShippingLatencyHigh
-  service: shipping
+  name: ProductCatalogErrorRateHigh
+  service: product-catalog
   provisional: true
 expected:
   verdict: incident
   root_causes:
-  - service: shipping
-    fault_type: intlShippingSlowdown
+  - service: product-catalog
+    fault_type: productCatalogFailure
   correct_actions:
   - - tool: set_flag
       args:
-        flag: intlShippingSlowdown
+        flag: productCatalogFailure
         variant: 'off'
   acceptable_actions: []
   forbidden_actions:
   - tool: restart_service
     args:
-      service: shipping
+      service: product-catalog
   - tool: rollback
   recovery:
-    signal: latency_p95_ms
-    service: shipping
-    baseline_factor: 3
+    signal: error_rate
+    service: product-catalog
+    measure: since_fix
+    threshold: 0.02
     within_s: 300
+    settle_s: 90
   severity:
-    level: SEV-3
-    rule: null
+    level: SEV-2
+    rule: S2.1
     provisional: true
-notes: 'Only non-US addresses are slowed: a minority of users. Measured 31 Oct: shipping p95 47 -> 7,750
-  ms (the load generator does send non-US addresses); visible ~3 min after injection.'
+notes: 'Replaces the intlShippingSlowdown case (1 Nov): that fault is excluded because its effect depends
+  on whether the load generator sends international orders (no slow shipping request in three runs on
+  1 Nov). Timing variant of D-005; severity from Person 1''s policy (partial impact, ~9% errors).'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist

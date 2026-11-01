@@ -66,6 +66,11 @@ EXCLUDED_FAULT_TYPES: dict[str, str] = {
         "their normal noise, and container CPU only crept 5% -> 9.5% and did not fall after the flag went off "
         "(Docker's CPU figure is a slow running average), so neither diagnosis nor recovery can be judged"
     ),
+    "intlShippingSlowdown": (
+        "effect depends on whether the load generator sends international orders: shipping p95 spiked to "
+        "5,750-7,000 ms in one run (31 Oct), but three runs on 1 Nov (about 15 min of fault) showed no slow "
+        "shipping request at all, by 5-minute p95 or by the slow_requests count; a case may have no fault to find"
+    ),
 }
 GOLDEN_FAULT_TYPES = frozenset(set(FAULT_TYPES) - set(EXCLUDED_FAULT_TYPES))
 
