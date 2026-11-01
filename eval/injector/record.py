@@ -26,6 +26,8 @@ class InjectionRecord:
     applied: list[dict] = dataclasses.field(default_factory=list)
     drift: list[dict] = dataclasses.field(default_factory=list)
     errors: list[str] = dataclasses.field(default_factory=list)
+    # Flags the plan stopped controlling because the agent's fix for them was approved.
+    released: list[dict] = dataclasses.field(default_factory=list)
     cleared: bool = False
     ended_at: Optional[dt.datetime] = None
 

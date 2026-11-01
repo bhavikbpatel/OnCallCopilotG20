@@ -337,6 +337,32 @@ def test_agent_timeout_and_no_approval_after_the_run(tmp_path):
     assert result.approvals == []                                  # the late request is not part of the run
 
 
+def test_approver_calls_back_only_on_approval():
+    seen = []
+    a = AutoApprover("approve", on_approved=lambda tool, args: seen.append((tool, args)))
+    a({"tool": "set_flag", "flag": "paymentFailure", "variant": "off"})
+    assert seen == [("set_flag", {"flag": "paymentFailure", "variant": "off"})]
+    a.close()
+    a({"tool": "set_flag", "flag": "adFailure", "variant": "off"})
+    r = AutoApprover("reject", on_approved=lambda tool, args: seen.append((tool, args)))
+    r({"tool": "set_flag", "flag": "cartFailure", "variant": "off"})
+    assert len(seen) == 1
+
+
+def test_approved_fix_releases_the_flag_from_the_plan(tmp_path):
+    store, deps = make(tmp_path)
+    result, report = run_case(load_case(DEV / "D-001.yaml"), FixingAgent(store), cfg(), deps)
+    gt = json.loads(next((tmp_path / "ground_truth").glob("*.json")).read_text())
+    assert [r["flag"] for r in gt["released"]] == ["paymentFailure"] and report.task_success
+
+
+def test_rejected_fix_does_not_release_the_flag(tmp_path):
+    store, deps = make(tmp_path)
+    run_case(load_case(DEV / "D-001.yaml"), FixingAgent(store), cfg(approval="reject"), deps)
+    gt = json.loads(next((tmp_path / "ground_truth").glob("*.json")).read_text())
+    assert gt["released"] == []
+
+
 def test_closed_approver_rejects_everything():
     a = AutoApprover("approve")
     a.close()

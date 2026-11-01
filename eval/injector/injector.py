@@ -52,6 +52,7 @@ class Injector:
         self._thread: Optional[threading.Thread] = None
         self.record: Optional[InjectionRecord] = None
         self._expected: dict[str, str] = {}
+        self._released: set[str] = set()
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------ checks
@@ -83,6 +84,19 @@ class Injector:
             if variant != want:
                 self.record.add_drift(self._wall(), flag, variant, want)
 
+    def release(self, flag: str, variant: str = REST_VARIANT) -> None:
+        """Stop the plan from changing ``flag`` again and expect it at ``variant`` from now on.
+
+        Called when the agent's fix for this flag is approved. Without it an intermittent
+        plan would switch the fault back on after a correct fix, and the run would be
+        scored as "not recovered" (or the fix as contamination).
+        """
+        with self._lock:
+            self._released.add(flag)
+            self._expected[flag] = variant
+        if self.record is not None:
+            self.record.released.append({"flag": flag, "variant": variant, "released_at": self._wall()})
+
     # ------------------------------------------------------------ actions
 
     def clear(self) -> dict[str, str]:
@@ -103,6 +117,10 @@ class Injector:
                 elapsed = self._clock() - t0
                 while pending and pending[0][0] <= elapsed:
                     at_s, changes = pending.pop(0)
+                    with self._lock:
+                        changes = {k: v for k, v in changes.items() if k not in self._released}
+                    if not changes:
+                        continue
                     apply(self.store, changes)
                     with self._lock:
                         self._expected.update(changes)
@@ -129,6 +147,7 @@ class Injector:
         self._stop.clear()
         with self._lock:
             self._expected = {}
+            self._released = set()
         self.record = InjectionRecord.new(run_id, case, horizon_s, plan, sorted(planned_flags(case)), self._wall())
         t0 = self._clock()
         groups = group_by_time(plan)

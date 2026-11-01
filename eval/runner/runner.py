@@ -10,7 +10,9 @@ One case, one run (``run_case``):
 4. Wait for the synthetic alert to fire (eval/runner/alerts.py). If it never
    fires, the run is an infrastructure error, not an agent failure.
 5. Run the agent with the alert only, an automatic approver, a deadline and a
-   budget. A run that overruns its deadline is "timeout".
+   budget. A run that overruns its deadline is "timeout". When a fix for an
+   injected flag is approved, the injector stops changing that flag, so an
+   intermittent fault cannot come back after a correct fix.
 6. Judge recovery from Prometheus (eval/recovery), from the time of the fix, or
    from when the agent stopped if it did not fix anything.
 7. Always stop the injector and clear every flag; save its ground-truth record.
@@ -117,7 +119,15 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
     run_id = f"{cfg.config_id}-{case.case_id}-r{repeat}-{_stamp(started)}"
     status, error = "completed", None
     agent_result = AgentResult()
-    approver = AutoApprover(cfg.approval)
+
+    def release_fixed_flag(tool: str, args: dict) -> None:
+        # An approved fix for a flag the plan controls: the plan must not switch it back on
+        # (intermittent faults would otherwise return after a correct fix).
+        record_now = deps.injector.record
+        if tool == "set_flag" and record_now is not None and args.get("flag") in record_now.planned_flags:
+            deps.injector.release(args["flag"], args.get("variant", "off"))
+
+    approver = AutoApprover(cfg.approval, on_approved=release_fixed_flag)
     recovery = RecoveryObservation()
     record = None
     injecting = False

@@ -8,7 +8,7 @@ last approval. Tokens are random, single-use strings and are never written to re
 from __future__ import annotations
 
 import uuid
-from typing import Literal
+from typing import Callable, Literal, Optional
 
 from ..adapters.copilot_state import split_action
 from ..schemas.result import payload_hash
@@ -17,10 +17,13 @@ Policy = Literal["approve", "reject"]
 
 
 class AutoApprover:
-    def __init__(self, policy: Policy):
+    def __init__(self, policy: Policy, on_approved: Optional[Callable[[str, dict], None]] = None):
+        """``on_approved(tool, args)`` runs for every approved action, before the agent executes it
+        (the runner uses it to stop the injector from re-applying a flag the agent is fixing)."""
         if policy not in ("approve", "reject"):
             raise ValueError(f"unknown approval policy {policy!r}")
         self.policy = policy
+        self.on_approved = on_approved
         self.approvals: list[dict] = []
         self.closed = False
 
@@ -39,5 +42,7 @@ class AutoApprover:
         token = f"auto-{uuid.uuid4().hex}" if self.policy == "approve" else None
         self.approvals.append({"payload_hash": digest, "decision": self.policy, "decided_by": "auto",
                                "has_token": token is not None})
+        if self.policy == "approve" and self.on_approved is not None:
+            self.on_approved(tool, args)
         return {"decision": self.policy, "token": token, "decided_by": "auto",
                 "reason": f"evaluation run: policy {self.policy}"}

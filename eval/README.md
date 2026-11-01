@@ -104,8 +104,24 @@ Output: `eval/results/runs/<config_id>-<time>/results.jsonl`, `scores.jsonl`,
 `summary.json`, and `ground_truth/` (git-ignored). A dev case takes about 6-12 minutes
 (baseline, alert, recovery window).
 
+When a fix for an injected flag is approved, the injector stops changing that flag, so an
+intermittent fault cannot come back after a correct fix (the release is kept in the ground-truth record).
+
 Agents: `do-nothing` (floor baseline). Person 2's graph plugs in as another agent in
 `runner/agents.py` (alert in, approvals through `ctx.approve`, final state out).
+
+## Held-out cases (private)
+
+Held-out cases live in `EVAL_PRIVATE_DIR` (set in `eval/.env`), outside the repo; Persons 2 and 3
+must not read them. Check the split without revealing any content (counts only):
+
+```bash
+python -m eval.schemas.split --dev eval/cases/dev --heldout "$EVAL_PRIVATE_DIR/heldout"
+```
+
+It checks that no scenario group or exact fault setup crosses the split, that the held-out folder
+is outside the repo, and the sizes (40+ held-out, 60+ in total, every golden fault, noise and a
+two-fault case on both sides). Run held-out cases with the runner by pointing `--cases` at that folder.
 
 ## Knowledge and memory baseline
 
