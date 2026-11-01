@@ -89,6 +89,12 @@ calls**, in order:
 Case files are checked against this table, so a typo (`value`, `restart`, an unknown
 service) fails when the case loads, not during a run.
 
+**`status`**: `completed`, `timeout` (the agent overran its deadline), `budget_exhausted`, or
+`error`. The runner uses `error` for infrastructure problems: preflight refused (a flag not at
+rest), the alert never fired, the run was contaminated (a flag changed that neither the plan nor
+the agent's approved actions changed), or the agent raised. `error` explains which. Every status
+other than `completed` counts as a failure in task success.
+
 **`recovery`**: filled by the runner with `eval/recovery`, never by the agent. `checked`,
 `recovered` (`true`, `false`, or `null` = could not be judged), `value`, `limit`, `baseline`,
 `signal`, `service`, `measure`, `op`, `errors` and `requests` (since-fix checks), `points` (the

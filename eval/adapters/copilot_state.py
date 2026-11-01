@@ -190,8 +190,15 @@ def to_result_line(
     tool_calls: Optional[list[Any]] = None,
     approvals: Optional[list[Any]] = None,
     recovery: Optional[Mapping[str, Any]] = None,
+    max_tool_calls: Optional[int] = None,
+    tool_log_source: Optional[str] = None,
 ) -> ResultLine:
-    """Build the result line for one run from the copilot's final state."""
+    """Build the result line for one run from the copilot's final state.
+
+    ``max_tool_calls`` overrides the state's ``limits`` (the runner's config is the
+    source of truth for the budget a run was given). ``tool_log_source`` labels a
+    caller-supplied log (default "hooks").
+    """
     s = to_plain(state) or {}
     run_id = run_id or s.get("run_id")
     if not run_id:
@@ -212,7 +219,8 @@ def to_result_line(
     if tool_calls is None:
         log, source = tool_calls_from_state(s), "state"
     else:
-        log, source = to_plain(tool_calls), "hooks"
+        log, source = to_plain(tool_calls), tool_log_source or "hooks"
+    budget = max_tool_calls or int((s.get("limits") or {}).get("tool_calls") or DEFAULT_MAX_TOOL_CALLS)
 
     return ResultLine.model_validate({
         "run_id": run_id, "case_id": case_id, "config_id": config_id, "repeat": repeat,
@@ -233,7 +241,7 @@ def to_result_line(
         "tool_calls": log,
         "tool_log_source": source,
         "approvals": to_plain(approvals) if approvals is not None else _approvals_from_state(s),
-        "budget": {"max_tool_calls": int((s.get("limits") or {}).get("tool_calls") or DEFAULT_MAX_TOOL_CALLS)},
+        "budget": {"max_tool_calls": budget},
         "cost": _cost(s),
         "recovery": dict(recovery) if recovery else {},
     })

@@ -27,7 +27,7 @@ different model family only scores what code cannot.
 | `knowledge/memory.py` | SQLite accepted-incident store, lesson review/deletion lifecycle and fail-closed preconditions | local baseline |
 | `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
 | `knowledge/retrieval_queries.json` | 41 labelled development queries for Recall@5 | done |
-| `runner/` | JSONL runner: reset, inject, run agent, auto-decide approvals, timeout, check, clear | next |
+| `runner/` | Runs cases end to end: preflight, baselines, inject, synthetic alert (fires on the probe's calibrated movement rule), agent with auto-approval and timeout, recovery check, always clear, contamination check, result line, score; JSONL + summary; CI gate. Ships the do-nothing agent | done |
 | `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
 | `tests/` | pytest for everything above | done |
@@ -80,6 +80,31 @@ python -m eval.probes reanalyse eval/results/probes/faults-....json   # re-score
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).
+
+## Runner
+
+```bash
+cd OnCallCopilotG20
+python -m eval.runner --cases eval/cases/dev --only D-001 --config-id TRY       # one case
+python -m eval.runner --cases eval/cases/dev --config-id DEV-NULL               # all dev cases
+python -m eval.runner --cases eval/cases/dev --config-id CI --min-success 0.6   # CI gate (exit 1 below)
+```
+
+Each case: every flag must be at rest (or `--force-clear`), the alert's healthy level
+and the recovery baseline are measured, the faults are injected, and the agent starts
+only when the synthetic alert fires (its signal above the probe's movement threshold in
+two distinct data points). The agent gets the alert and nothing else. Approvals are
+answered by `--approval` (approve or reject) and recorded; after the run nothing more is
+approved. Recovery is judged by `eval/recovery`; every flag is cleared at the end, also
+on Ctrl+C. A run whose alert never fires, or where a flag changed that neither the plan
+nor the agent's approved actions changed, is an `error`, not an agent failure.
+
+Output: `eval/results/runs/<config_id>-<time>/results.jsonl`, `scores.jsonl`,
+`summary.json`, and `ground_truth/` (git-ignored). A dev case takes about 6-12 minutes
+(baseline, alert, recovery window).
+
+Agents: `do-nothing` (floor baseline). Person 2's graph plugs in as another agent in
+`runner/agents.py` (alert in, approvals through `ctx.approve`, final state out).
 
 ## Knowledge and memory baseline
 
