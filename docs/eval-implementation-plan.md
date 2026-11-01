@@ -31,7 +31,7 @@ and attacks are referred to only by format here; their content stays private.
 | 1 | `injector/` | Turn faults on/off per case (intensity, timing, intermittent, load), ground-truth record, contamination detection, guaranteed clean-up, CLI | — | No |
 | 2 | `probes/` | Real metric names (signal → PromQL map), healthy baselines, fault effects; finalise dev-case thresholds and open questions | Shop running | No |
 | 3 | `recovery/` | Independent recovery check from Prometheus for the result line (**done 31 Oct**) | Step 2 map | No |
-| 4 | `runner/` | Case → preflight → inject → agent → auto-approval per config → timeout → recovery → score → clear → JSONL; batch summary; CI command | Stub agent now; Person 2 entry point and Person 3 hooks log later | No (stub) |
+| 4 | `runner/` | Case → preflight → inject → agent → auto-approval per config → timeout → recovery → score → clear → JSONL; batch summary; CI command (**done 1 Nov**, do-nothing agent) | Stub agent now; Person 2 entry point and Person 3 hooks log later | No (stub) |
 | 5 | private set | 40+ held-out cases, 30+ attacks, attack schema and delivery, attack-success and false-block checks | Person 3 defences switch | No |
 | 6 | `judge/` | Rubric, structured judge via OpenRouter, hand labels, Cohen's kappa | Real agent outputs | **Yes** |
 | 7 | `experiments/` | E1–E4 configs, repeats, tables, experiment log, report | Everything above | Yes |
@@ -87,3 +87,4 @@ Modules:
 | 31 Oct | Team moving to Python 3.12 (Person 2's graph needs 3.11+); installed on BMac with uv |
 | 31 Oct | Team Macs run Python 3.9: a test scans eval/ for 3.10+ features; files are also compiled with 3.9 |
 | 31 Oct | Python 3.9 restriction dropped: the team runs Python 3.12, so test_py39_compat.py is removed. recommendationCacheFailure marked unused in catalogue.py (kept until the team decides on a replacement). .DS_Store files removed from git and ignored |
+| 1 Nov | Runner (eval/runner): the agent starts only when a synthetic alert fires, using the fault probe's calibrated movement rule as the threshold (CartErrorRateHigh watches the error count); a case whose alert never fires is an infrastructure error. The agent sees only the alert (Person 2's Alert fields). Approvals are automatic per config, recorded with their payload hash, and refused once the run ends (a timed-out agent thread cannot act later). Flag changes not made by the plan or by the agent's approved writes mark the run contaminated. Task success counts errors and timeouts as failures; the CI gate fails below --min-success. Ships only the do-nothing agent |
