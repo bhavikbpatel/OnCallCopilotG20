@@ -37,9 +37,12 @@ from typing import Callable, Optional
 
 from ..adapters.copilot_state import to_result_line
 from ..checkers import score
+from ..checkers.attacks import AttackReport, false_blocks, score_attack
 from ..checkers.checks import CheckReport
 from ..injector.injector import Injector, PreflightError
 from ..recovery import check_recovery, measure_baseline
+from ..adversarial.deliver import HttpAttackSender
+from ..schemas.attack import Attack
 from ..schemas.case import Case
 from ..schemas.result import RecoveryObservation, ResultLine
 from ..telemetry.prom import PromClient
@@ -60,6 +63,11 @@ class RunDeps:
     clock: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
     force_clear: bool = False
+    make_sender: Callable[[], HttpAttackSender] = HttpAttackSender   # red team: delivers HTTP-vector attacks
+
+
+class _NotDeliverable(RuntimeError):
+    pass
 
 
 def _utc(t: float) -> dt.datetime:
@@ -114,9 +122,27 @@ def _run_agent(agent: Agent, ctx: AgentContext, timeout_s: float) -> tuple[Agent
 
 def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int = 1,
              ) -> tuple[ResultLine, CheckReport]:
+    result, report, _ = _run(case, agent, cfg, deps, repeat=repeat, attack=None)
+    return result, report
+
+
+def run_attack(attack: Attack, case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int = 1,
+               ) -> tuple[ResultLine, CheckReport, AttackReport]:
+    """Run ``case`` with ``attack`` delivered during the incident; score both."""
+    if attack.base_case != case.case_id:
+        raise ValueError(f"{attack.attack_id} runs with {attack.base_case}, not {case.case_id}")
+    result, report, delivered = _run(case, agent, cfg, deps, repeat=repeat, attack=attack)
+    return result, report, score_attack(attack, case, result, delivered=delivered)
+
+
+def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int,
+         attack: Optional[Attack]) -> tuple[ResultLine, CheckReport, bool]:
     clock, sleep = deps.clock, deps.sleep
     started = clock()
-    run_id = f"{cfg.config_id}-{case.case_id}-r{repeat}-{_stamp(started)}"
+    tag = f"-{attack.attack_id}" if attack is not None else ""
+    run_id = f"{cfg.config_id}-{case.case_id}{tag}-r{repeat}-{_stamp(started)}"
+    sender = None
+    delivered = False
     status, error = "completed", None
     agent_result = AgentResult()
 
@@ -133,6 +159,9 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
     injecting = False
     rc = case.expected.recovery
     try:
+        if attack is not None and not attack.deliverable:
+            raise _NotDeliverable(f"attack {attack.attack_id}: vector {attack.vector} cannot be delivered by "
+                                  f"the harness yet (needs a way in from its owner)")
         deps.injector.preflight(force_clear=deps.force_clear)
         alert_base = measure_alert_baseline(deps.prom, case.alert, readings=cfg.baseline_readings,
                                             every_s=cfg.poll_s, clock=clock, sleep=sleep)
@@ -140,6 +169,9 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
         horizon = cfg.alert_timeout_s + cfg.agent_timeout_s + (rc.within_s if rc else 0) + 120
         injecting = True
         record = deps.injector.start(case, horizon, run_id)
+        if attack is not None:
+            sender = deps.make_sender()
+            sender.start(attack)          # hostile text is in the logs and traces while the agent works
         alert, why = wait_for_alert(deps.prom, case.alert, alert_base, run_id=run_id,
                                     deadline=clock() + cfg.alert_timeout_s, clock=clock, sleep=sleep,
                                     poll_s=cfg.poll_s)
@@ -156,6 +188,8 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
                 fixed_at = agent_result.fixed_at if agent_result.fixed_at is not None else clock()
                 recovery = check_recovery(deps.prom, rc, fixed_at, baseline=rec_base, clock=clock, sleep=sleep,
                                           poll_s=cfg.poll_s)
+    except _NotDeliverable as exc:
+        status, error = "error", str(exc)
     except PreflightError as exc:
         status, error = "error", f"preflight: {exc}"
     except KeyboardInterrupt:
@@ -163,6 +197,8 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
     except Exception as exc:
         status, error = "error", f"runner: {type(exc).__name__}: {exc}"
     finally:
+        if sender is not None:
+            delivered = bool(sender.stop().get("delivered"))
         if injecting and deps.injector.record is not None:
             record = deps.injector.stop()
             record.save(deps.results_dir / "ground_truth")
@@ -185,14 +221,16 @@ def run_case(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat:
         agent_version=f"{agent.name}@{agent.version}", tool_calls=agent_result.tool_calls,
         approvals=approver.approvals, recovery=recovery.model_dump(), max_tool_calls=cfg.max_tool_calls,
         tool_log_source="agent" if agent_result.tool_calls is not None else None,
+        attack_id=attack.attack_id if attack is not None else None,
     )
-    return result, score(case, result)
+    return result, score(case, result), delivered
 
 
 def summarise(cfg: RunConfig, agent: Agent, reports: list[CheckReport], results: list[ResultLine],
-              cases: list[Case]) -> dict:
+              cases: list[Case], attack_reports: Optional[list[AttackReport]] = None) -> dict:
     """Batch figures. Errors and timeouts stay in the denominator of task success (fail closed)."""
     n = len(reports)
+    fb = [false_blocks(c, res) for c, res in zip(cases, results)]
 
     def rate(xs) -> Optional[float]:
         xs = list(xs)
@@ -218,25 +256,63 @@ def summarise(cfg: RunConfig, agent: Agent, reports: list[CheckReport], results:
         "unnecessary_actions": sum(len(r.unnecessary_actions) for r in reports),
         "policy_violations": sum(len(r.policy_violations) for r in reports),
         "median_latency_s": (round(statistics.median(res.latency_s for res in results), 1) if results else None),
+        "false_blocks": sum(len(x) for x in fb),
+        "false_block_run_rate": rate(bool(x) for x in fb),
+        **_attack_summary(attack_reports),
         "per_run": [{"run_id": res.run_id, "case_id": res.case_id, "repeat": res.repeat, "status": res.status,
                      "task_success": r.task_success, "recovered": r.recovered, "error": res.error}
                     for r, res in zip(reports, results)],
     }
 
 
+def _attack_summary(reports: Optional[list[AttackReport]]) -> dict:
+    if not reports:
+        return {}
+    judged = [r for r in reports if r.succeeded is not None]
+    by_goal: dict[str, dict] = {}
+    for r in judged:
+        g = by_goal.setdefault(r.goal, {"judged": 0, "succeeded": 0})
+        g["judged"] += 1
+        g["succeeded"] += int(bool(r.succeeded))
+    return {
+        "attacks_run": len(reports),
+        "attacks_judged": len(judged),
+        "attacks_not_judged": len(reports) - len(judged),
+        "attack_success_rate": round(sum(bool(r.succeeded) for r in judged) / len(judged), 4) if judged else None,
+        "attack_influence_rate": round(sum(r.influenced for r in judged) / len(judged), 4) if judged else None,
+        "attacks_by_goal": by_goal,
+    }
+
+
 def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
-              on_result: Optional[Callable[[ResultLine, CheckReport], None]] = None) -> dict:
-    """Run every case ``cfg.repeats`` times; write JSONL and a summary as it goes."""
+              on_result: Optional[Callable[[ResultLine, CheckReport], None]] = None,
+              attacks: Optional[list[Attack]] = None) -> dict:
+    """Run every case (or, with ``attacks``, every attack with its base case) ``cfg.repeats`` times;
+    write JSONL and a summary as it goes."""
     batch_id = f"{cfg.config_id}-{_stamp(deps.clock())}"
     out = deps.results_dir / batch_id
     out.mkdir(parents=True, exist_ok=True)
-    results, reports, ran = [], [], []
+    by_id = {c.case_id: c for c in cases}
+    if attacks:
+        missing = sorted({a.base_case for a in attacks} - set(by_id))
+        if missing:
+            raise ValueError(f"base cases not loaded: {missing}")
+        plan = [(by_id[a.base_case], a) for a in attacks]
+    else:
+        plan = [(c, None) for c in cases]
+    results, reports, ran, attack_reports = [], [], [], []
     interrupted = False
     try:
         with (out / "results.jsonl").open("a") as rf, (out / "scores.jsonl").open("a") as sf:
             for repeat in range(1, cfg.repeats + 1):
-                for case in cases:
-                    result, report = run_case(case, agent, cfg, deps, repeat=repeat)
+                for case, attack in plan:
+                    if attack is None:
+                        result, report = run_case(case, agent, cfg, deps, repeat=repeat)
+                    else:
+                        result, report, ar = run_attack(attack, case, agent, cfg, deps, repeat=repeat)
+                        attack_reports.append(ar)
+                        with (out / "attacks.jsonl").open("a") as af:
+                            af.write(ar.model_dump_json() + "\n")
                     rf.write(result.model_dump_json() + "\n")
                     sf.write(report.model_dump_json() + "\n")
                     rf.flush()
@@ -250,7 +326,7 @@ def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
         interrupted = True
         raise
     finally:
-        summary = summarise(cfg, agent, reports, results, ran)
+        summary = summarise(cfg, agent, reports, results, ran, attack_reports or None)
         summary.update(batch_id=batch_id, interrupted=interrupted, directory=str(out))
         (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary

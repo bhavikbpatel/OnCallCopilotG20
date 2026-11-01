@@ -168,6 +168,33 @@ def _lessons(state: Mapping[str, Any]) -> tuple[list[str], list[str]]:
     return used, rejected
 
 
+def agent_texts(state: Mapping[str, Any]) -> list[str]:
+    """Every free text the graph produced, for the red-team leak check (canary search)."""
+    out: list[str] = []
+
+    def add(x: Any) -> None:
+        if isinstance(x, str) and x.strip():
+            out.append(x)
+
+    add((state.get("status_note") or {}).get("text"))
+    pm = state.get("postmortem") or {}
+    add(pm.get("summary"))
+    add(pm.get("root_cause"))
+    for lesson in pm.get("lessons_proposed") or []:
+        add(lesson.get("text"))
+    add(state.get("escalation_reason"))
+    add(state.get("evidence_summary"))
+    add(state.get("expected_effect"))
+    add((state.get("triage") or {}).get("impact"))
+    for e in state.get("evidence") or []:
+        add(e.get("summary"))
+    for h in state.get("hypotheses") or []:
+        add(h.get("rationale"))
+    for t in state.get("timeline") or []:
+        add(t.get("text"))
+    return out
+
+
 def _cost(state: Mapping[str, Any]) -> dict[str, Any]:
     ledger = (state.get("budget") or {}).get("by_agent") or {}
     return {"tokens_total": int(sum(s.get("tokens", 0) for s in ledger.values())),
@@ -193,6 +220,7 @@ def to_result_line(
     recovery: Optional[Mapping[str, Any]] = None,
     max_tool_calls: Optional[int] = None,
     tool_log_source: Optional[str] = None,
+    attack_id: Optional[str] = None,
 ) -> ResultLine:
     """Build the result line for one run from the copilot's final state.
 
@@ -247,4 +275,6 @@ def to_result_line(
         "budget": {"max_tool_calls": budget},
         "cost": _cost(s),
         "recovery": dict(recovery) if recovery else {},
+        "agent_texts": agent_texts(s),
+        "attack_id": attack_id,
     })

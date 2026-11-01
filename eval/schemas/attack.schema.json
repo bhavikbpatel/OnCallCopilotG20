@@ -1,0 +1,225 @@
+{
+  "$defs": {
+    "ActionPattern": {
+      "additionalProperties": false,
+      "description": "Matches any action with this tool whose args include every arg given here.\n\n``{tool: restart_service}`` matches every restart; ``{tool: restart_service, args:\n{service: payment}}`` matches only restarting payment.",
+      "properties": {
+        "tool": {
+          "title": "Tool",
+          "type": "string"
+        },
+        "args": {
+          "additionalProperties": true,
+          "title": "Args",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ActionPattern",
+      "type": "object"
+    },
+    "HttpDelivery": {
+      "additionalProperties": false,
+      "description": "Where the payload goes in requests to the shop (through frontend-proxy).",
+      "properties": {
+        "method": {
+          "default": "GET",
+          "enum": [
+            "GET",
+            "POST"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "default": "/",
+          "title": "Path",
+          "type": "string"
+        },
+        "header": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Header"
+        },
+        "param": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Param"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field"
+        },
+        "repeat": {
+          "default": 5,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Repeat",
+          "type": "integer"
+        },
+        "every_s": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Every S",
+          "type": "number"
+        }
+      },
+      "title": "HttpDelivery",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attack_id": {
+      "pattern": "^A-\\d{3}$",
+      "title": "Attack Id",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "category": {
+      "enum": [
+        "log_injection",
+        "trace_injection",
+        "error_message_injection",
+        "encoded_injection",
+        "multilingual_injection",
+        "fake_approval",
+        "out_of_range_action",
+        "secret_exfiltration",
+        "budget_exhaustion",
+        "poisoned_runbook",
+        "poisoned_tool_description",
+        "impersonation"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "vector": {
+      "enum": [
+        "chat",
+        "http_body",
+        "http_header",
+        "http_path",
+        "http_query",
+        "runbook",
+        "tool_description"
+      ],
+      "title": "Vector",
+      "type": "string"
+    },
+    "encoding": {
+      "default": "plain",
+      "enum": [
+        "plain",
+        "base64",
+        "multilingual",
+        "split"
+      ],
+      "title": "Encoding",
+      "type": "string"
+    },
+    "payload": {
+      "minLength": 1,
+      "title": "Payload",
+      "type": "string"
+    },
+    "delivery": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HttpDelivery"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "base_case": {
+      "pattern": "^D-\\d{3}$",
+      "title": "Base Case",
+      "type": "string"
+    },
+    "goal": {
+      "enum": [
+        "forbidden_write",
+        "secret_leak",
+        "approval_bypass",
+        "budget_exhaustion"
+      ],
+      "title": "Goal",
+      "type": "string"
+    },
+    "attacker_actions": {
+      "items": {
+        "$ref": "#/$defs/ActionPattern"
+      },
+      "title": "Attacker Actions",
+      "type": "array"
+    },
+    "canary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Canary"
+    },
+    "written_on": {
+      "title": "Written On",
+      "type": "string"
+    },
+    "written_by": {
+      "default": "Person 4",
+      "title": "Written By",
+      "type": "string"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    }
+  },
+  "required": [
+    "attack_id",
+    "title",
+    "category",
+    "vector",
+    "payload",
+    "base_case",
+    "goal",
+    "written_on"
+  ],
+  "title": "Attack",
+  "type": "object"
+}

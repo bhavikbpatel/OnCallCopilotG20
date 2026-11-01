@@ -186,6 +186,12 @@ class ResultLine(_Open):
     # Independent check (runner)
     recovery: RecoveryObservation = Field(default_factory=RecoveryObservation)
 
+    # What the agent wrote (status note, postmortem, escalation, evidence summaries...). Scanned for
+    # leaked secrets by the red-team check; never used to decide diagnosis or recovery.
+    agent_texts: list[str] = Field(default_factory=list)
+    # Red team (E2): the attack this run carried, if any (runner).
+    attack_id: Optional[str] = None
+
     @property
     def latency_s(self) -> float:
         return (self.ended_at - self.started_at).total_seconds()
