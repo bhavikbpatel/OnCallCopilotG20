@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from eval.schemas.case import load_cases
-from eval.schemas.catalogue import EXCLUDED_FAULT_TYPES, GOLDEN_FAULT_TYPES
+from eval.schemas.catalogue import EXCLUDED_FAULT_TYPES, GOLDEN_FAULT_TYPES, SEVERITY_RULES
 
 DEV_DIR = Path(__file__).resolve().parents[1] / "cases" / "dev"
 
@@ -52,3 +52,15 @@ def test_no_dev_case_uses_an_excluded_fault():
     cases = load_cases(DEV_DIR)
     assert not {f.flag for c in cases for f in c.faults} & set(EXCLUDED_FAULT_TYPES)
     assert {"adHighCpu", "intlShippingSlowdown", "recommendationCacheFailure"} <= set(EXCLUDED_FAULT_TYPES)
+
+
+def test_every_dev_case_cites_a_policy_rule_matching_its_level():
+    # Person 1's policy (docs/severity-policy.md): S1.1 SEV-1, S2.1 SEV-2, S3.x SEV-3, S0.1 NONE.
+    for c in load_cases(DEV_DIR):
+        sev = c.expected.severity
+        assert sev.rule is not None, c.case_id
+        assert SEVERITY_RULES[sev.rule] == sev.level, c.case_id
+    cases = {c.case_id: c for c in load_cases(DEV_DIR)}
+    for cid in ("D-001", "D-017", "D-019"):           # checkout error rate >= 10%: S1.1
+        assert cases[cid].expected.severity.level == "SEV-1", cid
+    assert cases["D-005"].expected.severity.level == "SEV-2"   # partial, one product: S2.1

@@ -38,10 +38,9 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-3
-    rule: null
+    level: SEV-2
+    rule: S2.1
     provisional: true
 notes: 'Only product OLJCESPC7Z errors: a narrow, low-impact fault.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- 'severity: one product only, SEV-3 vs SEV-2 per policy'

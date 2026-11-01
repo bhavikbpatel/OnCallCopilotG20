@@ -41,7 +41,7 @@ expected:
     within_s: 600
   severity:
     level: SEV-3
-    rule: null
+    rule: S3.1
     provisional: true
 notes: 'Not customer-facing: orders still complete; only fraud checks lag. Measured 31 Oct (300 s hold):
   fraud-detection lag 0 -> 110-344, back to 0 after the flag went off. Builds slowly (orders ~2.5/min).'

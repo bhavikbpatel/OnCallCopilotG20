@@ -54,7 +54,7 @@ expected:
     settle_s: 90
   severity:
     level: SEV-2
-    rule: null
+    rule: S2.1
     provisional: true
 notes: 'Two faults with different signal types (cart errors vs fraud-detection consumer lag). Changed
   1 Nov: the second fault was adHighCpu, now excluded (no observable effect).'

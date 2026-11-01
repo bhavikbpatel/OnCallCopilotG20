@@ -15,7 +15,7 @@ expected:
   verdict: noise
   severity:
     level: NONE
-    rule: null
+    rule: S0.1
     provisional: true
 notes: 'Load spike only. Any write action is harmful. Measured 31 Oct: the flood raises frontend traffic
   ~2.8x but NOT latency, so the alert is on traffic.'

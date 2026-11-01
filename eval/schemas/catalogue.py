@@ -112,6 +112,16 @@ MAX_REPLICAS = 3  # Person 2's ScaleService allows 1-3
 SEVERITY_LEVELS: tuple[str, ...] = ("SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE")
 
 
+# Rule IDs from Person 1's severity policy (docs/severity-policy.md) and the level each one gives.
+SEVERITY_RULES: dict[str, str] = {
+    "S1.1": "SEV-1",   # broad sustained critical-path impact
+    "S2.1": "SEV-2",   # sustained material impact
+    "S3.0": "SEV-3",   # insufficient evidence
+    "S3.1": "SEV-3",   # localized / short / below threshold
+    "S0.1": "NONE",    # verified no impact
+}
+
+
 def normalize_severity(value: str) -> str:
     """'SEV1', 'sev-1' or 'SEV-1' -> 'SEV-1'; 'none' -> 'NONE'. Anything else is returned as given."""
     import re

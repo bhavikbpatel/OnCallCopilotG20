@@ -42,7 +42,7 @@ expected:
     settle_s: 90
   severity:
     level: SEV-1
-    rule: null
+    rule: S1.1
     provisional: true
 notes: 'Highest intensity plus a homepage traffic flood: the flood is a distractor, not a cause.'
 needs_verification:

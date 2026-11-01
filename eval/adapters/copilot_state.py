@@ -15,6 +15,7 @@ Mapping (Person 2 -> harness):
 - ``hypotheses`` (no rank)  -> ranked: supported first, then open, then refuted,
   keeping the graph's order inside each group
 - ``severity`` "SEV-2"      -> severity.level "SEV-2"; noise -> "NONE"
+- ``severity_rule`` (or ``triage.severity_rule``) -> severity.rule (Person 1's rule ID, e.g. "S1.1")
 - ``outcome.verified`` / ``outcome.rolled_back`` -> verification
 - ``limits.tool_calls``     -> budget.max_tool_calls
 - ``budget`` ledger          -> cost.tokens_total / cost.usd
@@ -207,10 +208,12 @@ def to_result_line(
     hypotheses = rank_hypotheses(s.get("hypotheses") or [])
     actions = _actions(s)
     verdict = _verdict(s, hypotheses, actions)
+    # Rule ID from Person 1's policy, if the graph records it (state "severity_rule", or the triage report's).
+    rule = s.get("severity_rule") or (s.get("triage") or {}).get("severity_rule")
     if verdict == "noise":
-        severity = {"level": "NONE"}
+        severity = {"level": "NONE", "rule": rule or None}
     elif s.get("severity"):
-        severity = {"level": s["severity"]}
+        severity = {"level": s["severity"], "rule": rule}
     else:
         severity = None
     outcome = s.get("outcome") or {}

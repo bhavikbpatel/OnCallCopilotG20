@@ -39,7 +39,7 @@ expected:
     settle_s: 90
   severity:
     level: SEV-3
-    rule: null
+    rule: S3.1
     provisional: true
 notes: 'Replaces the adHighCpu case (1 Nov): adHighCpu had no observable effect in the 300 s re-probe
   and is excluded. Same fault as D-014, starting two minutes in (timing variant). Measured: ad error rate

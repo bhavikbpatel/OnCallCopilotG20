@@ -44,7 +44,7 @@ expected:
     within_s: 900
   severity:
     level: SEV-3
-    rule: null
+    rule: S3.1
     provisional: true
 notes: 'Memory grows per confirmation email. Measured 31 Oct: 66 -> 100 MB at 1000x; in one run it fell
   back to 53 MB after the flag went off without a restart, in the 300 s re-probe it stayed at 96 MB for

@@ -37,7 +37,7 @@ expected:
     within_s: 600
   severity:
     level: SEV-2
-    rule: null
+    rule: S2.1
     provisional: true
 notes: 'Database-level fault: the service is slow because the products table is locked.'
 needs_verification:

@@ -308,3 +308,11 @@ def test_missing_run_id_is_an_error():
 
 def test_state_log_without_outcome_is_empty():
     assert tool_calls_from_state(final_state(outcome=None)) == []
+
+
+def test_severity_rule_from_state_reaches_the_result_line():
+    line = adapt(final_state(severity="SEV-1", severity_rule="S1.1"))
+    assert line.severity.level == "SEV-1" and line.severity.rule == "S1.1"
+    triage = dict(final_state()["triage"], severity_rule="S2.1")
+    assert adapt(final_state(triage=triage)).severity.rule == "S2.1"
+    assert adapt(final_state()).severity.rule is None             # not recorded -> not cited

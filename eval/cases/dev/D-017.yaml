@@ -50,8 +50,8 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-2
-    rule: null
+    level: SEV-1
+    rule: S1.1
     provisional: true
 notes: 'Two unrelated faults: both need their own approved action.'
 needs_verification:
