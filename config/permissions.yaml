@@ -4,7 +4,7 @@ triage:      [telemetry.query_promql, telemetry.recent_changes]
 diagnosis:   [telemetry.query_promql, telemetry.search_logs, telemetry.get_traces, telemetry.recent_changes]
 runbook:     [runbooks_kb.search, runbooks_kb.get]
 # C1 baseline: one model-driven agent with the union of tools; the same hooks and approval gate still apply.
-single_agent: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*", memory.search_incidents]
+single_agent: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*"]
 
 # Person 3 (hooks): tools a role calls from CODE (the Mcp* clients), on top of the lists above.
 # McpToolbox.for_agent() never reads this key, so nothing here is handed to a model. The hooks allow
@@ -12,9 +12,10 @@ single_agent: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*", mem
 _code_driven:
   commander: []                                   # no tools of its own; it reads graph state
   triage: [tickets.create_incident, tickets.get_incident, tickets.append_timeline]
-  runbook: [memory.search_incidents]
   remediation: [ops_actions.dry_run, ops_actions.set_flag, ops_actions.restart_service,
                 ops_actions.scale_service, ops_actions.rollback, telemetry.query_promql]
-  comms: [tickets.get_incident, tickets.append_timeline, tickets.draft_status, memory.search_incidents,
+  comms: [tickets.get_incident, tickets.append_timeline, tickets.draft_status,
           tickets.save_postmortem, tickets.publish_status]
-  fixed_workflow: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*", memory.search_incidents]    # C0
+  fixed_workflow: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*"]    # C0
+# No memory.* tool is granted: there is no memory MCP server yet (long-term memory is called in-process by
+# the graph). When one exists, add its tools here and to the allow-list in the same PR.

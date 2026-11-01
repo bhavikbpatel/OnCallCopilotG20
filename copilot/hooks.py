@@ -108,6 +108,7 @@ class Hooks:
         self.tokens_used = 0
         self.usd_used = 0.0
         self.sink = sink                 # called with every log entry: Langfuse span, incident timeline, JSONL...
+        self.sink_errors = 0             # log entries the sink failed to take (a broken sink never stops the incident)
         self.log: List[Dict[str, Any]] = []
 
     def add_cost(self, tokens: int = 0, usd: float = 0.0) -> None:
@@ -207,8 +208,8 @@ class Hooks:
         if self.sink is not None:
             try:
                 self.sink(dict(entry))
-            except Exception:       # a broken log sink must never stop the incident
-                pass
+            except Exception:       # a broken log sink must never stop the incident, but it is counted
+                self.sink_errors += 1
 
     # ------------------------------------------------------------- export
 
@@ -222,7 +223,8 @@ class Hooks:
     def costs(self) -> Dict[str, Any]:
         """Token and dollar totals against their caps (None = not capped)."""
         return {"max_tokens": self.max_tokens, "max_usd": self.max_usd,
-                "tokens_used": self.tokens_used, "usd_used": round(self.usd_used, 6)}
+                "tokens_used": self.tokens_used, "usd_used": round(self.usd_used, 6),
+                "sink_errors": self.sink_errors}
 
     def write_jsonl(self, path: str) -> None:
         with open(path, "w") as fh:
