@@ -1,0 +1,29 @@
+# Pinned MCP servers and tool-description hashes (threat T3). Regenerate with:
+#   python -m mcp_servers.common.pinning --write
+# after a REVIEWED change to a tool's docstring. A server or tool not listed here is refused.
+servers:
+  ops_actions:
+    tools:
+      dry_run: 3594656e403317a0d12aca9381af341504a12b3e7e12d33da68a4f675ffd997a
+      restart_service: 38e8b10518494736a5b65edce24e133dd407d96a9de7a6c4b6e1a2f2cca3f2f1
+      rollback: 22617f08b9c64c67bad3c4f92439c5576708f99d4b5361d2700feb95e682df61
+      scale_service: 5b7df34798b6e5b6de8f291725dd40ec04694f17e0b1bbb82b9a94c788e0232f
+      set_flag: 260d5790fb87fc80fc1c547ae4cd060a29f680fae9575d869bb82c223a483c7a
+  runbooks_kb:
+    tools:
+      get: be8fef37d7192bde010b408bf4bdd9b8f57a2589382131723aae1ec1f05db83f
+      search: 5a1b0fe4521b9faac47af233955237f425fb90e27fadededef3c58900a934ec2
+  telemetry:
+    tools:
+      get_traces: f15208b01076af1fbe6644c705602f763b6e754171601f123d2630fc0b5c8553
+      query_promql: 1c23b23f23854b45d2aa5d9b1dd356b6b7793aa827ca724b3a1d4aa8253ad950
+      recent_changes: 4e60f391e17b6af662ae0b015868e178a2886da0a09a296137e4d7b9837fb83f
+      search_logs: 4fc6b82a026e87133847aff8d6392aef8478d1b5dd2a3bbfec3a07af8fc06928
+  tickets:
+    tools:
+      append_timeline: e843e8dc790ddc8dc4c775525dd97eb698cb01a9dc008a72266cec8a231720f2
+      create_incident: f2e59cc55436d86d0c3564e4e27267a49a26164be8608f2356a2a875b7cd6a11
+      draft_status: 56c24ea4d54c349c058cf1dc6c9dcf728ca7afe4d4ffa9bcec6441714c6afc14
+      get_incident: 5eada016981d78a41c8ed74a2d0e39aabd2d7a7ab8c63389a85eb626cfb10e37
+      publish_status: 0d8edd62919ae0b430c2084a080763ed58c227f8bcb005509679acfbf10ac722
+      save_postmortem: f37e1c7fb8b698f5f52fd0f5b56a26fa8d1aea45575698fe5b9f4010ef4daa45

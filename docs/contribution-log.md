@@ -25,6 +25,8 @@ their own rows only.
 | 1 Nov | Person 4 (Bhavik) | #18 | New `slow_requests` signal (requests over 1 s) for faults that slow only some requests; 5-minute-window finding for intlShippingSlowdown |
 | 1 Nov | Person 4 (Bhavik) | #19 | 42 held-out cases written (private, outside the repo); split checker that prints counts only; injector stops re-applying a flag once the agent's fix is approved |
 | 1 Nov | Person 4 (Bhavik) | #20 | intlShippingSlowdown excluded (no effect in three runs); dev case D-013 replaced |
+| 1 Nov | Person 4 (Bhavik) | this PR | Dev case severities aligned with Person 1's severity policy, with rule IDs; schema checks rule IDs against the policy |
+| 1 Nov | Person 3 (Asiya) | this PR | Tools and control: four MCP servers (`mcp_servers/`: telemetry, runbooks_kb, tickets, ops_actions), approval tokens with a durable single-use store, hooks and guardrails (`copilot/`), permission roles (`config/permissions.yaml`), threat model; laid out as in the System Design after Person 2's review |
 | 1 Nov | Person 4 (Bhavik) | #21 | Dev case severities aligned with Person 1's severity policy, with rule IDs; schema checks rule IDs against the policy |
 | 1 Nov | Person 4 (Bhavik) | #23 | Red team for E2: attack format, HTTP delivery, success / influence / false-block checks, runner support; 34 attacks written (private) |
 | 1 Nov | Person 4 (Bhavik) | #24 | Support Person 2's follow-up steps and code-driven calls (budget); public signals.clean; probe reports each vector, incl. JSON body |

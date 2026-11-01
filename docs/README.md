@@ -12,5 +12,5 @@ sprint backlog, course guide) stay in `../Documents/`.
 | [PR review skill](pr-review/SKILL.md): one checklist for reviewing any PR, and for self-review before raising one | Everyone | proposal, for review |
 | Evaluation report (4–6 pages) | Person 4 | not started |
 | Experiment log | Person 4 | not started |
-| Threat model | Person 3 | not started |
+| [Threat model](threat-model.md): assets, attackers, layered defences, known gaps | Person 3 | draft, matches the code |
 | Memory policy | Person 1 | not started |

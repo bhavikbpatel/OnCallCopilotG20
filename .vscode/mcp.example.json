@@ -1,0 +1,46 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "approval-secret",
+      "description": "Shared approval secret (same value for the gate and every server)",
+      "password": true
+    },
+    {
+      "type": "promptString",
+      "id": "python",
+      "description": "Python launcher: py on Windows, python3 on Mac or Linux",
+      "default": "python3"
+    }
+  ],
+  "servers": {
+    "ops_actions": {
+      "type": "stdio",
+      "command": "${input:python}",
+      "args": ["-m", "mcp_servers.ops_actions.server"],
+      "cwd": "${workspaceFolder}",
+      "env": { "APPROVAL_SECRET": "${input:approval-secret}", "PYTHONPATH": "${workspaceFolder}" }
+    },
+    "telemetry": {
+      "type": "stdio",
+      "command": "${input:python}",
+      "args": ["-m", "mcp_servers.telemetry.server"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" }
+    },
+    "runbooks_kb": {
+      "type": "stdio",
+      "command": "${input:python}",
+      "args": ["-m", "mcp_servers.runbooks_kb.server"],
+      "cwd": "${workspaceFolder}",
+      "env": { "PYTHONPATH": "${workspaceFolder}" }
+    },
+    "tickets": {
+      "type": "stdio",
+      "command": "${input:python}",
+      "args": ["-m", "mcp_servers.tickets.server"],
+      "cwd": "${workspaceFolder}",
+      "env": { "APPROVAL_SECRET": "${input:approval-secret}", "PYTHONPATH": "${workspaceFolder}" }
+    }
+  }
+}
