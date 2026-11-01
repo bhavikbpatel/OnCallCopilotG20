@@ -98,7 +98,13 @@ def _last_value(series: dict[str, Any]) -> float | None:
     if not values:
         return None
     last = values[-1]
-    return signals.clean(float(last[1] if isinstance(last, (list, tuple)) else last))   # NaN (0/0) → None
+    raw = last[1] if isinstance(last, (list, tuple)) else last
+    if raw is None:              # the telemetry server sends null for NaN / Inf (mcp_servers/README.md)
+        return None
+    try:
+        return signals.clean(float(raw))                                               # "NaN" (0/0) → None
+    except (TypeError, ValueError):                                                    # unreadable: no data, never 0
+        return None
 
 
 class McpTelemetry:
