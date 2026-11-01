@@ -154,6 +154,39 @@ def test_intermittent_writes_in_order():
     assert inj.stop().ok and at_rest(store)
 
 
+def test_released_flag_is_no_longer_toggled_by_the_plan():
+    # Intermittent 60 s on / 60 s off; the agent's fix (flag off) is approved at t=70.
+    store = InMemoryFlagStore(real_flags())
+    c = case(faults=[{"flag": "paymentFailure", "variant": "25%", "mode": "intermittent",
+                      "on_s": 60, "off_s": 60}])
+    holder = {}
+
+    def fix():
+        holder["inj"].release("paymentFailure", "off")
+        apply(store, {"paymentFailure": "off"})          # the agent executes its fix
+
+    ft = FakeTime(stop_at=250, hooks={70: fix})
+    inj = holder["inj"] = Injector(store, check_every_s=15, clock=ft.clock, waiter=ft.waiter)
+    inj.start(c, horizon_s=250, run_id="t", background=False)
+    # plan on at 0, plan off at 60, agent fix at 70; then the plan never switches it on again (120 s, 240 s)
+    assert [w["paymentFailure"] for w in store.writes] == ["25%", "off", "off"]
+    rec = inj.stop()
+    assert rec.ok and not rec.contaminated and rec.released[0]["flag"] == "paymentFailure"
+    assert at_rest(store)
+
+
+def test_release_resets_between_runs():
+    store = InMemoryFlagStore(real_flags())
+    inj = run_sync(store, case(), horizon=30)
+    inj.release("paymentFailure")
+    inj.stop()
+    ft = FakeTime(stop_at=30)
+    inj._clock, inj._wait = ft.clock, ft.waiter           # a fresh fake clock for the second run
+    rec = inj.start(case(), horizon_s=30, run_id="b", background=False)
+    assert rec.released == [] and rec.applied        # the new run applies the fault again
+    assert inj.stop().ok and at_rest(store)
+
+
 def test_two_faults_at_once_are_one_write():
     store = InMemoryFlagStore(real_flags())
     d = copy.deepcopy(PAYMENT_CASE)

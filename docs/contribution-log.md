@@ -23,3 +23,4 @@ their own rows only.
 | 1 Nov | Person 4 (Bhavik) | #16 | Evaluation runner with synthetic alerts, auto-approval, do-nothing agent, JSONL results and CI gate; this log |
 | 1 Nov | Person 4 (Bhavik) | #17 | 300 s re-probe decisions: adHighCpu excluded, traffic bar 2x, longer recovery windows for image and email cases, probe --window option, real re-probe data as test fixture |
 | 1 Nov | Person 4 (Bhavik) | this PR | New `slow_requests` signal (requests over 1 s) for faults that slow only some requests; 5-minute-window finding for intlShippingSlowdown |
+| 1 Nov | Person 4 (Bhavik) | this PR | 42 held-out cases written (private, outside the repo); split checker that prints counts only; injector stops re-applying a flag once the agent's fix is approved |
