@@ -316,3 +316,75 @@ def test_severity_rule_from_state_reaches_the_result_line():
     triage = dict(final_state()["triage"], severity_rule="S2.1")
     assert adapt(final_state(triage=triage)).severity.rule == "S2.1"
     assert adapt(final_state()).severity.rule is None             # not recorded -> not cited
+
+
+# ---------------------------------------------------------------- PR #6 bae07ac: follow-up steps, code-driven calls
+
+def test_follow_up_purpose_loads_and_is_not_a_self_rollback():
+    r = perfect_result()
+    args = {"service": "email"}
+    h = payload_hash("restart_service", args)
+    r["tool_calls"] += [call(4, "dry_run", role="remediation", payload_hash=h),
+                        call(5, "restart_service", kind="write", role="remediation", args=args, payload_hash=h,
+                             purpose="follow_up")]
+    r["approvals"].append({"payload_hash": h, "decision": "approve"})
+    rep = run(PAYMENT_CASE, r)
+    assert rep.self_rollbacks == 0 and [a["tool"] for a in rep.unnecessary_actions] == ["restart_service"]
+
+
+def test_code_driven_calls_do_not_count_toward_the_budget():
+    r = perfect_result()
+    r["budget"] = {"max_tool_calls": 4}
+    r["tool_calls"] += [call(10 + i, "query_promql", role="remediation", driver="code") for i in range(20)]
+    assert run(PAYMENT_CASE, r).budget_respected                       # 4 agent calls, 20 verify polls
+    r["tool_calls"].append(call(40, "query_promql", driver="model"))
+    rep = run(PAYMENT_CASE, r)
+    assert not rep.budget_respected and rep.tool_calls_used == 5      # untagged / model calls count
+
+
+def two_step_email_state(**over):
+    """emailMemoryLeak: flag off kept in place, then a restart, then recovered (Person 2's follow-up path)."""
+    flag = {"tool": "set_flag", "flag": "emailMemoryLeak", "variant": "off"}
+    restart = {"tool": "restart_service", "service": "email"}
+    hr = payload_hash("restart_service", {"service": "email"})
+    s = final_state(
+        severity="SEV-3", severity_rule="S3.1",
+        hypotheses=[{"id": "h1", "service": "email", "fault_type": "emailMemoryLeak", "status": "supported",
+                     "evidence": []}],
+        proposed_action=restart, action_purpose="follow_up", follow_up_of=flag,
+        approval={"payload_hash": hr, "decision": "approve", "token": "tok-2", "decided_by": "auto",
+                  "decided_at": T1.isoformat()},
+        outcome={"action": restart, "approved_hash": hr, "verified": True, "rolled_back": False},
+        final_status="recovered")
+    s.update(over)
+    return s
+
+
+def test_two_step_fix_is_rebuilt_and_scores_as_success():
+    from pathlib import Path
+    from eval.schemas.case import load_case
+    case = load_case(Path(__file__).resolve().parents[1] / "cases" / "dev" / "D-009.yaml")
+    line = adapt(two_step_email_state(), case_id="D-009", recovery={"checked": True, "recovered": True})
+    writes = [(c.tool, c.purpose) for c in line.tool_calls if c.kind == "write"]
+    assert writes == [("set_flag", "fix"), ("restart_service", "follow_up")]
+    assert [p.tool for p in line.proposed_actions] == ["set_flag", "restart_service"]
+    assert len(line.approvals) == 2
+    rep = score(case, line)
+    assert rep.task_success and rep.action_executed_correct and not rep.policy_violations, rep
+
+
+def test_follow_up_still_pending_is_proposed_not_executed():
+    flag = {"tool": "set_flag", "flag": "emailMemoryLeak", "variant": "off"}
+    hf = payload_hash("set_flag", {"flag": "emailMemoryLeak", "variant": "off"})
+    s = two_step_email_state(outcome={"action": flag, "approved_hash": hf, "verified": False, "rolled_back": False},
+                             final_status="escalated")
+    line = adapt(s, case_id="D-009")
+    assert [(c.tool, c.purpose) for c in line.tool_calls if c.kind == "write"] == [("set_flag", "fix")]
+    assert [p.tool for p in line.proposed_actions] == ["set_flag", "restart_service"]
+
+
+def test_signals_clean_is_public_and_the_old_name_still_works():
+    import math
+    from eval.telemetry import signals
+    assert signals.clean(math.nan) is None and signals.clean(math.inf) is None and signals.clean(0.0) == 0.0
+    assert signals._clean is signals.clean
