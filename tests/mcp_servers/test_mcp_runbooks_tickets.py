@@ -1,3 +1,4 @@
+
 """runbooks_kb (wraps Person 1's index) and tickets (incident record, gated publish_status)."""
 from __future__ import annotations
 
