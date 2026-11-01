@@ -74,9 +74,10 @@ See `../docs/eval-implementation-plan.md` for the design.
 cd OnCallCopilotG20
 python -m eval.probes discover --no-noise   # ~10 s, read-only
 python -m eval.probes discover              # ~4 min, adds the flag-write noise check
-python -m eval.probes faults --only control,paymentFailure   # ~13 min quick check
-python -m eval.probes faults                # ~90 min: control, 12 faults, flood
+python -m eval.probes faults --only control,paymentFailure   # ~18 min quick check (300 s hold)
+python -m eval.probes faults                # ~2 h: control, 12 faults, flood
 python -m eval.probes reanalyse eval/results/probes/faults-....json   # re-score with current rules
+python -m eval.probes faults --only control,intlShippingSlowdown --window 5m --recover 360   # other window
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).

@@ -96,53 +96,61 @@ of using fixed windows on the checkout path.
 - Correction (31 Oct): an earlier guess that flag changes reset flagd connections
   was wrong. The EventStream errors come from a fixed 10-minute timeout (section 1).
 
-## 6. What each fault actually does (full fault probe, 31 Oct)
+## 6. What each fault actually does (fault probes, 31 Oct)
 
-Method: `python -m eval.probes faults`. Each fault held 150 s at the intensity shown,
-then cleared and watched for 180 s; a control run (no fault) measured the same way.
-Scored with the calibrated rules (`eval/probes/faults.py`); the control run shows no
-movement on any service.
+Method: `python -m eval.probes faults`. Each fault held **300 s** at the intensity shown
+(evening re-probe; an earlier run used 150 s), then cleared and watched for 180 s; a control
+run (no fault) measured the same way. Scored with the calibrated rules
+(`eval/probes/faults.py`): an effect must show in **two distinct data points in a row**. The
+control run shows no movement on any service.
 
-| Fault (intensity) | Visible on root service | First seen | Recovers after flag off |
+| Fault (intensity) | Visible on root service (300 s) | First seen | Recovers after flag off |
 |---|---|---|---|
-| paymentFailure (50%) | payment error rate 0 -> 0.5-0.75; checkout errors too | ~90-120 s | yes, no restart |
-| cartFailure (50%) | not visible as a rate (only EmptyCart fails, ~2-3 calls/min); **visible as an error count**: cart 0 -> 2-4 errors per window (re-probe, 300 s hold) | ~95 s | yes |
-| productCatalogFailure | product-catalog error rate 0 -> 0.08 (one product only); checkout errors | ~95 s | yes |
-| recommendationCacheFailure | **no visible effect** (memory flat at 237 MB, CPU flat); the Java image appears not to implement it | - | - |
-| kafkaQueueProblems | weak at 150 s (lag 96 once); **visible with a 300 s hold**: fraud-detection lag 0 -> 110-344 | ~30-90 s | yes |
-| adHighCpu | ad p95 7.6 -> 105 ms in ONE data point, then back to ~41 ms while still on; ad p95 spikes 10x with no fault, so **not conclusive** (p50 re-probe pending) | - | - |
-| emailMemoryLeak (1000x) | email memory 66 -> 100 MB | ~95 s | **yes, without a restart** (fell to 53 MB) |
-| imageSlowLoad (5 s) | frontend-proxy p95 106 -> ~6,000 ms | ~90 s | yes |
+| paymentFailure (50%) | payment error rate 0 -> 1.0, errors 0 -> 4; checkout errors too | ~30 s | yes, no restart |
+| cartFailure (50%) | not visible as a rate (only EmptyCart fails, ~2-3 calls/min); **visible as an error count**: cart 0 -> 8 | ~125 s | yes |
+| productCatalogFailure | product-catalog error rate 0 -> 0.09 (one product only), errors 0 -> 58 | ~60 s | yes |
+| recommendationCacheFailure | **no visible effect** (memory flat at 237 MB, CPU flat); the Java image appears not to implement it. **Excluded** | - | - |
+| kafkaQueueProblems | fraud-detection consumer lag 0 -> 166 (110-344 in an earlier run); builds over minutes | ~150 s | yes |
+| adHighCpu | **no visible effect**: ad p95/p50 within their normal noise; CPU crept 5% -> 9.5% and did not fall after the flag went off. **Excluded** (1 Nov) | - | - |
+| emailMemoryLeak (1000x) | email memory 59 -> 96 MB | ~90 s | **not reliably**: stayed at 96 MB for 3 min (an earlier run fell back to 53 MB) |
+| imageSlowLoad (5 s) | frontend-proxy p95 59 -> 7,700 ms; image-provider traffic drops ~75% | ~60 s | **slowly**: still ~5.5x baseline 2.5 min after |
 | paymentUnreachable | checkout error rate 0 -> 1.0 (payment itself healthy) | ~60 s | yes |
-| productCatalogLockContention | product-catalog p95 50 -> 15,000 ms; its traffic drops ~80%; wide knock-on slowness | ~60 s | **slowly**: still ~2x after 3 min |
-| intlShippingSlowdown (5 s) | shipping p95 47 -> 7,750 ms (the load generator does send non-US addresses), one data point at 150 s: confirm at 300 s | ~180 s | yes |
-| adFailure | ad error rate 0 -> 0.18 | ~120 s | yes |
-| flood (load only) | frontend traffic 12 -> 34 req/s (2.8x) in one data point at 150 s; **latency did not rise**; confirm at 300 s | ~180 s | yes |
+| productCatalogLockContention | product-catalog p95 49 -> 15,000 ms, p50 9 -> 81 ms; wide knock-on slowness | ~120 s | yes (slowly in the 150 s run) |
+| intlShippingSlowdown (5 s) | **real but intermittent**: shipping p95 5,750 / 6,500 / 7,000 ms (control max 170 ms), each spike between normal readings at ~0.2 req/s, so never two in a row. A 5-minute window is being tested | - | - |
+| adFailure | ad error rate 0 -> 0.13 | ~60 s | yes |
+| flood (load only) | frontend traffic 13.9 -> 26-39 req/s (2.2-2.8x); **latency did not rise**. Caught once the traffic-rise bar is 2x (control runs stay within 1.3x of baseline) | ~90 s | yes |
 
 Measurement lessons (built into the probe and its tests):
 - Prometheus gets a new span-metric point about **once a minute**. An effect must show in at
   least **two different data points** to count; one point cannot be told apart from a one-off
-  spike (ad p95 jumped 10x twice in a control run). With a 150 s hold several faults produced only
-  one point, so the probe now holds each fault **300 s**.
-- Effects appear **90-180 s** after injection (2-minute window plus delivery delay) and
+  spike (ad p95 jumped 10x twice in a control run). The probe holds each fault **300 s**.
+- Effects appear **30-150 s** after injection (2-minute window plus delivery delay) and
   persist into the first minutes after clearing. Checks must allow for that lag.
 - p95 latency is noisy: frontend swings ~4x and ad ~6x with nothing wrong; with
   under ~0.1 req/s (checkout) it is meaningless. Real latency faults were 14x-300x.
-- Docker's CPU figure behaves like a slow running average (ad: 3% -> 7% during
-  adHighCpu and still 6.4% several minutes later), so it cannot show recovery.
-- Low-volume faults need an error **count**, not a rate (new `error_count` signal).
+- On services under ~1 req/s (shipping) a fault that hits only some requests shows as
+  isolated spikes in a 2-minute window.
+- Docker's CPU figure behaves like a slow running average, so it shows neither a fault's
+  start clearly nor its recovery.
+- Low-volume faults need an error **count**, not a rate (`error_count` signal).
+- Traffic: a rise counts at **2x** (was 2.5x; the flood gave 2.2-2.8x, control runs stayed
+  within 1.3x of their baseline and 1.9x peak-to-trough).
 
-Consequences for the golden set (to agree with the team):
-- recommendationCacheFailure cannot be diagnosed from telemetry in this shop version.
-- kafkaQueueProblems is usable with enough time: lag builds over minutes.
-- adHighCpu is undecided: ad latency is noisy; a median (p50) signal is being tested.
-- The flood alone does not raise latency, so noise cases need an alert that a
-  traffic spike actually trips.
-- emailMemoryLeak: a restart is acceptable, not required.
+Decisions taken from this (1 Nov, Person 4 with Bhavik):
+- recommendationCacheFailure and **adHighCpu are excluded** from the golden set
+  (`catalogue.EXCLUDED_FAULT_TYPES`, with the evidence). Dev case D-008 is now adFailure with a
+  late start; D-018 pairs cartFailure with kafkaQueueProblems instead of adHighCpu.
+- Traffic-rise bar lowered to 2x in the probe; the runner's synthetic alerts use the same rule,
+  so the noise cases' FrontendTrafficHigh alert fires on the flood.
+- imageSlowLoad cases get 600 s to recover; emailMemoryLeak cases get 900 s, and "flag off plus
+  restart email" is a correct option next to "flag off" alone.
+- intlShippingSlowdown: re-probe with a 5-minute window (`--window 5m`) before deciding.
 
 ## Open items
 
 1. Person 5: agree (or not) the recommendation telemetry fix in section 4.
 2. Person 1: runbook note on background flag-lookup noise.
-3. Person 4: dev cases updated from section 6 (done 31 Oct); re-run cartFailure and kafkaQueueProblems with the error-count signal and a longer hold.
-4. Team: decide what replaces recommendationCacheFailure (and possibly kafkaQueueProblems) in the golden set.
+3. Person 4: intlShippingSlowdown re-probe with a 5-minute window; then decide its signal (or exclude it).
+4. Team: confirm the two exclusions (recommendationCacheFailure, adHighCpu). Person 2's FaultType
+   enum and flag allow-list still include them, which is fine: the agent may hypothesise them,
+   cases just never inject them.

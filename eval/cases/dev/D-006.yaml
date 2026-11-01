@@ -37,7 +37,7 @@ expected:
     signal: latency_p95_ms
     service: frontend-proxy
     baseline_factor: 3
-    within_s: 300
+    within_s: 600
   severity:
     level: SEV-2
     rule: null

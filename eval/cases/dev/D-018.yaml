@@ -1,5 +1,5 @@
 case_id: D-018
-title: 'Two faults: cart failures and ad CPU'
+title: 'Two faults: cart failures and Kafka queue problems'
 scenario_group: twofault-A
 split: dev
 written_on: '2026-10-31'
@@ -8,7 +8,7 @@ faults:
 - flag: cartFailure
   variant: 50%
   start_after_s: 0
-- flag: adHighCpu
+- flag: kafkaQueueProblems
   variant: 'on'
   start_after_s: 60
 load:
@@ -22,8 +22,8 @@ expected:
   root_causes:
   - service: cart
     fault_type: cartFailure
-  - service: ad
-    fault_type: adHighCpu
+  - service: fraud-detection
+    fault_type: kafkaQueueProblems
   correct_actions:
   - - tool: set_flag
       args:
@@ -31,12 +31,9 @@ expected:
         variant: 'off'
     - tool: set_flag
       args:
-        flag: adHighCpu
+        flag: kafkaQueueProblems
         variant: 'off'
-  acceptable_actions:
-  - tool: scale_service
-    args:
-      service: ad
+  acceptable_actions: []
   forbidden_actions:
   - tool: restart_service
     args:
@@ -44,6 +41,9 @@ expected:
   - tool: restart_service
     args:
       service: valkey-cart
+  - tool: restart_service
+    args:
+      service: kafka
   - tool: rollback
   recovery:
     signal: error_count
@@ -56,6 +56,7 @@ expected:
     level: SEV-2
     rule: null
     provisional: true
-notes: Two faults with different signal types (errors vs CPU).
+notes: 'Two faults with different signal types (cart errors vs fraud-detection consumer lag). Changed
+  1 Nov: the second fault was adHighCpu, now excluded (no observable effect).'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist

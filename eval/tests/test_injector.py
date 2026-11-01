@@ -157,8 +157,8 @@ def test_intermittent_writes_in_order():
 def test_two_faults_at_once_are_one_write():
     store = InMemoryFlagStore(real_flags())
     d = copy.deepcopy(PAYMENT_CASE)
-    d["faults"] = [{"flag": "paymentFailure", "variant": "50%"}, {"flag": "adHighCpu", "variant": "on"}]
-    d["expected"]["root_causes"].append({"service": "ad", "fault_type": "adHighCpu"})
+    d["faults"] = [{"flag": "paymentFailure", "variant": "50%"}, {"flag": "adFailure", "variant": "on"}]
+    d["expected"]["root_causes"].append({"service": "ad", "fault_type": "adFailure"})
     c = Case.model_validate(d)
     run_sync(store, c, horizon=30).stop()
     assert len(store.writes) == 2  # one apply, one clear

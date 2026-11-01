@@ -61,6 +61,11 @@ EXCLUDED_FAULT_TYPES: dict[str, str] = {
         "no observable effect in the published 3.1.0 image (Java build; memory flat at 237 MB, "
         "CPU flat during a 150 s injection, full probe 31 Oct 2026); cannot be diagnosed from telemetry"
     ),
+    "adHighCpu": (
+        "no observable effect at normal load (300 s re-probe, 31 Oct 2026): ad p95/p50 latency stayed within "
+        "their normal noise, and container CPU only crept 5% -> 9.5% and did not fall after the flag went off "
+        "(Docker's CPU figure is a slow running average), so neither diagnosis nor recovery can be judged"
+    ),
 }
 GOLDEN_FAULT_TYPES = frozenset(set(FAULT_TYPES) - set(EXCLUDED_FAULT_TYPES))
 
