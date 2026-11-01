@@ -14,6 +14,7 @@ reviewed_on: 2026-10-31
 Errors alternate with healthy periods; one short query can miss the failure or mistake normal variance for recovery.
 ## Checks
 Use aligned time windows for error rate, traces and flag-change history. Compare each failing window with a healthy window; identify the exact service and flag rather than reusing the example payment flag.
+In this environment, flagd also reports unknown flag lookups and about 35% failing requests as background noise. Do not treat those flagd signals alone as a root cause; require matching user-path/service telemetry and traces.
 ## Preconditions
 Require repeated correlated failure windows and an identified service, flag and fault family. This generic runbook intentionally has no fixed action: retrieve the matching service-specific runbook and validate its preconditions before proposing any write.
 ## Action

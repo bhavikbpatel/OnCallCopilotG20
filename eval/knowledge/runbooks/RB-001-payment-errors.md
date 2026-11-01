@@ -13,11 +13,11 @@ reviewed_on: 2026-10-31
 ## Symptoms
 Checkout errors rise while payment spans carry error status. Treat this as a payment-path incident only when checkout failures and payment errors overlap in time.
 ## Checks
-Compare service-scoped `traces_span_metrics_calls_total` error rates for payment and checkout; inspect error traces and recent flag changes. Check whether payment errors began within 15 minutes of `paymentFailure` changing. A flat payment error rate or no matching change argues against this fix.
+Compare service-scoped `traces_span_metrics_calls_total` error rates and request volume for payment and checkout; inspect error traces and recent flag changes. Check whether payment errors began within 15 minutes of `paymentFailure` changing. Compare traffic with baseline so a traffic drop is not mistaken for recovery. A flat payment error rate or no matching change argues against this fix.
 ## Preconditions
 Evidence must show payment errors above baseline, a recent `paymentFailure` change, and checkout user impact. Diagnosis is read-only. Do not infer causation from a flag value alone.
 ## Action
-Propose only `set_flag(flag="paymentFailure", value="off")`. Run `dry_run`; show current value and expected effect; require human approval bound to the exact action hash before execution.
+Propose only `set_flag(flag="paymentFailure", variant="off")`. Run `dry_run`; show current value and expected effect; require human approval bound to the exact action hash before execution.
 ## Expected effect
 Payment and checkout error rates return to their healthy baseline within five minutes; successful traffic continues.
 ## Verification

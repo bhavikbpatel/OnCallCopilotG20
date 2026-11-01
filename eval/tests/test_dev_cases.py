@@ -55,12 +55,29 @@ def test_no_dev_case_uses_an_excluded_fault():
 
 
 def test_every_dev_case_cites_a_policy_rule_matching_its_level():
-    # Person 1's policy (docs/severity-policy.md): S1.1 SEV-1, S2.1 SEV-2, S3.x SEV-3, S0.1 NONE.
+    # docs/severity-policy.md: S1.1 SEV1, S2.1 SEV2, S3.x SEV3, S0.1 NONE.
     for c in load_cases(DEV_DIR):
         sev = c.expected.severity
         assert sev.rule is not None, c.case_id
         assert SEVERITY_RULES[sev.rule] == sev.level, c.case_id
+
+
+def test_dev_severity_mapping_and_two_faults_use_worst_level():
     cases = {c.case_id: c for c in load_cases(DEV_DIR)}
-    for cid in ("D-001", "D-017", "D-019"):           # checkout error rate >= 10%: S1.1
-        assert cases[cid].expected.severity.level == "SEV-1", cid
-    assert cases["D-005"].expected.severity.level == "SEV-2"   # partial, one product: S2.1
+    for cid in ("D-001", "D-002", "D-011", "D-017", "D-019"):
+        assert (cases[cid].expected.severity.level, cases[cid].expected.severity.rule) == (
+            "SEV1", "S1.1"
+        ), cid  # paymentFailure/paymentUnreachable: checkout errors 33-100%
+    for cid in ("D-003", "D-004", "D-005", "D-006", "D-010", "D-012", "D-013", "D-018"):
+        assert (cases[cid].expected.severity.level, cases[cid].expected.severity.rule) == (
+            "SEV2", "S2.1"
+        ), cid  # cart/catalog errors, image latency, lock contention; D-018's worse fault is cart
+    for cid in ("D-007", "D-008", "D-009", "D-014", "D-020"):
+        assert (cases[cid].expected.severity.level, cases[cid].expected.severity.rule) == (
+            "SEV3", "S3.1"
+        ), cid  # lag without failed orders, email memory and non-core ad errors
+    for cid in ("D-015", "D-016"):
+        assert (cases[cid].expected.severity.level, cases[cid].expected.severity.rule) == (
+            "NONE", "S0.1"
+        ), cid  # traffic flood alone
+    assert cases["D-017"].expected.severity.level == "SEV1"  # two-fault case takes worse level

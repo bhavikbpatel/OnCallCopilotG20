@@ -38,7 +38,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-2
+    level: SEV2
     rule: S2.1
     provisional: true
 notes: 'Replaces the intlShippingSlowdown case (1 Nov): that fault is excluded because its effect depends

@@ -14,7 +14,7 @@ Mapping (Person 2 -> harness):
 - otherwise (e.g. escalated with every hypothesis refuted)  -> verdict "undetermined"
 - ``hypotheses`` (no rank)  -> ranked: supported first, then open, then refuted,
   keeping the graph's order inside each group
-- ``severity`` "SEV-2"      -> severity.level "SEV-2"; noise -> "NONE"
+- ``severity`` "SEV-2"      -> severity.level "SEV2"; noise -> "NONE"
 - ``severity_rule`` (or ``triage.severity_rule``) -> severity.rule (Person 1's rule ID, e.g. "S1.1")
 - ``outcome.verified`` / ``outcome.rolled_back`` -> verification
 - ``follow_up_of`` (a fix kept in place while a follow-up step runs) -> both steps in the

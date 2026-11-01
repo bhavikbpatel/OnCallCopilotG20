@@ -43,7 +43,7 @@ expected:
     baseline_factor: 1.3
     within_s: 900
   severity:
-    level: SEV-3
+    level: SEV3
     rule: S3.1
     provisional: true
 notes: 'Memory grows per confirmation email. Measured 31 Oct: 66 -> 100 MB at 1000x; in one run it fell

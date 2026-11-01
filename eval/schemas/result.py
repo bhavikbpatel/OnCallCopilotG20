@@ -54,7 +54,7 @@ class Hypothesis(_Open):
 
 
 class SeverityResult(_Open):
-    level: Literal["SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"]
+    level: Literal["SEV1", "SEV2", "SEV3", "SEV4", "NONE"]
     rule: Optional[str] = None
 
     @field_validator("level", mode="before")

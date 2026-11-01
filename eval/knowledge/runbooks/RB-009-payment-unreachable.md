@@ -17,7 +17,7 @@ Inspect checkout client spans for connect/refused/timeout errors and payment ser
 ## Preconditions
 Evidence must localize failure to checkout's dependency call and show the flag change. A healthy payment service alone does not prove a specific cause.
 ## Action
-If the matching flag is active, propose `set_flag(flag="paymentUnreachable", value="off")`; dry-run, approve the exact hash, then execute. Otherwise do not use RB-001's payment-error advice.
+If the matching flag is active, propose `set_flag(flag="paymentUnreachable", variant="off")`; dry-run, approve the exact hash, then execute. Otherwise do not use RB-001's payment-error advice.
 ## Expected effect
 Checkout-to-payment calls connect and checkout errors return to baseline.
 ## Verification

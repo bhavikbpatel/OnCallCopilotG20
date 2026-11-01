@@ -117,19 +117,20 @@ def test_patterns_may_leave_arguments_open():
     Case.model_validate(d)
 
 
-@pytest.mark.parametrize("given,want", [("SEV2", "SEV-2"), ("sev-1", "SEV-1"), ("SEV-4", "SEV-4"),
+@pytest.mark.parametrize("given,want", [("SEV2", "SEV2"), ("sev-1", "SEV1"), ("SEV-4", "SEV4"),
                                         ("none", "NONE"), ("P1", "P1")])
 def test_severity_labels_normalise_to_person2(given, want):
     assert normalize_severity(given) == want
 
 
-def test_old_severity_label_still_loads_as_new():
+@pytest.mark.parametrize("given", ["SEV2", "sev-2", "SEV-2"])
+def test_case_and_result_severity_inputs_normalize_to_canonical(given):
     d = copy.deepcopy(PAYMENT_CASE)
-    d["expected"]["severity"]["level"] = "SEV2"
-    assert Case.model_validate(d).expected.severity.level == "SEV-2"
+    d["expected"]["severity"]["level"] = given
+    assert Case.model_validate(d).expected.severity.level == "SEV2"
     r = perfect_result()
-    r["severity"] = {"level": "SEV1"}
-    assert ResultLine.model_validate(r).severity.level == "SEV-1"
+    r["severity"] = {"level": given}
+    assert ResultLine.model_validate(r).severity.level == "SEV2"
 
 
 # ---------------------------------------------------------------- checker: approvals and rollback by purpose
@@ -231,7 +232,7 @@ def test_hypotheses_ranked_supported_open_refuted():
 def test_recovered_incident_maps_and_scores_as_success():
     line = adapt(final_state(), recovery={"checked": True, "recovered": True, "value": 0.0})
     assert line.run_id == "run-42" and line.verdict == "incident" and line.final_status == "recovered"
-    assert line.severity.level == "SEV-2" and line.replans == 1
+    assert line.severity.level == "SEV2" and line.replans == 1
     assert line.verification.agent_claims_recovered is True and not line.verification.rolled_back
     assert line.lessons_used == ["L-1"] and line.lessons_rejected == ["L-2", "L-3"]
     assert line.budget.max_tool_calls == 20 and line.cost.tokens_total == 2000
@@ -297,7 +298,7 @@ def test_adapter_reads_pydantic_objects_as_well_as_dicts():
     s = final_state(severity=Sev.SEV2, hypotheses=[Hyp(id="h2", service="payment", fault_type="paymentFailure",
                                                      status="supported")])
     line = adapt(s)
-    assert line.severity.level == "SEV-2" and line.hypotheses[0].service == "payment"
+    assert line.severity.level == "SEV2" and line.hypotheses[0].service == "payment"
     assert to_plain(T0) == T0.isoformat()
 
 
@@ -312,7 +313,7 @@ def test_state_log_without_outcome_is_empty():
 
 def test_severity_rule_from_state_reaches_the_result_line():
     line = adapt(final_state(severity="SEV-1", severity_rule="S1.1"))
-    assert line.severity.level == "SEV-1" and line.severity.rule == "S1.1"
+    assert line.severity.level == "SEV1" and line.severity.rule == "S1.1"
     triage = dict(final_state()["triage"], severity_rule="S2.1")
     assert adapt(final_state(triage=triage)).severity.rule == "S2.1"
     assert adapt(final_state()).severity.rule is None             # not recorded -> not cited

@@ -151,4 +151,4 @@ def test_severity_rule_must_be_from_the_policy_and_match_the_level():
     bad(lambda d: d["expected"]["severity"].update(level="SEV-2", rule="S1.1"))
     d = copy.deepcopy(PAYMENT_CASE)
     d["expected"]["severity"] = {"level": "SEV1", "rule": "S1.1"}     # Person 1's label form is accepted
-    assert Case.model_validate(d).expected.severity.level == "SEV-1"
+    assert Case.model_validate(d).expected.severity.level == "SEV1"
