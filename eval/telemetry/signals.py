@@ -127,8 +127,12 @@ def supported(signal: str, service: str) -> bool:
     return signal in SIGNALS
 
 
-def _clean(x: float) -> Optional[float]:
+def clean(x: float) -> Optional[float]:
+    """A Prometheus value as a number, or None for NaN / Inf (0/0 with no traffic). No data is never 0."""
     return None if (x is None or math.isnan(x) or math.isinf(x)) else x
+
+
+_clean = clean  # kept for callers that used the private name (Person 2's copilot/tools.py)
 
 
 def measure(prom: PromClient, signal: str, service: str, window: str = "2m",

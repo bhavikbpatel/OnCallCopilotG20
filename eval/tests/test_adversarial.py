@@ -79,7 +79,7 @@ def test_base64_encoding_and_non_http_vectors():
 class FakeShop:
     """Captures requests; also serves a Jaeger-like /jaeger/ui/api/traces for the probe."""
 
-    def __init__(self, jaeger_hit: bool = True):
+    def __init__(self, jaeger_hit=True):       # True: every marker is traced; a suffix: only that vector; False: none
         self.requests: list[dict] = []
         self.markers: list[str] = []
         fake = self
@@ -99,15 +99,17 @@ class FakeShop:
                 fake.requests.append({"method": self.command, "path": unquote(u.path),
                                       "query": {k: v[0] for k, v in parse_qs(u.query).items()},
                                       "headers": dict(self.headers), "body": body})
-                for v in [self.headers.get("User-Agent", ""), unquote(u.path), *[x[0] for x in parse_qs(u.query).values()]]:
+                body_values = [str(v) for v in (body or {}).values()]
+                for v in [self.headers.get("User-Agent", ""), unquote(u.path), *[x[0] for x in parse_qs(u.query).values()],
+                          *body_values]:
                     if "evalprobe" in v:
                         fake.markers.append(v.split("/")[-1])
 
             def do_GET(self):
                 if self.path.startswith("/jaeger/ui/api/traces"):
-                    spans = ([{"operationName": "ingress", "tags": [{"key": "user_agent.original",
-                                                                    "value": fake.markers[0]}]}]
-                             if (jaeger_hit and fake.markers) else [])
+                    hits = fake.markers if jaeger_hit is True else [m for m in fake.markers
+                                                                     if jaeger_hit and m.endswith(jaeger_hit)]
+                    spans = [{"operationName": "ingress", "tags": [{"key": "attr", "value": m} for m in hits]}]
                     return self._reply(200, json.dumps({"data": [{"spans": spans}]}).encode())
                 self._record()
                 return self._reply(404 if "/api/products/" in self.path else 200)
@@ -171,7 +173,23 @@ def test_sender_keeps_sending_until_stopped(shop):
 def test_probe_finds_marker_in_traces(shop, capsys):
     assert probe(shop.url, shop.url + "/jaeger/ui", wait_s=1, every_s=0.1, sleep=lambda s: None) == 0
     out = capsys.readouterr().out
-    assert "marker found" in out and "user_agent.original" in out
+    for v in ("http_header", "http_query", "http_path", "http_body"):
+        assert f"{v:12} REACHES the traces" in out
+    assert "sent http_body: 500" in out                       # body probe sent, shaped like the body attacks
+    body = [r for r in shop.requests if r["method"] == "POST"][0]
+    assert body["path"] == "/api/cart" and list(body["body"]) == ["userId"] and body["body"]["userId"].startswith("evalprobe")
+
+
+def test_probe_names_the_vector_that_does_not_reach_the_traces(capsys):
+    s = FakeShop(jaeger_hit="hdr")                            # only the header marker is traced
+    try:
+        t = iter(range(1000))
+        assert probe(s.url, s.url + "/jaeger/ui", wait_s=2, every_s=1, sleep=lambda x: None,
+                     clock=lambda: next(t)) == 1
+    finally:
+        s.close()
+    out = capsys.readouterr().out
+    assert "http_header  REACHES" in out and "http_body    NOT FOUND" in out and "http_query   NOT FOUND" in out
 
 
 def test_probe_reports_when_marker_never_appears(capsys):
@@ -182,7 +200,7 @@ def test_probe_reports_when_marker_never_appears(capsys):
                      clock=lambda: next(t)) == 1
     finally:
         s.close()
-    assert "not found" in capsys.readouterr().out
+    assert "NOT FOUND" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------- scoring

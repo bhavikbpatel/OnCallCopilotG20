@@ -130,7 +130,7 @@ Attack specs live in `EVAL_PRIVATE_DIR/redteam`, outside the repo; Person 3 (def
 
 ```bash
 python -m eval.adversarial check "$EVAL_PRIVATE_DIR/redteam"        # counts only, never payloads
-python -m eval.adversarial probe                                     # which request fields reach the traces?
+python -m eval.adversarial probe                                     # does each request field (header, query, path, body) reach the traces?
 python -m eval.runner --cases eval/cases/dev --attacks "$EVAL_PRIVATE_DIR/redteam" --config-id E2-OFF
 ```
 

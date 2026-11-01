@@ -7,7 +7,7 @@
 many the harness can deliver today, and that every base case exists. The output is safe to
 share: no payloads, titles or IDs.
 
-``probe`` sends a few harmless marker requests to the shop (User-Agent, query string, path) and
+``probe`` sends a few harmless marker requests to the shop (User-Agent, query string, path, JSON body) and
 then searches Jaeger's recent traces for the marker, to show which HTTP vectors actually land
 in what the agent reads. Read-only for the shop apart from those requests.
 """
@@ -33,7 +33,7 @@ from .deliver import DEFAULT_SHOP_URL
 DEV = Path(__file__).resolve().parents[1] / "cases" / "dev"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIN_ATTACKS = 30
-PROBE_SERVICES = ("frontend-proxy", "frontend", "product-catalog")
+PROBE_SERVICES = ("frontend-proxy", "frontend", "product-catalog", "cart")
 
 
 def check(folder: Path, dev: Path = DEV) -> int:
@@ -74,11 +74,22 @@ def _get_json(url: str, timeout: float = 10.0):
 
 def probe(shop_url: str, jaeger_url: str, *, wait_s: float = 90.0, every_s: float = 15.0,
           sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic) -> int:
-    marker = f"evalprobe{uuid.uuid4().hex[:12]}"
+    """Send one marker per vector; report, per vector, where it shows up in Jaeger (or that it does not).
+
+    Exit 0 if every vector reached the traces, 1 if any did not, 2 if the shop or Jaeger is unreachable.
+    """
+    base = f"evalprobe{uuid.uuid4().hex[:10]}"
+    marks = {v: f"{base}{tag}" for v, tag in
+             (("http_header", "hdr"), ("http_query", "qry"), ("http_path", "pth"), ("http_body", "bdy"))}
     sends = {
-        "http_header (User-Agent)": urllib.request.Request(shop_url + "/", headers={"User-Agent": marker}),
-        "http_query": urllib.request.Request(shop_url + "/api/products?" + urllib.parse.urlencode({"q": marker})),
-        "http_path": urllib.request.Request(shop_url + "/api/products/" + marker),
+        "http_header": urllib.request.Request(shop_url + "/", headers={"User-Agent": marks["http_header"]}),
+        "http_query": urllib.request.Request(
+            shop_url + "/api/products?" + urllib.parse.urlencode({"q": marks["http_query"]})),
+        "http_path": urllib.request.Request(shop_url + "/api/products/" + marks["http_path"]),
+        # Same shape as the body attacks' delivery (POST /api/cart, JSON field userId).
+        "http_body": urllib.request.Request(shop_url + "/api/cart", method="POST",
+                                            data=json.dumps({"userId": marks["http_body"]}).encode(),
+                                            headers={"Content-Type": "application/json"}),
     }
     for name, req in sends.items():
         try:
@@ -91,7 +102,7 @@ def probe(shop_url: str, jaeger_url: str, *, wait_s: float = 90.0, every_s: floa
             print(f"cannot reach the shop at {shop_url}: {e}", file=sys.stderr)
             return 2
     deadline = clock() + wait_s
-    found: dict[str, list[str]] = {}
+    found: dict[str, list[str]] = {v: [] for v in marks}
     while True:
         for svc in PROBE_SERVICES:
             q = urllib.parse.urlencode({"service": svc, "lookback": "15m", "limit": 200})
@@ -103,22 +114,23 @@ def probe(shop_url: str, jaeger_url: str, *, wait_s: float = 90.0, every_s: floa
             for trace in data.get("data") or []:
                 for span in trace.get("spans") or []:
                     for tag in span.get("tags") or []:
-                        if marker in str(tag.get("value")):
-                            found.setdefault(svc, [])
-                            key = f"{span.get('operationName')}: {tag.get('key')}"
-                            if key not in found[svc]:
-                                found[svc].append(key)
-        if found or clock() >= deadline:
+                        value = str(tag.get("value"))
+                        for vector, mark in marks.items():
+                            key = f"{svc}: {span.get('operationName')}: {tag.get('key')}"
+                            if mark in value and key not in found[vector]:
+                                found[vector].append(key)
+        if all(found.values()) or clock() >= deadline:
             break
         sleep(every_s)
-    if not found:
-        print(f"marker not found in Jaeger traces of {list(PROBE_SERVICES)} within {wait_s:.0f} s")
-        return 1
-    print("marker found in traces (service -> span: tag):")
-    for svc, keys in found.items():
-        for k in keys:
-            print(f"  {svc:16} {k}")
-    return 0
+    print(f"\nper vector (searched {list(PROBE_SERVICES)} for {wait_s:.0f} s):")
+    for vector, keys in found.items():
+        if keys:
+            print(f"  {vector:12} REACHES the traces:")
+            for k in keys:
+                print(f"      {k}")
+        else:
+            print(f"  {vector:12} NOT FOUND: attacks on this vector may not reach the agent")
+    return 0 if all(found.values()) else 1
 
 
 def main(argv: Optional[list[str]] = None) -> int:

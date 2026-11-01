@@ -17,6 +17,8 @@ Mapping (Person 2 -> harness):
 - ``severity`` "SEV-2"      -> severity.level "SEV-2"; noise -> "NONE"
 - ``severity_rule`` (or ``triage.severity_rule``) -> severity.rule (Person 1's rule ID, e.g. "S1.1")
 - ``outcome.verified`` / ``outcome.rolled_back`` -> verification
+- ``follow_up_of`` (a fix kept in place while a follow-up step runs) -> both steps in the
+  proposed actions, the rebuilt log and the implied approvals
 - ``limits.tool_calls``     -> budget.max_tool_calls
 - ``budget`` ledger          -> cost.tokens_total / cost.usd
 - ``memory_context`` lessons -> lessons_used / lessons_rejected
@@ -89,13 +91,28 @@ def _verdict(state: Mapping[str, Any], hypotheses: list[dict], actions: list[dic
     return "undetermined"
 
 
+def _first_fix(state: Mapping[str, Any]) -> Optional[dict]:
+    """The fix kept in place while a follow-up step runs (Person 2's ``follow_up_of``), if any.
+
+    Only meaningful while the follow-up is the latest action: after a rollback the graph clears
+    ``follow_up_of``, and the first fix can no longer be recovered from the state alone.
+    """
+    first = state.get("follow_up_of")
+    outcome = state.get("outcome")
+    if first and outcome and outcome.get("action") != first:
+        return first
+    return None
+
+
 def _actions(state: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """Fix actions the graph proposed or executed (rollbacks are not proposals)."""
+    """Fix and follow-up actions the graph proposed or executed (rollbacks are not proposals)."""
     seen, out = set(), []
     candidates = []
+    if _first_fix(state):
+        candidates.append(_first_fix(state))
     if state.get("outcome"):
         candidates.append(state["outcome"]["action"])
-    if state.get("proposed_action") and state.get("action_purpose", "fix") == "fix":
+    if state.get("proposed_action") and state.get("action_purpose", "fix") in ("fix", "follow_up"):
         candidates.append(state["proposed_action"])
     for action in candidates:
         tool, args = split_action(action)
@@ -122,6 +139,12 @@ def _approvals_from_state(state: Mapping[str, Any]) -> list[dict[str, Any]]:
     if outcome and outcome.get("approved_hash") and all(x["payload_hash"] != outcome["approved_hash"] for x in out):
         out.insert(0, {"payload_hash": outcome["approved_hash"], "decision": "approve",
                        "decided_by": "implied-by-outcome", "has_token": None})
+    first = _first_fix(state)
+    if first:                                       # the first step of a two-step fix was approved too
+        h = payload_hash(*split_action(first))
+        if all(x["payload_hash"] != h for x in out):
+            out.insert(0, {"payload_hash": h, "decision": "approve", "decided_by": "implied-by-outcome",
+                           "has_token": None})
     return out
 
 
@@ -144,10 +167,15 @@ def tool_calls_from_state(state: Mapping[str, Any]) -> list[dict[str, Any]]:
         })
 
     outcome = state.get("outcome")
+    first = _first_fix(state)
+    if first:                                       # two-step fix: first step, then the follow-up
+        ftool, fargs = split_action(first)
+        add("dry_run", {"tool": ftool, **fargs}, kind="read")
+        add(ftool, fargs, kind="write", purpose="fix")
     if outcome:
         tool, args = split_action(outcome["action"])
         add("dry_run", {"tool": tool, **args}, kind="read")
-        add(tool, args, kind="write", purpose="fix")
+        add(tool, args, kind="write", purpose="follow_up" if first else "fix")
         undo = state.get("proposed_action")
         if outcome.get("rolled_back") and undo and state.get("action_purpose") == "rollback":
             utool, uargs = split_action(undo)       # rollback -> dry_run -> approval -> execute
