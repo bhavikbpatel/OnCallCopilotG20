@@ -335,3 +335,42 @@ Evidence.
     (tmp_path / "unsafe.md").write_text(source, encoding="utf-8")
     with pytest.raises(ValueError, match="typed action"):
         load_passages(tmp_path)
+
+
+# ---- live-shop integration run, 1 Nov: the runbook step escalated every incident ----
+# Person 2's runbook agent filters by the alert's metric ID (symptom="error_rate"); the corpus lists symptoms in
+# words ("error rate"). The filter matched nothing and search crashed on min() of an empty list.
+
+@pytest.mark.parametrize("symptom,service", [
+    ("error_rate", "checkout"), ("error_rate", "payment"), ("error_rate", None),
+    ("memory_mb", "email"), ("latency_p95_ms", "checkout"), ("consumer_lag", None),
+])
+def test_metric_id_symptoms_match_plain_word_symptoms(symptom, service):
+    index = KnowledgeIndex(load_passages(ROOT))
+    found = index.search("incident on the alerting service", service=service, symptom=symptom, k=5)
+    assert found, (symptom, service)
+    words = [w for w in symptom.split("_") if w not in KnowledgeIndex._UNIT_WORDS]
+    assert all(any(all(w in s.lower() for w in words) for s in p.symptoms) for p in found)
+
+
+def test_plain_word_symptoms_behave_as_before():
+    index = KnowledgeIndex(load_passages(ROOT))
+    assert index._filter(None, "error rate") <= index._filter(None, "error_rate")
+    assert KnowledgeIndex._symptom_matches("Kafka consumer lag", "Kafka consumer lag")
+    assert KnowledgeIndex._symptom_matches("error_rate", "checkout error rate above 5%")
+    assert not KnowledgeIndex._symptom_matches("error_rate", "terror ratings")        # word starts, not substrings
+    assert not KnowledgeIndex._symptom_matches("mb", "memory growth")                  # units alone match nothing
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "bm25"])
+def test_no_matching_passage_returns_nothing_instead_of_crashing(mode):
+    index = KnowledgeIndex(load_passages(ROOT))
+    assert index.search("anything", service="checkout", symptom="no_such_symptom", mode=mode) == []
+
+
+def test_runbooks_server_returns_an_empty_result_not_bad_argument():
+    from mcp_servers.runbooks_kb.server import Runbooks
+    out = Runbooks(use_pins=False).search("checkout errors", "checkout", "no_such_symptom", 5)
+    assert out["ok"] and out["result"]["count"] == 0
+    out = Runbooks(use_pins=False).search("CheckoutErrorRateHigh", "checkout", "error_rate", 5)
+    assert out["ok"] and out["result"]["count"] > 0
