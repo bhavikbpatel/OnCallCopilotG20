@@ -13,10 +13,10 @@ from eval.knowledge.severity import classify
 def test_corpus_has_required_runbooks_and_seed_postmortems():
     passages = load_passages(ROOT)
     docs = {passage.doc_id for passage in passages}
-    assert len([item for item in docs if item.startswith("RB-")]) == 20
+    assert len([item for item in docs if item.startswith("RB-")]) == 15
     assert len([item for item in docs if item.startswith("PM-")]) == 10
     assert all(passage.fix is None or passage.fix["tool"] == "set_flag" for passage in passages)
-    assert all(passage.fix is None for passage in passages if passage.doc_id == "RB-014")
+    assert all(passage.fix is None for passage in passages if passage.doc_id in {"RB-014", "RB-015"})
 
 
 def test_retrieval_honors_service_filter_and_rejects_unknown_service():
@@ -137,7 +137,48 @@ def test_edit_review_requires_updated_text_and_preconditions():
 )
 def test_severity_policy(inputs, level, rule):
     result = classify(**inputs)
+    assert (result.level, result.rule) == (level.replace("SEV", "SEV-"), rule)
+
+
+@pytest.mark.parametrize(
+    ("sample_count", "duration_minutes", "level", "rule"),
+    [
+        (20, 2, "SEV-1", "S1.1"),
+        (19, 2, "SEV-3", "S3.0"),
+        (19, 8, "SEV-3", "S3.0"),
+        (None, 2, "SEV-3", "S3.0"),
+    ],
+)
+def test_ten_percent_severity_requires_twenty_requests(sample_count, duration_minutes, level, rule):
+    result = classify(
+        user_impact="broad", error_rate=0.10, duration_minutes=duration_minutes,
+        evidence_count=2, critical_path=True, sample_count=sample_count,
+    )
     assert (result.level, result.rule) == (level, rule)
+
+
+def test_final_classification_keeps_short_below_threshold_incident_at_sev3():
+    result = classify(
+        user_impact="broad", error_rate=0.08, duration_minutes=4,
+        evidence_count=2, critical_path=True, sample_count=20,
+    )
+    assert (result.level, result.rule) == ("SEV-3", "S3.1")
+
+
+def test_negative_request_sample_count_is_rejected():
+    with pytest.raises(ValueError, match="sample_count"):
+        classify(
+            user_impact="broad", error_rate=0.10, duration_minutes=2,
+            evidence_count=2, critical_path=True, sample_count=-1,
+        )
+
+
+def test_none_severity_requires_no_confirmed_fault():
+    result = classify(
+        user_impact="none", error_rate=0, duration_minutes=10,
+        evidence_count=2, critical_path=False, fault_confirmed=True,
+    )
+    assert (result.level, result.rule) == ("SEV-3", "S3.1")
 
 
 def test_query_labels_do_not_reference_heldout_data():

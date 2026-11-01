@@ -39,8 +39,8 @@ expected:
     level: SEV-2
     rule: S2.1
     provisional: true
-notes: 'Database-level fault: the service is slow because the products table is locked.'
+notes: 'Database-level fault: product-catalog p95 is about 15 s because the products table is locked;
+  this partial catalog impact is SEV-2/S2.1.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- 'severity: does the lock also stop checkout (then SEV-1)?'
 - 'recovers slowly (still ~2x after 3 min, 31 Oct): within_s 600 to confirm'

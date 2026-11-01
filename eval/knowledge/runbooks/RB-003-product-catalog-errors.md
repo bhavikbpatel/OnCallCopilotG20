@@ -17,7 +17,7 @@ Compare catalog server-span errors by operation and product where labels exist. 
 ## Preconditions
 Require repeatable catalog errors plus evidence of active `productCatalogFailure`. A single product or isolated 404 is not evidence to change the flag.
 ## Action
-Propose `set_flag(flag="productCatalogFailure", value="off")`. Dry-run first; show current value and exact expected effect; wait for approval of the unchanged action hash.
+Propose `set_flag(flag="productCatalogFailure", variant="off")`. Dry-run first; show current value and exact expected effect; wait for approval of the unchanged action hash.
 ## Expected effect
 Catalog errors return to baseline while product requests remain served.
 ## Verification

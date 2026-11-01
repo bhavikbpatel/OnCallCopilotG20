@@ -17,7 +17,7 @@ Inspect Kafka consumer lag and processing rates by group, error traces, and rece
 ## Preconditions
 Require a sustained lag trend and matching active flag. A single high lag sample or unknown consumer group is insufficient for remediation.
 ## Action
-Propose `set_flag(flag="kafkaQueueProblems", value="off")` only after dry-run and exact approval. Do not purge queues, replay offsets or scale consumers from this runbook.
+Propose `set_flag(flag="kafkaQueueProblems", variant="off")` only after dry-run and exact approval. Do not purge queues, replay offsets or scale consumers from this runbook.
 ## Expected effect
 New records process successfully and lag stops growing, then drains toward baseline.
 ## Verification

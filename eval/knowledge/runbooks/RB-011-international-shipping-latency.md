@@ -13,11 +13,11 @@ reviewed_on: 2026-10-31
 ## Symptoms
 International shipping quotes are slow while other checkout steps can succeed; impact is regional or route-specific.
 ## Checks
-Inspect shipping p95 and error traces by route/country if available. Compare checkout spans and recent `intlShippingSlowdown` changes. Distinguish shipping delay from a broad checkout/payment failure.
+Inspect shipping p95 and error traces by route/country if available. Compare multiple fresh international traces with domestic quote latency and recent `intlShippingSlowdown` changes; confirm the delay affects quote completion and is not stale telemetry. Distinguish this route-specific delay from a broad checkout/payment failure.
 ## Preconditions
 Require shipping-path latency and matching flag evidence; confirm actual user impact and duration before setting incident severity.
 ## Action
-Propose `set_flag(flag="intlShippingSlowdown", value="off")` through dry-run and exact-command approval.
+Propose `set_flag(flag="intlShippingSlowdown", variant="off")` through dry-run and exact-command approval.
 ## Expected effect
 International quote latency falls without changing domestic shipping behavior.
 ## Verification
