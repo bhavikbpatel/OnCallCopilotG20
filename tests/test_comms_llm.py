@@ -33,8 +33,9 @@ EMAIL_TIMELINE = [
 def test_note_lists_every_action_and_the_recovery():
     assert comms.actions_taken(EMAIL_TIMELINE) == \
         "Executed: set flag emailMemoryLeak to off; Executed: restarted email"
-    assert comms.status_line({"final_status": "recovered"}, EMAIL_TIMELINE) == \
-        "recovered (recovered: email memory_mb = 140.0 (threshold 300.0))"
+    email = SimpleNamespace(service="email", signal="memory_mb", threshold=300.0)
+    assert comms.status_line({"final_status": "recovered", "alert": email}, EMAIL_TIMELINE) == \
+        "recovered; email memory back below 300 MB"
 
 
 def test_note_on_rollback_and_escalation():
@@ -136,3 +137,22 @@ def test_structured_retry_answers_the_tool_call():
     assert out.a == 1
     retry = sent[1]
     assert isinstance(retry[-1], ToolMessage) and retry[-1].tool_call_id == "call_1"
+
+
+@pytest.mark.parametrize("signal,threshold,want", [
+    ("error_rate", 0.05, "recovered; checkout error rate back below 5%"),
+    ("latency_p95", 800.0, "recovered; checkout p95 latency back below 800 ms"),
+    ("memory", 300.0, "recovered; checkout memory back below 300 MB"),
+    ("throughput_rps", 2.0, "recovered; checkout throughput back above 2 requests/s"),
+    ("odd_signal", 7.0, "recovered; checkout odd signal back below 7"),
+])
+def test_recovered_status_is_plain_words_without_the_raw_reading(signal, threshold, want):
+    a = SimpleNamespace(service="checkout", signal=signal, threshold=threshold)
+    raw = [ev(5, "verify", "verdict", "recovered: checkout error_rate since fix = 0.0 (0/12 requests) (threshold 0.05)")]
+    line = comms.status_line({"final_status": "recovered", "alert": a}, raw)
+    assert line == want
+    assert "since fix" not in line and "requests)" not in line and "threshold" not in line
+
+
+def test_recovered_status_without_an_alert_still_says_recovered():
+    assert comms.status_line({"final_status": "recovered"}, EMAIL_TIMELINE) == "recovered"

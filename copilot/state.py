@@ -263,15 +263,18 @@ class ReviewDecision(BaseModel):
 # ---------- budget ----------
 
 class AgentSpend(BaseModel):
-    tool_calls: int = 0
+    tool_calls: int = 0      # the agent's own calls: these count toward limits.tool_calls (E4 budgets 5/10/20)
     tokens: int = 0
     usd: float = 0.0
+    code_calls: int = 0      # calls code makes by itself (verify polling Prometheus): logged, not budgeted
+                             # (docs/eval-result-contract.md: driver "code" calls do not count)
 
     def __add__(self, other: "AgentSpend") -> "AgentSpend":
         return AgentSpend(
             tool_calls=self.tool_calls + other.tool_calls,
             tokens=self.tokens + other.tokens,
             usd=self.usd + other.usd,
+            code_calls=self.code_calls + other.code_calls,
         )
 
 
