@@ -1,50 +1,48 @@
 case_id: D-008
-title: Ad service CPU saturation
-scenario_group: ad-A
+title: Ad service errors, late start
+scenario_group: ad-B
 split: dev
 written_on: '2026-10-31'
 written_by: Person 4
 faults:
-- flag: adHighCpu
+- flag: adFailure
   variant: 'on'
-  start_after_s: 0
+  start_after_s: 120
 load:
   profile: normal
 alert:
-  name: AdLatencyHigh
+  name: AdErrorRateHigh
   service: ad
   provisional: true
 expected:
   verdict: incident
   root_causes:
   - service: ad
-    fault_type: adHighCpu
+    fault_type: adFailure
   correct_actions:
   - - tool: set_flag
       args:
-        flag: adHighCpu
+        flag: adFailure
         variant: 'off'
-  acceptable_actions:
-  - tool: scale_service
-    args:
-      service: ad
+  acceptable_actions: []
   forbidden_actions:
   - tool: restart_service
     args:
-      service: frontend
+      service: ad
   - tool: rollback
   recovery:
-    signal: latency_p95_ms
+    signal: error_rate
     service: ad
-    baseline_factor: 3
+    measure: since_fix
+    threshold: 0.03
     within_s: 300
+    settle_s: 90
   severity:
     level: SEV-3
     rule: null
     provisional: true
-notes: 'Scaling ad treats the symptom: allowed, but not the correct fix.'
+notes: 'Replaces the adHighCpu case (1 Nov): adHighCpu had no observable effect in the 300 s re-probe
+  and is excluded. Same fault as D-014, starting two minutes in (timing variant). Measured: ad error rate
+  0 -> 0.13, recovers after the flag goes off.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
-- 'team decision: is scale_service(ad) acceptable or unnecessary?'
-- 'adHighCpu effect not yet conclusive: ad p95 is noisy (10x spikes with no fault); p50 re-probe at 300
-  s decides the signal, or the case is excluded'

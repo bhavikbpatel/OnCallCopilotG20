@@ -193,7 +193,7 @@ def test_every_dev_case_alert_has_a_signal_its_service_supports():
     ("error_rate", 0.0, 0.05, 0.05),               # +5 points
     ("latency_p95_ms", 100.0, 5.0, 600.0),         # 6x on a busy service
     ("latency_p95_ms", 8.0, 0.5, 80.0),            # quiet service: 10x
-    ("throughput_rps", 12.0, 12.0, 30.0),          # 2.5x
+    ("throughput_rps", 12.0, 12.0, 24.0),          # 2x (the flood gave 2.2-2.8x)
     ("memory_mb", 66.0, 0.1, 86.0),                # +20 MB beats +20 %
     ("consumer_lag", 0.0, None, 50.0),
 ])

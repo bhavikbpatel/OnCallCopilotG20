@@ -243,6 +243,15 @@ def test_cli_faults_refuses_recover_shorter_than_window(capsys):
     assert all(get_variant(f) == "off" for f in ui.config["flags"].values())
 
 
+def test_cli_faults_window_option_reaches_the_probe(capsys):
+    # --window 5m needs --recover >= 360 s; 300 s is refused, which shows the window was passed through.
+    with FakePrometheus(lambda e, at: [({}, 1.0)]) as fp, FakeFlagUI() as ui:
+        code = probes_cli.main(["--prom-url", fp.url, "--flag-url", ui.url, "faults", "--only", "control",
+                                "--window", "5m", "--recover", "300"])
+    assert code == 2 and "360s" in capsys.readouterr().err
+    assert all(get_variant(f) == "off" for f in ui.config["flags"].values())
+
+
 def test_coverage_check_stops_probe_when_no_span_data():
     # The real failure on 31 Oct: every request-based signal empty (window too short).
     with pytest.raises(flt.ProbeError, match="no request-based signal"):
@@ -431,3 +440,53 @@ def test_latency_p50_signal_is_judged_too():
     base = [s(-30, ad={"latency_p50_ms": 5.0, "throughput_rps": 0.3}), s(0, ad={"latency_p50_ms": 5.0, "throughput_rps": 0.3})]
     up = [s(30, ad={"latency_p50_ms": 40.0}), s(90, ad={"latency_p50_ms": 45.0})]
     assert flt.analyse(base, up, [], frozenset({"ad"}))["root_service_moved"]
+
+
+# ---------------------------------------------------------------- regression: real 300 s re-probe (31 Oct evening)
+
+REAL_300 = json.loads((Path(__file__).resolve().parent / "fixtures" / "probe_full300_2026-10-31.json").read_text())
+DETECTED_AT_300S = ["paymentFailure", "cartFailure", "productCatalogFailure", "kafkaQueueProblems",
+                    "emailMemoryLeak", "imageSlowLoad", "paymentUnreachable", "productCatalogLockContention",
+                    "adFailure", "flood"]
+
+
+def _items_300():
+    return {i["item"]: i for i in flt.reanalyse(REAL_300)["items"]}
+
+
+def test_300s_control_is_clean_on_every_service_with_the_2x_traffic_bar():
+    assert _items_300()["control"]["movers"] == []
+
+
+@pytest.mark.parametrize("item", DETECTED_AT_300S)
+def test_300s_detects_fault_on_root_service(item):
+    assert _items_300()[item]["root_service_moved"], item
+
+
+def test_300s_flood_is_caught_by_the_2x_traffic_bar():
+    flood = _items_300()["flood"]
+    assert any(m["service"] == "frontend" and m["signal"] == "throughput_rps" for m in flood["movers"])
+
+
+def test_300s_adhighcpu_has_no_visible_effect():
+    # Excluded from the golden set on this evidence (catalogue.EXCLUDED_FAULT_TYPES).
+    assert not _items_300()["adHighCpu"]["root_service_moved"]
+
+
+def test_300s_intl_shipping_spikes_never_make_two_points_in_a_row():
+    # Real effect (shipping p95 5,750-7,000 ms vs a control max of 170 ms) but each spike sits
+    # between normal readings at ~0.2 req/s; a 5-minute window is being tested for this.
+    items = _items_300()
+    assert not items["intlShippingSlowdown"]["root_service_moved"]
+    p95 = [s["values"]["shipping"]["latency_p95_ms"] for s in REAL_300["items"][10]["samples"]["during"]]
+    assert max(p95) > 5000 and min(p95) < 100
+
+
+def test_300s_slow_recoveries():
+    items = _items_300()
+    # Email memory stayed at ~96 MB for 3 minutes after the flag went off; image latency was still
+    # ~5x baseline 2.5 minutes after. The dev cases give these 900 s and 600 s to recover.
+    assert items["emailMemoryLeak"]["root_recovered_after_clear"] is False
+    assert items["imageSlowLoad"]["root_recovered_after_clear"] is False
+    for item in ("paymentFailure", "cartFailure", "kafkaQueueProblems", "productCatalogLockContention", "adFailure"):
+        assert items[item]["root_recovered_after_clear"] is True, item

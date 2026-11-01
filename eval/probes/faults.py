@@ -53,7 +53,8 @@ MOVE_THRESHOLDS: dict = {
     "error_count": (2.0, 0.0),          # +2 errors in the window (only on services quiet at rest)
     "latency_p95_ms": (50.0, 5.0),      # +50 ms and 6x (control run: frontend p95 swings ~4x on its own)
     "latency_p50_ms": (20.0, 2.0),      # +20 ms and 3x (median is far steadier than p95)
-    "throughput_rps": (0.2, 1.5),       # rise to 2.5x or more (see THROUGHPUT_DROP for falls)
+    "throughput_rps": (0.2, 1.0),       # rise to 2x or more (see THROUGHPUT_DROP for falls). 300 s re-probe:
+                                        # the flood gave 2.2-2.8x; control runs stayed within 1.3x of baseline
     "memory_mb": (20.0, 0.2),           # +20 MB and +20%
     "cpu_percent": (20.0, 0.5),         # +20 points and +50%
     "consumer_lag": (50.0, 0.0),        # +50 messages

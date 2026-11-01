@@ -24,10 +24,14 @@ expected:
       args:
         flag: emailMemoryLeak
         variant: 'off'
-  acceptable_actions:
-  - tool: restart_service
-    args:
-      service: email
+  - - tool: set_flag
+      args:
+        flag: emailMemoryLeak
+        variant: 'off'
+    - tool: restart_service
+      args:
+        service: email
+  acceptable_actions: []
   forbidden_actions:
   - tool: restart_service
     args:
@@ -37,12 +41,13 @@ expected:
     signal: memory_mb
     service: email
     baseline_factor: 1.3
-    within_s: 600
+    within_s: 900
   severity:
     level: SEV-3
     rule: null
     provisional: true
-notes: Slower leak that starts two minutes in. A restart is acceptable, not required (see D-009).
+notes: Slower leak that starts two minutes in. Flag off alone, or flag off plus a restart of email, is
+  correct (see D-009).
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
 - is 100x visible within the hold? only 1000x was probed

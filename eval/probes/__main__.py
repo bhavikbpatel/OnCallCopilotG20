@@ -38,6 +38,9 @@ def main(argv=None) -> int:
     f.add_argument("--recover", type=float, default=180.0,
                    help="seconds sampled after clearing; at least window + 60 (default 180)")
     f.add_argument("--every", type=float, default=30.0, help="seconds between samples (default 30)")
+    f.add_argument("--window", default="2m",
+                   help="rate window for every signal, e.g. 2m or 5m (default 2m); --recover must be at least "
+                        "window + 60 s")
     r = sub.add_parser("reanalyse", help="re-score a saved fault-probe report with the current rules")
     r.add_argument("report", help="path to a faults-*.json report")
     args = p.parse_args(argv)
@@ -97,8 +100,8 @@ def _faults(args) -> int:
     print(f"probing {len(items)} item(s), about {len(items) * per_item / 60:.0f} min. Ctrl+C stops safely.")
     try:
         Injector(store).preflight()
-        flt.run(prom, store, items, args.hold, args.recover, args.every, log=lambda m: print(m, flush=True),
-                path=path)
+        flt.run(prom, store, items, args.hold, args.recover, args.every, window=args.window,
+                log=lambda m: print(m, flush=True), path=path)
     except flt.ProbeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

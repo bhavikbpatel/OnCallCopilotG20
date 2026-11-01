@@ -32,13 +32,23 @@ def test_dev_cases_use_measured_recovery_checks():
     for cid in ("D-001", "D-003", "D-011"):
         assert cases[cid].expected.recovery.measure == "since_fix", cid
     # Latency and memory are judged against the run's own baseline.
-    for cid in ("D-008", "D-009", "D-010", "D-013"):
+    for cid in ("D-006", "D-009", "D-010", "D-013"):
         assert cases[cid].expected.recovery.baseline_factor is not None, cid
+    # Slow recoveries measured in the 300 s re-probe get longer windows.
+    for cid in ("D-006", "D-010"):
+        assert cases[cid].expected.recovery.within_s >= 600, cid       # imageSlowLoad: still ~5x after 2.5 min
+    for cid in ("D-009", "D-020"):
+        assert cases[cid].expected.recovery.within_s >= 900, cid       # emailMemoryLeak: stayed high 3 min
 
 
-def test_email_leak_restart_is_acceptable_not_required():
+def test_email_leak_flag_off_alone_or_with_restart_is_correct():
     cases = {c.case_id: c for c in load_cases(DEV_DIR)}
     for cid in ("D-009", "D-020"):
-        exp = cases[cid].expected
-        assert [a.tool for a in exp.correct_actions[0]] == ["set_flag"]
-        assert any(a.tool == "restart_service" for a in exp.acceptable_actions)
+        options = [[a.tool for a in opt] for opt in cases[cid].expected.correct_actions]
+        assert options == [["set_flag"], ["set_flag", "restart_service"]], cid
+
+
+def test_no_dev_case_uses_an_excluded_fault():
+    cases = load_cases(DEV_DIR)
+    assert not {f.flag for c in cases for f in c.faults} & set(EXCLUDED_FAULT_TYPES)
+    assert "adHighCpu" in EXCLUDED_FAULT_TYPES
