@@ -196,12 +196,14 @@ def test_every_dev_case_alert_has_a_signal_its_service_supports():
     ("throughput_rps", 12.0, 12.0, 24.0),          # 2x (the flood gave 2.2-2.8x)
     ("memory_mb", 66.0, 0.1, 86.0),                # +20 MB beats +20 %
     ("consumer_lag", 0.0, None, 50.0),
+    ("slow_requests", 0.0, 0.2, 1.0),             # one request slower than 1 s
 ])
 def test_alert_threshold_is_the_probe_movement_rule(signal, base, rps, want):
     assert threshold_for(signal, base, rps) == (pytest.approx(want), None)
 
 
 @pytest.mark.parametrize("signal,base,rps", [("latency_p95_ms", 50.0, 0.05), ("error_count", 3.0, 1.0),
+                                             ("slow_requests", 2.0, 0.2),
                                              ("error_rate", None, 1.0)])
 def test_alert_that_cannot_fire_fairly_is_refused(signal, base, rps):
     limit, why = threshold_for(signal, base, rps)

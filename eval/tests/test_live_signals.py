@@ -50,3 +50,9 @@ def test_live_errors_since_last_ten_minutes_for_checkout(prom):
     now = time.time()
     out = sig.errors_since(prom, "checkout", since=now - 600, at=now)
     assert out["requests"] is not None and out["requests"] > 0, "no checkouts in 10 min: is load running?"
+
+
+def test_live_slow_requests_bucket_exists(prom):
+    # The 1000 ms histogram edge must exist, else slow_requests silently has no data.
+    v = sig.measure(prom, "slow_requests", "frontend", "5m")
+    assert v is not None and v >= 0
