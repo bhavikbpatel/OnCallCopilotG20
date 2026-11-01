@@ -40,7 +40,7 @@ expected:
     threshold: 20
     within_s: 600
   severity:
-    level: SEV-3
+    level: SEV3
     rule: S3.1
     provisional: true
 notes: 'Not customer-facing: orders still complete; only fraud checks lag. Measured 31 Oct (300 s hold):

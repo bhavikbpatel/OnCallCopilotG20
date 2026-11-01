@@ -188,7 +188,7 @@ side is acceptable; flag the conflict as a team decision.
 | `set_flag` argument | `value` | `variant` |
 | Restart and scale tool names | `restart`, `scale` | `restart_service`, `scale_service` |
 | Rollback arguments | `rollback(action_id)` | `rollback(service, to_version)` |
-| Severity labels | SEV1, SEV2, SEV3 | SEV-1 … SEV-4 (plus NONE for noise) |
+| Severity labels | SEV1, SEV2, SEV3 | SEV1 … SEV4 (plus NONE for noise; hyphenated inputs normalize) |
 | Checkpointer | SQLite | Postgres |
 | Long-term memory | one store, owned by Person 1 | two implementations exist (`copilot/memory/` and a SQLite lesson store) |
 | Knowledge corpus location | not stated | top-level `knowledge/` (System Design) vs `eval/knowledge/` |

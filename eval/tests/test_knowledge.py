@@ -112,9 +112,10 @@ def test_edit_review_requires_updated_text_and_preconditions():
     ("inputs", "level", "rule"),
     [
         ({"user_impact": "broad", "error_rate": 0.08, "duration_minutes": 8,
-          "evidence_count": 2, "critical_path": True}, "SEV1", "S1.1"),
+          "evidence_count": 2, "critical_path": True, "fault_active": True,
+          "sample_count": 20, "sample_window_minutes": 10}, "SEV1", "S1.1"),
         ({"user_impact": "partial", "error_rate": 0.02, "duration_minutes": 6,
-          "evidence_count": 2, "critical_path": False}, "SEV2", "S2.1"),
+          "evidence_count": 2, "critical_path": False, "impact_sustained": True}, "SEV2", "S2.1"),
         ({"user_impact": "localized", "error_rate": 0.005, "duration_minutes": 2,
           "evidence_count": 2, "critical_path": False}, "SEV3", "S3.1"),
         ({"user_impact": "none", "error_rate": 0, "duration_minutes": 10,
@@ -130,39 +131,61 @@ def test_edit_review_requires_updated_text_and_preconditions():
         ({"user_impact": "partial", "error_rate": 0.005, "duration_minutes": 10,
           "evidence_count": 3, "critical_path": False, "latency_p95_ms": 900}, "SEV3", "S3.1"),
         ({"user_impact": "partial", "error_rate": 0.005, "duration_minutes": 10,
-          "evidence_count": 3, "critical_path": True, "latency_p95_ms": 900}, "SEV2", "S2.1"),
+          "evidence_count": 3, "critical_path": True, "latency_p95_ms": 900,
+          "impact_sustained": True}, "SEV2", "S2.1"),
         ({"user_impact": "partial", "error_rate": None, "duration_minutes": 10,
-          "evidence_count": 3, "critical_path": True, "latency_p95_ms": 900}, "SEV2", "S2.1"),
+          "evidence_count": 3, "critical_path": True, "latency_p95_ms": 900,
+          "impact_sustained": True}, "SEV2", "S2.1"),
     ],
 )
 def test_severity_policy(inputs, level, rule):
     result = classify(**inputs)
-    assert (result.level, result.rule) == (level.replace("SEV", "SEV-"), rule)
+    assert (result.level, result.rule) == (level.replace("SEV-", "SEV"), rule)
 
 
 @pytest.mark.parametrize(
-    ("sample_count", "duration_minutes", "level", "rule"),
+    ("sample_count", "sample_window_minutes", "duration_minutes", "level", "rule"),
     [
-        (20, 2, "SEV-1", "S1.1"),
-        (19, 2, "SEV-3", "S3.0"),
-        (19, 8, "SEV-3", "S3.0"),
-        (None, 2, "SEV-3", "S3.0"),
+        (20, 10, 2, "SEV1", "S1.1"),
+        (20, 5, 2, "SEV3", "S3.0"),
+        (19, 10, 2, "SEV3", "S3.0"),
+        (19, 10, 8, "SEV3", "S3.0"),
+        (None, 10, 2, "SEV3", "S3.0"),
     ],
 )
-def test_ten_percent_severity_requires_twenty_requests(sample_count, duration_minutes, level, rule):
+def test_broad_error_rate_requires_twenty_requests_in_ten_minute_window(
+    sample_count, sample_window_minutes, duration_minutes, level, rule
+):
     result = classify(
-        user_impact="broad", error_rate=0.10, duration_minutes=duration_minutes,
+        user_impact="broad", error_rate=0.33, duration_minutes=duration_minutes,
         evidence_count=2, critical_path=True, sample_count=sample_count,
+        sample_window_minutes=sample_window_minutes, fault_active=True,
     )
     assert (result.level, result.rule) == (level, rule)
 
 
-def test_final_classification_keeps_short_below_threshold_incident_at_sev3():
-    result = classify(
-        user_impact="broad", error_rate=0.08, duration_minutes=4,
+def test_payment_and_cart_impact_classify_before_five_minutes():
+    payment = classify(
+        user_impact="broad", error_rate=0.33, duration_minutes=3,
         evidence_count=2, critical_path=True, sample_count=20,
+        sample_window_minutes=10, fault_active=True,
     )
-    assert (result.level, result.rule) == ("SEV-3", "S3.1")
+    cart = classify(
+        user_impact="partial", error_rate=0.50, duration_minutes=3,
+        evidence_count=2, critical_path=False, fault_active=True,
+    )
+    assert (payment.level, payment.rule) == ("SEV1", "S1.1")
+    assert (cart.level, cart.rule) == ("SEV2", "S2.1")
+
+
+def test_incident_duration_does_not_gate_impact_classification():
+    common = {
+        "user_impact": "partial", "error_rate": 0.02, "evidence_count": 2,
+        "critical_path": False, "fault_active": True,
+    }
+    short = classify(**common, duration_minutes=2)
+    long = classify(**common, duration_minutes=20)
+    assert (short.level, short.rule) == (long.level, long.rule) == ("SEV2", "S2.1")
 
 
 def test_negative_request_sample_count_is_rejected():
@@ -170,6 +193,7 @@ def test_negative_request_sample_count_is_rejected():
         classify(
             user_impact="broad", error_rate=0.10, duration_minutes=2,
             evidence_count=2, critical_path=True, sample_count=-1,
+            sample_window_minutes=10,
         )
 
 
@@ -178,7 +202,7 @@ def test_none_severity_requires_no_confirmed_fault():
         user_impact="none", error_rate=0, duration_minutes=10,
         evidence_count=2, critical_path=False, fault_confirmed=True,
     )
-    assert (result.level, result.rule) == ("SEV-3", "S3.1")
+    assert (result.level, result.rule) == ("SEV3", "S3.1")
 
 
 def test_query_labels_do_not_reference_heldout_data():

@@ -38,7 +38,7 @@ expected:
     within_s: 300
     settle_s: 90
   severity:
-    level: SEV-3
+    level: SEV3
     rule: S3.1
     provisional: true
 notes: 'Replaces the adHighCpu case (1 Nov): adHighCpu had no observable effect in the 300 s re-probe

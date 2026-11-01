@@ -36,11 +36,11 @@ expected:
     baseline_factor: 3
     within_s: 600
   severity:
-    level: SEV-2
+    level: SEV2
     rule: S2.1
     provisional: true
 notes: 'Database-level fault: product-catalog p95 is about 15 s because the products table is locked;
-  this partial catalog impact is SEV-2/S2.1.'
+  this partial catalog impact is SEV2/S2.1.'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
 - 'recovers slowly (still ~2x after 3 min, 31 Oct): within_s 600 to confirm'

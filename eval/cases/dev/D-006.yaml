@@ -39,7 +39,7 @@ expected:
     baseline_factor: 3
     within_s: 600
   severity:
-    level: SEV-2
+    level: SEV2
     rule: S2.1
     provisional: true
 notes: 'Replaces the recommendationCacheFailure case: that fault has no observable effect in the 3.1.0
