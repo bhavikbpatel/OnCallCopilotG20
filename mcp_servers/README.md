@@ -110,8 +110,14 @@ Run each with `MCP_TRANSPORT=http MCP_HOST=0.0.0.0`. All of them need `APPROVAL_
 | `runbooks_kb.search {query,k,service,symptom}` | `result.passages[]` with `score` (rank-derived `1/(1+rank)`, not a model score) |
 | `ops_actions.dry_run {tool,...flat action}` | `result.{payload_hash, action, would_do, current_state, expected_effect, rollback_action}` |
 | `ops_actions.<tool> {...args, approval_token}` | `result.{action_id, payload_hash, ...}` |
-| `tickets.create_incident {incident_id, alert, severity}` | `result.incident_id` (the id the graph sent; repeat calls change nothing) |
-| `tickets.append_timeline {incident_id, at, text}` | `result.incident_id` |
+| `tickets.create_incident {incident_id, alert, severity}` | `result.incident_id` (the id the graph sent) and `result.warnings`. Reads `alert.alert_name` and `alert.service`. A repeat call changes nothing (`incident_already_exists`); an alert with no name is refused (`missing_alert_name`); an unrecognised service opens the incident with the service empty and `service_not_recognised:<x>` |
+| `tickets.append_timeline {incident_id, at, text}` | `result.incident_id`. `at` is ISO-8601 or epoch seconds; missing means now; unreadable is refused (`bad_argument`) |
 | `tickets.save_postmortem {incident_id, postmortem}` | `result.incident_id` |
 
 Failures are `{ok: false, error: {code, message}}`, which her `_parse` turns into `ToolError`.
+
+## Failing loudly
+Tools refuse bad input with a named error instead of guessing (no placeholder alert names, no silently replaced timestamps). The one deliberate exception is alert data from outside (an unknown service): the incident still opens and the result carries a warning. Log-sink failures are counted in `Hooks.costs()["sink_errors"]`. Severity is stored in the eval form (`SEV-2`); the graph's `SEV2` is accepted and normalised.
+
+## Not granted yet
+No `memory.*` tool is in `config/permissions.yaml`: long-term memory runs in-process in the graph and no memory MCP server exists. Add the tools and their allow-list entries together when one does.

@@ -110,6 +110,7 @@ class RunbookResult(_Open):
 # ---- tickets
 class IncidentRef(_Open):
     incident_id: str
+    warnings: List[str] = []
 
 
 class IncidentRecord(_Open):
