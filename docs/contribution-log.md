@@ -27,4 +27,5 @@ their own rows only.
 | 1 Nov | Person 4 (Bhavik) | #20 | intlShippingSlowdown excluded (no effect in three runs); dev case D-013 replaced |
 | 1 Nov | Person 4 (Bhavik) | #21 | Dev case severities aligned with Person 1's severity policy, with rule IDs; schema checks rule IDs against the policy |
 | 1 Nov | Person 4 (Bhavik) | #23 | Red team for E2: attack format, HTTP delivery, success / influence / false-block checks, runner support; 34 attacks written (private) |
-| 1 Nov | Person 4 (Bhavik) | this PR | Support Person 2's follow-up steps and code-driven calls (budget); public signals.clean; probe reports each vector, incl. JSON body |
+| 1 Nov | Person 4 (Bhavik) | #24| Support Person 2's follow-up steps and code-driven calls (budget); public signals.clean; probe reports each vector, incl. JSON body |
+| 1 Nov | Person 3 (Asiya) | this PR | Tools and control: four MCP servers (telemetry, runbooks-kb, tickets, ops-actions), approval tokens with a durable single-use store, hooks, approval gate, guardrails with a config switch, permissions, threat model; hardened after self-review against the PR-review checklist |
