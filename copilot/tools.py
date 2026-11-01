@@ -98,7 +98,7 @@ def _last_value(series: dict[str, Any]) -> float | None:
     if not values:
         return None
     last = values[-1]
-    return signals._clean(float(last[1] if isinstance(last, (list, tuple)) else last))   # NaN (0/0) → None
+    return signals.clean(float(last[1] if isinstance(last, (list, tuple)) else last))   # NaN (0/0) → None
 
 
 class McpTelemetry:
