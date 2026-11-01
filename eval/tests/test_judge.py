@@ -680,3 +680,24 @@ def test_cli_export_allow_demo(tmp_path, capsys):
     assert cli(["export", "--runs", str(f), "--out", str(tmp_path / "a")]) == 2
     assert cli(["export", "--runs", str(f), "--out", str(tmp_path / "b"), "--allow-demo"]) == 0
     assert "(dev 0, demo 1)" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- rubric v4: evidence rules (after kappa -0.18)
+
+def test_rubric_v4_states_the_three_evidence_rules():
+    r = J.rubric()
+    assert r["version"] == "judge-rubric-v4"
+    body = J.build_messages(J.build_item(result()))[1]["content"]
+    # (1) recovery claims are left to code
+    assert "ignore claims that the service recovered" in body and "Claims that the service recovered are not scored" in body
+    # (2) an item backs a claim whatever its hypothesis's status; a refuted cause is a note-quality matter
+    assert "whatever the status of the hypothesis it belongs to" in body
+    assert "scored under status_note_quality, not here" in body
+    # (3) each claim is checked against the item cited for it
+    assert "check that item's summary for that claim" in body
+
+
+def test_rubric_v4_evidence_anchors_no_longer_ask_for_recovery_evidence():
+    anchors = J.rubric()["dimensions"]["evidence_support"]["anchors"]
+    assert all("recovery" not in a for a in anchors.values())
+    assert all("diagnostic claim" in anchors[k] for k in (5, 3, 2, 1))

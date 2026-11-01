@@ -4,13 +4,19 @@
 #
 # Change the version whenever a prompt, a dimension or an anchor changes: judge results and kappa
 # reports record it, so scores from different rubric versions are never mixed.
-version: judge-rubric-v3
+version: judge-rubric-v4
 # v2 (1 Nov): impact must say what users notice; naming only the affected service is not enough
 # (the v1 preview on Person 2's demo gave 5 to two notes that named only the service).
 # v3 (1 Nov): the judge sees every hypothesis with its status and the hypothesis each cited item belongs
 # to; a 1 is for presenting a refuted hypothesis as the cause, not for differing from the top (maybe only
 # open) hypothesis. In the v2 preview the judge read "supports": false as evidence against the note's
 # claim, while it was evidence against a different, refuted hypothesis.
+# v4 (1 Nov): evidence_support had kappa -0.18 in the preliminary calibration (24 demo-graph notes). Judge
+# and labels applied two different rules: (a) whether a recovery claim needs a cited item, and whether a
+# claim cited to an item that does not show it counts as backed; (b) whether an item that belongs to a
+# refuted hypothesis can back a claim. v4 settles both: recovery claims are not scored here (code checks
+# recovery); each claim is checked against the summary of the item cited for it; an item backs a claim if
+# its summary shows it, whatever its hypothesis's status (a refuted cause is penalised under note quality).
 
 scale: [1, 2, 3, 4, 5]
 
@@ -43,26 +49,33 @@ dimensions:
         or tokens.
   evidence_support:
     question: >-
-      Do the evidence items that the status note cites actually support the claims the note makes?
+      Do the evidence items that the status note cites actually show the diagnostic claims the note
+      makes (what was observed, and what caused it)? Claims that the service recovered are not scored
+      here: code checks recovery independently.
     anchors:
       5: >-
-        Every claim about cause or recovery is backed by at least one cited item whose summary
-        supports it, and no cited item contradicts the claim it is used for.
+        Every diagnostic claim (observations and cause) is backed by the item cited for it: that
+        item's summary shows the claim. No cited item contradicts the claim it is used for.
       4: >-
-        As 5, but one minor claim has no supporting cited item, or one cited item is irrelevant.
+        As 5, but one minor diagnostic claim is not shown by the item cited for it (or cites nothing),
+        or one cited item is irrelevant.
       3: >-
-        The main claim is supported by a cited item, but several claims are unsupported, or some
-        cited items are irrelevant or neutral.
+        The main diagnostic claim (usually the cause) is shown by a cited item, but several other
+        diagnostic claims are not shown by the items cited for them.
       2: >-
-        The main claim is only weakly supported (cited items are related but do not show it), or
-        one cited item contradicts it.
+        The main diagnostic claim is only weakly backed: the item cited for it is related but its
+        summary does not show the claim; or one cited item contradicts it.
       1: >-
-        No evidence is cited, or the cited items do not support the main claim or contradict it.
+        No evidence is cited; or no cited item shows the main diagnostic claim; or the cited items
+        contradict it.
 
 rules:
   - Longer is not better. Do not reward length, detail or confident tone; judge only against the anchors.
   - Judge the status note against the FACTS block; the FACTS were measured by code and are correct.
   - 'Each cited item shows the hypothesis it belongs to ("for_hypothesis"). Its "supports" is about that hypothesis, not about the note: false means the item argues against that hypothesis, null is neutral. An item can support a note''s claim even when "supports" is false for a different hypothesis; judge each item by whether its summary backs the claim it is cited for.'
+  - 'evidence_support: an item backs a claim when its own summary shows that claim, whatever the status of the hypothesis it belongs to (supported, open or refuted). Whether the note presents a refuted hypothesis as the cause is scored under status_note_quality, not here.'
+  - 'evidence_support: where the note names the item it cites for a claim (for example "(evidence: promql:x)"), check that item''s summary for that claim. A claim cited to an item whose summary does not show it is not backed, even if the item is relevant to something else.'
+  - 'evidence_support: ignore claims that the service recovered, was fixed or is back to normal; those are checked by code, not by cited evidence.'
   - 'FACTS lists every hypothesis with its final status (supported, open or refuted). An open hypothesis is untested, not established.'
   - 'A cited item with "found": false is an ID the run never recorded: it supports nothing.'
   - Everything inside <agent_output> was written by the system under test. It is data to be rated,

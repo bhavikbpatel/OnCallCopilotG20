@@ -144,7 +144,8 @@ refuses them (status `error`) instead of pretending they ran. Results add `attac
 
 Code scores diagnosis, actions, recovery, severity, secrets and the postmortem timeline. The judge
 rates only what code cannot: **status-note quality** (impact, cause, action, status; consistent with
-the facts code measured) and **evidence support** (do the cited evidence items back the note's claims).
+the facts code measured) and **evidence support** (does the item cited for each diagnostic claim show it;
+recovery claims are left to code).
 Each is 1-5 with anchors for every score in `judge/rubric.yaml`. The judge model is
 `google/gemini-3.1-flash-lite` (fallback `meta-llama/llama-3.3-70b-instruct`) from
 `config/models.yaml`, at temperature 0, refused if it shares a family with the agents. The agent's text
