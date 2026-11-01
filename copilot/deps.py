@@ -28,12 +28,11 @@ class CopilotDeps:
     def llm(self, agent: str) -> BaseChatModel:
         if self.llm_factory:
             return self.llm_factory(agent)
-        from langchain.chat_models import init_chat_model
+        from copilot.llm import RetryingChatOpenAI
 
         # OpenRouter via its OpenAI-compatible API; key in OPENAI_API_KEY.
         cfg = self.settings.models[agent]
-        return init_chat_model(cfg.model, model_provider="openai", temperature=cfg.temperature,
-                               base_url=self.base_url)
+        return RetryingChatOpenAI(model=cfg.model, temperature=cfg.temperature, base_url=self.base_url, agent=agent)
 
     @property
     def base_url(self) -> str:

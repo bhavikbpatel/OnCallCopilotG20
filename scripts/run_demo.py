@@ -197,7 +197,8 @@ async def main(args: argparse.Namespace) -> None:
     global SC
     SC = SCENARIOS[args.scenario]
     load_dotenv(ROOT / ".env")
-    settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3, "verify_initial_delay_s": 0})
+    settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3, "verify_window_by_signal": {},
+                                                  "verify_initial_delay_s": 0, "verify_settle_s": 0})
     telemetry = StubTelemetry(recovers=not args.no_recovery)
 
     async with make_checkpointer() as saver, make_store() as store:

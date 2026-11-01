@@ -36,9 +36,12 @@ class AppSettings(BaseModel):
     limits: BudgetLimits = Field(default_factory=BudgetLimits)
     max_replans: int = 2
     max_parallel_diagnosis: int = 3
-    verify_window_s: int = 300          # demo; eval mode uses a shorter window
-    verify_poll_s: int = 15
+    verify_window_s: int = 300          # seconds after the fix by which recovery must show (eval within_s)
+    verify_window_by_signal: dict[str, int] = Field(default_factory=dict)   # slower signals, e.g. latency 600
+    verify_poll_s: int = 30
     verify_initial_delay_s: int = 40    # Prometheus lags 12–40 s behind real time
+    verify_settle_s: int = 90           # errors before this point after the fix are ignored (eval settle_s)
+    follow_up_signals: list[str] = Field(default_factory=list)   # signals that can need a 2nd step (memory)
     verify_min_requests: int = 5        # fewer requests since the fix → too little traffic to judge
     review_enabled: bool = True         # False on held-out runs: nothing is written to long-term memory
     memory_read_only: bool = False      # True after the playbook is frozen (E3)

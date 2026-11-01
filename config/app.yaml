@@ -16,9 +16,16 @@ limits:
 
 max_replans: 2
 max_parallel_diagnosis: 3
-verify_window_s: 300
-verify_poll_s: 15
+# Recovery check, aligned with eval/recovery/check.py and the dev cases (settle_s 90, within_s per fault).
+verify_window_s: 300         # error_rate: recovered within 300 s of the fix
+verify_window_by_signal:     # slower signals (dev cases D-006/007/009/010/012/020)
+  latency_p95_ms: 600
+  consumer_lag: 600
+  memory_mb: 900
+verify_poll_s: 30
 verify_initial_delay_s: 40   # Prometheus lags 12–40 s
+verify_settle_s: 90          # late-arriving errors from before the fix are not counted
+follow_up_signals: [memory_mb]   # only leftover state (emailMemoryLeak) may get a restart after flag off
 verify_min_requests: 5       # below this since the fix: too little traffic to judge → escalate, never roll back
 review_enabled: true
 memory_read_only: false

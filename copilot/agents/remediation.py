@@ -5,6 +5,7 @@ Only this module touches the shop, and only `execute` writes — after an approv
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from typing import Any
 
 from langgraph.types import interrupt
@@ -16,7 +17,8 @@ from copilot.deps import CopilotDeps
 from copilot.memory.views import remediation_view
 from copilot.policy import is_allowed
 from copilot.state import (
-    Action, ActionOutcome, ApprovalDecision, ApprovalRecord, EvidenceRef, IncidentState, payload_hash,
+    Action, ActionOutcome, ApprovalDecision, ApprovalRecord, EvidenceRef, IncidentState, RestartService, SetFlag,
+    describe, payload_hash,
 )
 from eval.telemetry import signals
 
@@ -52,8 +54,9 @@ def make_propose_action(deps: CopilotDeps):
         allowed, why = is_allowed(proposal.action)
         if allowed and payload_hash(proposal.action) in state.get("failed_actions", []):
             allowed, why = False, f"{proposal.action.model_dump_json()} already failed and was rolled back"
-        if allowed and follow_up and proposal.action == state["follow_up_of"]:
-            allowed, why = False, f"{proposal.action.model_dump_json()} is already applied"
+        if allowed and follow_up and not _valid_follow_up(proposal.action, state):
+            allowed, why = False, f"follow-up must be a restart of {state['alert'].service}, " \
+                                  f"got {proposal.action.model_dump_json()}"
         if not allowed and follow_up:                 # unusable follow-up → undo the fix rather than leave it half-done
             return {"proposed_action": None, "budget": cost,
                     "timeline": [event("propose_action", "rollback", f"Follow-up refused: {why}")]}
@@ -148,7 +151,7 @@ def make_execute(deps: CopilotDeps):
                 "outcome": prev.model_copy(update={"rolled_back": True}),
                 "replan_reason": "fix did not recover the metric; rolled back",
                 "proposed_action": None,
-                "timeline": [event("execute", "rollback", f"Rolled back with {action.model_dump_json()}: {result}")],
+                "timeline": [event("execute", "rollback", f"Rolled back: {describe(action)}")],
             }
         else:
             # A follow-up (e.g. restart) usually has no undo; keep the first fix's undo so rollback restores the start.
@@ -157,7 +160,7 @@ def make_execute(deps: CopilotDeps):
             update |= {
                 "executed_at": now(),
                 "outcome": ActionOutcome(action=action, approved_hash=approval.payload_hash, verified=False, rolled_back=False),
-                "timeline": [event("execute", "action", f"Executed {action.model_dump_json()}: {result}")],
+                "timeline": [event("execute", "action", f"Executed: {describe(action)}")],
             }
         emit({"node": "execute", "purpose": purpose, "result": result})
         return update
@@ -168,21 +171,38 @@ SIGNAL_ALIASES = {"latency_p95": "latency_p95_ms", "cpu": "cpu_percent", "memory
 HIGHER_IS_HEALTHY = {"throughput_rps"}
 
 
+def _signal(alert_signal: str) -> str:
+    return SIGNAL_ALIASES.get(alert_signal, alert_signal)
+
+
 def _healthy(signal: str, value: float, threshold: float) -> bool:
-    signal = SIGNAL_ALIASES.get(signal, signal)
-    return value > threshold if signal in HIGHER_IS_HEALTHY else value < threshold
+    return value > threshold if _signal(signal) in HIGHER_IS_HEALTHY else value < threshold
+
+
+def follow_up_allowed(state: IncidentState, follow_up_signals: list[str]) -> bool:
+    """A second step only for leftover state: flag turned off but memory still high (emailMemoryLeak).
+    Anything else that did not recover is rolled back — a guessed restart can be a forbidden action."""
+    fix = state["outcome"].action
+    return (state.get("follow_up_of") is None and _signal(state["alert"].signal) in follow_up_signals
+            and isinstance(fix, SetFlag) and fix.variant == "off")
+
+
+def _valid_follow_up(action: Action, state: IncidentState) -> bool:
+    return isinstance(action, RestartService) and str(action.service) == state["alert"].service
 
 
 async def _measure(deps: CopilotDeps, state: IncidentState) -> tuple[float | None, bool, str, int]:
     """One recovery reading → (value, judgeable, description, tool calls).
 
-    error_rate counts errors since the fix (checkout sees ~2.5 requests/min, too few for a fixed window);
+    error_rate counts errors from settle_s after the fix (checkout sees ~2.5 requests/min, too few for a fixed
+    window; errors from before the fix keep arriving for a while, so the first settle_s are skipped);
     other signals use the agreed signal map. Unknown signals fall back to the alert rule's own query.
     """
     alert, s = state["alert"], deps.settings
     signal = SIGNAL_ALIASES.get(alert.signal, alert.signal)
     if signal == "error_rate":
-        c = await deps.telemetry.errors_since(alert.service, state["executed_at"])
+        since = state["executed_at"] + timedelta(seconds=s.verify_settle_s)
+        c = await deps.telemetry.errors_since(alert.service, since)
         judgeable = c.error_rate is not None and (c.requests or 0) >= s.verify_min_requests
         return c.error_rate, judgeable, f"{alert.service} error_rate since fix = {c.error_rate} " \
                                         f"({c.errors}/{c.requests} requests)", 2
@@ -198,8 +218,10 @@ def make_verify(deps: CopilotDeps):
         """Code decides recovery. Never rolls back on missing data: too little traffic → escalate."""
         alert, s = state["alert"], deps.settings
         poll_s = max(1, s.verify_poll_s)
-        max_polls = max(1, s.verify_window_s // poll_s + 1)
-        await asyncio.sleep(s.verify_initial_delay_s)
+        window = s.verify_window_by_signal.get(_signal(alert.signal), s.verify_window_s)
+        first = s.verify_settle_s + s.verify_initial_delay_s          # settled, and Prometheus has caught up
+        max_polls = max(1, (window - first) // poll_s + 1)
+        await asyncio.sleep(first)
         calls, polls = 0, 0
         value, judgeable, desc = None, False, ""
         while polls < max_polls:
@@ -217,9 +239,8 @@ def make_verify(deps: CopilotDeps):
         if recovered:
             text = f"recovered: {desc} (threshold {alert.threshold})"
             update["final_status"] = "recovered"
-        elif judgeable and state.get("follow_up_of") is None:
-            # Some fixes take two steps (catalogue: emailMemoryLeak = flag off, then restart). Keep the fix
-            # and allow one complementary step before rolling back.
+        elif judgeable and follow_up_allowed(state, s.follow_up_signals):
+            # Leftover state (emailMemoryLeak: flag off, memory still high): keep the fix, allow one restart.
             text = f"NOT recovered: {desc} (threshold {alert.threshold}); fix kept, one follow-up step allowed"
             update |= {"follow_up_of": state["outcome"].action, "action_purpose": "follow_up"}
         elif judgeable:

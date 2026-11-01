@@ -168,6 +168,15 @@ Action = Annotated[Union[SetFlag, RestartService, ScaleService, Rollback], Field
 RunbookAdvice.model_rebuild()
 
 
+def describe(action: BaseModel) -> str:
+    """Plain words for a status note: 'set flag paymentFailure to off', 'restarted email'."""
+    a = action
+    return {"set_flag": lambda: f"set flag {a.flag} to {a.variant}",
+            "restart_service": lambda: f"restarted {a.service}",
+            "scale_service": lambda: f"scaled {a.service} to {a.replicas} replicas",
+            "rollback": lambda: f"rolled {a.service} back to {a.to_version}"}[a.tool]()
+
+
 def payload_hash(action: BaseModel) -> str:
     """sha256 of canonical JSON; must match the ops-actions server's computation."""
     canonical = json.dumps(action.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
