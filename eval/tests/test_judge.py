@@ -642,3 +642,41 @@ def test_live_judge_returns_valid_scores():
     res = J.Judge().score(J.build_item(result()))
     assert res.error is None, res.error
     assert 1 <= res.status_note_quality <= 5 and 1 <= res.evidence_support <= 5
+
+
+# ---------------------------------------------------------------- demo-graph notes (preliminary calibration)
+
+def test_demo_runs_are_refused_unless_allowed(tmp_path):
+    f = _write_results(tmp_path / "r.jsonl", _dev_lines(1) + [result(run_id="demo-1", case_id="DEMO-payment")])
+    with pytest.raises(L.NotDevError, match="not dev cases"):
+        L.export([f], tmp_path / "cal")
+    rep = L.export([f], tmp_path / "cal2", allow_demo=True)
+    assert (rep.items, rep.dev, rep.demo) == (2, 1, 1)
+
+
+def test_held_out_is_refused_even_with_allow_demo(tmp_path):
+    f = _write_results(tmp_path / "r.jsonl", [result(run_id="d", case_id="DEMO-email"),
+                                              result(run_id="h", case_id="H-003")])
+    with pytest.raises(L.NotDevError) as e:
+        L.export([f], tmp_path / "cal", allow_demo=True)
+    assert "H-003" not in str(e.value) and "never uses held-out" in str(e.value)
+    assert not (tmp_path / "cal" / "labels.csv").exists()
+
+
+def test_kappa_report_marks_demo_notes_as_preliminary():
+    human = {f"r{i}": {"status_note_quality": h, "evidence_support": h} for i, h in enumerate(A[:10] + B[:10])}
+    judged = [_jr(f"r{i}", j, j, case_id=("DEMO-payment" if i % 2 else "D-001"))
+              for i, j in enumerate(A[:10] + B[:10])]
+    rep = K.agreement(human, judged)
+    assert rep.preliminary and rep.sources == {"demo": 10, "dev": 10}
+    assert rep.verdict.startswith("PRELIMINARY (includes 10 demo-graph note(s)") and "dev-case runs" in rep.verdict
+    assert "sources: demo 10, dev 10" in K.format_report(rep)
+    dev_only = K.agreement(human, [_jr(f"r{i}", j, j) for i, j in enumerate(A[:10] + B[:10])])
+    assert not dev_only.preliminary and not dev_only.verdict.startswith("PRELIMINARY")
+
+
+def test_cli_export_allow_demo(tmp_path, capsys):
+    f = _write_results(tmp_path / "r.jsonl", [result(run_id="demo-1", case_id="DEMO-email")])
+    assert cli(["export", "--runs", str(f), "--out", str(tmp_path / "a")]) == 2
+    assert cli(["export", "--runs", str(f), "--out", str(tmp_path / "b"), "--allow-demo"]) == 0
+    assert "(dev 0, demo 1)" in capsys.readouterr().out

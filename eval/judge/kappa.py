@@ -22,7 +22,7 @@ from typing import Literal, Optional, Sequence
 from pydantic import BaseModel
 
 from .judge import DIMENSIONS, JudgeResult
-from .labels import read_items, read_labels
+from .labels import read_items, read_labels, source
 
 SCALE = (1, 2, 3, 4, 5)
 MIN_LABELS = 20
@@ -109,6 +109,8 @@ class AgreementReport(BaseModel):
     judge_errors: int
     unjudged_labels: int
     dimensions: list[DimensionAgreement]
+    sources: dict[str, int] = {}          # paired items by source: dev / demo
+    preliminary: bool = False             # True when any demo-graph note is in the pairs
     calibrated: bool
     verdict: str
 
@@ -149,6 +151,12 @@ def agreement(human: dict[str, dict[str, int]], judged: list[JudgeResult],
             length_corr_judge=_r(pearson(lens, js)) if has_len else None,
             length_corr_human=_r(pearson(lens, hs)) if has_len else None))
     paired = min((d.n for d in dims), default=0)
+    paired_ids = {i for i, h in human.items() if i in ok and any(dim in h for dim in DIMENSIONS)}
+    sources: dict[str, int] = {}
+    for i in paired_ids:
+        s = source(ok[i].case_id)
+        sources[s] = sources.get(s, 0) + 1
+    preliminary = sources.get("demo", 0) > 0
     calibrated = paired >= MIN_LABELS and all(d.kappa_quadratic is not None and d.kappa_quadratic >= TARGET
                                               for d in dims)
     if paired < MIN_LABELS:
@@ -159,12 +167,16 @@ def agreement(human: dict[str, dict[str, int]], judged: list[JudgeResult],
         verdict = "not calibrated: kappa below the 0.6 target on a dimension"
     else:
         verdict = "calibrated: quadratic-weighted kappa meets the 0.6 target on every dimension"
+    if preliminary:
+        verdict = (f"PRELIMINARY (includes {sources['demo']} demo-graph note(s), stub shop; not dev cases): "
+                   + verdict + ". Final calibration needs dev-case runs.")
     version = next(iter(versions), (None, None))
     return AgreementReport(
         rubric_version=version[0], prompt_hash=version[1], models=models,
         labelled=len(human), judged=len(judged), paired=paired,
         judge_errors=sum(1 for j in judged if j.error is not None),
         unjudged_labels=sum(1 for i in human if i not in ok),
+        sources=sources, preliminary=preliminary,
         dimensions=dims, calibrated=calibrated, verdict=verdict)
 
 
@@ -183,7 +195,8 @@ def format_report(r: AgreementReport) -> str:
     lines = [f"Judge agreement ({r.rubric_version}, prompt {r.prompt_hash})",
              f"labelled {r.labelled} · judged {r.judged} · paired {r.paired} · judge errors {r.judge_errors}"
              f" · labels without a judge score {r.unjudged_labels}",
-             "models: " + (", ".join(f"{m} ×{n}" for m, n in sorted(r.models.items())) or "none")]
+             "models: " + (", ".join(f"{m} ×{n}" for m, n in sorted(r.models.items())) or "none"),
+             "sources: " + (", ".join(f"{s} {n}" for s, n in sorted(r.sources.items())) or "none")]
     for d in r.dimensions:
         lines += [f"\n{d.dimension}: n={d.n}",
                   f"  kappa quadratic-weighted {d.kappa_quadratic}  ({d.reading})",

@@ -2,7 +2,7 @@
 
     # 1. Build the labelling sheet from dev runs (refuses held-out results)
     python -m eval.judge export --runs eval/results/runs/<batch>/results.jsonl [more.jsonl ...] \
-                                --out eval/results/judge/cal1
+                                --out eval/results/judge/cal1 [--allow-demo]
     # 2. A person fills human_status_note_quality and human_evidence_support (1-5) in labels.csv,
     #    without looking at judge scores.
     # 3. Score the same items with the judge (calls OpenRouter; key from eval/.env)
@@ -25,11 +25,11 @@ from .labels import NotDevError, export, read_items
 
 def _export(args) -> int:
     try:
-        rep = export([Path(p) for p in args.runs], Path(args.out))
+        rep = export([Path(p) for p in args.runs], Path(args.out), allow_demo=args.allow_demo)
     except (NotDevError, FileExistsError, ValueError, OSError) as e:
         print(f"refused: {e}", file=sys.stderr)
         return 2
-    print(f"{rep.items} item(s) to label · skipped: {rep.skipped_no_note} without a status note, "
+    print(f"{rep.items} item(s) to label (dev {rep.dev}, demo {rep.demo}) · skipped: {rep.skipped_no_note} without a status note, "
           f"{rep.skipped_attack} red-team run(s), {rep.skipped_duplicate} duplicate run id(s)")
     for f in rep.files:
         print("wrote", f)
@@ -84,6 +84,8 @@ def main(argv=None) -> int:
     e = sub.add_parser("export", help="build items.jsonl and labels.csv from dev result lines")
     e.add_argument("--runs", nargs="+", required=True)
     e.add_argument("--out", required=True)
+    e.add_argument("--allow-demo", action="store_true",
+                   help="also accept DEMO- runs of Person 2's demo graph (preliminary kappa only)")
     s = sub.add_parser("score", help="score items.jsonl with the judge (calls OpenRouter)")
     s.add_argument("--dir", required=True)
     s.add_argument("--limit", type=int, default=0, help="score at most N new items (0 = all)")

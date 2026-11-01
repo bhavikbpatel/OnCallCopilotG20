@@ -161,6 +161,11 @@ python -m eval.judge score --dir eval/results/judge/cal1      # calls OpenRouter
 python -m eval.judge kappa --dir eval/results/judge/cal1      # prints agreement, writes agreement.json
 ```
 
+Before real dev runs exist, a **preliminary** kappa can use notes from Person 2's demo graph (stub shop):
+their case IDs start `DEMO-`, and `export --allow-demo` accepts them (held-out is refused either way). The
+kappa report then counts dev and demo notes separately and its verdict starts with `PRELIMINARY`. The final
+calibration uses dev-case runs only.
+
 Calibrated means at least 20 labelled items and a quadratic-weighted kappa of at least 0.6 on both
 dimensions (below 0.4: rewrite the rubric, change its `version`, re-label). Unweighted kappa is reported
 alongside. Judge results record the rubric version and a hash of the rubric, and kappa refuses to mix
