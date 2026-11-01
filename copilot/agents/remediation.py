@@ -18,7 +18,7 @@ from copilot.memory.views import remediation_view
 from copilot.policy import is_allowed
 from copilot.state import (
     Action, ActionOutcome, ApprovalDecision, ApprovalRecord, EvidenceRef, IncidentState, RestartService, SetFlag,
-    payload_hash,
+    describe, payload_hash,
 )
 from eval.telemetry import signals
 
@@ -151,7 +151,7 @@ def make_execute(deps: CopilotDeps):
                 "outcome": prev.model_copy(update={"rolled_back": True}),
                 "replan_reason": "fix did not recover the metric; rolled back",
                 "proposed_action": None,
-                "timeline": [event("execute", "rollback", f"Rolled back with {action.model_dump_json()}: {result}")],
+                "timeline": [event("execute", "rollback", f"Rolled back: {describe(action)}")],
             }
         else:
             # A follow-up (e.g. restart) usually has no undo; keep the first fix's undo so rollback restores the start.
@@ -160,7 +160,7 @@ def make_execute(deps: CopilotDeps):
             update |= {
                 "executed_at": now(),
                 "outcome": ActionOutcome(action=action, approved_hash=approval.payload_hash, verified=False, rolled_back=False),
-                "timeline": [event("execute", "action", f"Executed {action.model_dump_json()}: {result}")],
+                "timeline": [event("execute", "action", f"Executed: {describe(action)}")],
             }
         emit({"node": "execute", "purpose": purpose, "result": result})
         return update

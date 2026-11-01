@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, TypeVar
 
 import yaml
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from pydantic import BaseModel, ValidationError
 
 from copilot.clients import ToolError
@@ -74,7 +74,12 @@ async def structured_call(deps: CopilotDeps, agent: str, prompt: str, schema: ty
         if parsed is not None and error is None:
             return parsed, spend(agent, tokens=tokens)
         if attempt == 0:
-            messages += [out["raw"], HumanMessage(f"Your output failed validation: {error}. Return a corrected result.")]
+            # The raw reply is a tool call; OpenAI rejects a follow-up that leaves it unanswered
+            # ("No tool output found for function call"), so the feedback goes in a ToolMessage.
+            feedback = f"Your output failed validation: {error}. Return a corrected result."
+            calls = getattr(out["raw"], "tool_calls", None) or []
+            messages += [out["raw"], *([ToolMessage(feedback, tool_call_id=c["id"]) for c in calls]
+                                       or [HumanMessage(feedback)])]
     raise HandoffError(f"{agent}/{prompt}: malformed output after retry: {error}")
 
 
