@@ -33,6 +33,14 @@ def test_latency_p50_is_median_of_server_spans():
     assert q.startswith("histogram_quantile(0.5,") and 'span_kind="SPAN_KIND_SERVER"' in q
 
 
+def test_slow_requests_counts_server_spans_above_one_second():
+    q = sig.promql("slow_requests", "shipping", "5m")
+    assert q.count('service_name="shipping",span_kind="SPAN_KIND_SERVER"') == 2
+    assert 'le="+Inf"' in q and 'le=~"1000(.0)?"' in q and q.count("[5m]") == 2 and " - " in q
+    assert sig.SLOW_REQUEST_MS == 1000
+    assert sig.supported("slow_requests", "shipping") and not sig.supported("slow_requests", "recommendation")
+
+
 def test_container_signals_use_container_name_and_units():
     assert 'container_name="recommendation"' in sig.promql("memory_mb", "recommendation")
     assert sig.promql("memory_mb", "email").endswith("/ 1e6")

@@ -41,7 +41,15 @@ SAME_POINT_WINDOW_S = 45.0
 # Data reaches Prometheus 12-40 s behind real time (docs/shop-telemetry-findings.md §5).
 PROM_LAG_S = 40
 
-SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps", "memory_mb", "cpu_percent", "consumer_lag")
+SIGNALS = ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "slow_requests", "throughput_rps",
+           "memory_mb", "cpu_percent", "consumer_lag")
+# slow_requests: server requests slower than this in the window. 1000 ms is an edge of the span-metrics
+# connector's default histogram (2, 4, 6, 8, 10, 50, 100, 200, 400, 800, 1000, 1400, 2000, 5000, 10000,
+# 15000 ms), which the shop's collector uses (src/otel-collector/otelcol-config.yml: span_metrics with no
+# buckets set). Prometheus 3 may store the edge as "1000" or "1000.0", so both are matched.
+SLOW_REQUEST_MS = 1000
+_SLOW_LE = 'le=~"1000(.0)?"'
+
 LESSON_SIGNALS = frozenset({"error_rate", "latency_p95_ms"})
 
 
@@ -92,6 +100,13 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
         # hits the slowest few (ad p95 jumped 10x in a control run, 31 Oct).
         return (f'histogram_quantile(0.5, sum by (le) (rate({DURATION_BUCKET}'
                 f'{{service_name="{s}",{SERVER}}}[{w}])))')
+    if signal == "slow_requests":
+        # Faults that slow only SOME requests (intlShippingSlowdown: international orders only, ~0.2 req/s)
+        # vanish in p95 once they are under 5% of requests; a count shows every slow request, and a wider
+        # window collects more of them instead of diluting them. All requests minus those <= 1000 ms.
+        sel = f'service_name="{s}",{SERVER}'
+        return (f'sum(increase({DURATION_BUCKET}{{{sel},le="+Inf"}}[{w}]))'
+                f' - sum(increase({DURATION_BUCKET}{{{sel},{_SLOW_LE}}}[{w}]))')
     if signal == "throughput_rps":
         return f'sum(rate({CALLS}{{service_name="{s}",{SERVER}}}[{w}]))'
     if signal == "memory_mb":
@@ -105,7 +120,7 @@ def promql(signal: str, service: str, window: str = "2m") -> str:
 
 def supported(signal: str, service: str) -> bool:
     """Whether this signal can have data for this service in 3.1.0."""
-    if signal in ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "throughput_rps"):
+    if signal in ("error_rate", "error_count", "latency_p95_ms", "latency_p50_ms", "slow_requests", "throughput_rps"):
         return service not in NO_SPAN_METRICS
     if signal == "consumer_lag":
         return service in KAFKA_CONSUMERS

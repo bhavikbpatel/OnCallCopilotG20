@@ -22,7 +22,8 @@ import statistics
 from typing import Callable, Optional
 
 from ..probes.faults import (
-    ERROR_COUNT_MAX_BASE, LATENCY_LOW_TRAFFIC_FACTOR, LATENCY_LOW_TRAFFIC_RPS, LATENCY_MIN_RPS, MOVE_THRESHOLDS,
+    COUNT_SIGNALS, ERROR_COUNT_MAX_BASE, LATENCY_LOW_TRAFFIC_FACTOR, LATENCY_LOW_TRAFFIC_RPS, LATENCY_MIN_RPS,
+    MOVE_THRESHOLDS,
 )
 from ..schemas.case import AlertSpec
 from ..telemetry import signals
@@ -67,8 +68,8 @@ def threshold_for(signal: str, base: Optional[float], base_rps: Optional[float])
     if signal.startswith("latency_"):
         if base_rps is None or base_rps < LATENCY_MIN_RPS:
             return None, f"too little traffic ({base_rps} req/s) for a latency alert"
-    if signal == "error_count" and base > ERROR_COUNT_MAX_BASE:
-        return None, f"error count is already {base:g} at rest"
+    if signal in COUNT_SIGNALS and base > ERROR_COUNT_MAX_BASE:
+        return None, f"{signal} is already {base:g} at rest"
     absolute, relative = MOVE_THRESHOLDS[signal]
     limit = base + max(absolute, abs(base) * relative)
     if signal == "latency_p95_ms" and base_rps < LATENCY_LOW_TRAFFIC_RPS:

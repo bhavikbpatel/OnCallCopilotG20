@@ -19,7 +19,7 @@ different model family only scores what code cannot.
 | `adapters/copilot_state.py` | Person 2's final `IncidentState` -> result line | done |
 | `injector/` | Fault injector: applies a case's faults (intensity, timing, intermittent, load) through the flag UI API, confirms every change, detects contamination, always clears, writes a ground-truth record; CLI | done |
 | `telemetry/prom.py` | Prometheus client (standard library only) | done |
-| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery; lesson predicates use supported service-scoped signals | done |
+| `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, slow requests > 1 s, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery; lesson predicates use supported service-scoped signals | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines, error breakdown, noise check. `faults`: inject each fault, measure which signals move, how fast, and whether they recover after the flag is cleared | done |
 | `recovery/` | Independent recovery check from Prometheus for the result line: errors since the fix (low-traffic paths) or the signal past its limit in 2 distinct data points; threshold or factor x pre-injection baseline; "cannot judge" (never "healthy") when there is no data, too little traffic or no baseline | done |
 | `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
@@ -77,7 +77,7 @@ python -m eval.probes discover              # ~4 min, adds the flag-write noise 
 python -m eval.probes faults --only control,paymentFailure   # ~18 min quick check (300 s hold)
 python -m eval.probes faults                # ~2 h: control, 12 faults, flood
 python -m eval.probes reanalyse eval/results/probes/faults-....json   # re-score with current rules
-python -m eval.probes faults --only control,intlShippingSlowdown --window 5m --recover 360   # other window
+python -m eval.probes faults --only control,intlShippingSlowdown --window 5m --recover 360   # 5-minute window
 ```
 
 Reports go to `eval/results/probes/` (git-ignored).

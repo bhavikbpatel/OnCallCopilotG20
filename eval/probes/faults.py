@@ -53,6 +53,7 @@ MOVE_THRESHOLDS: dict = {
     "error_count": (2.0, 0.0),          # +2 errors in the window (only on services quiet at rest)
     "latency_p95_ms": (50.0, 5.0),      # +50 ms and 6x (control run: frontend p95 swings ~4x on its own)
     "latency_p50_ms": (20.0, 2.0),      # +20 ms and 3x (median is far steadier than p95)
+    "slow_requests": (1.0, 0.0),        # +1 request slower than 1 s (only on services with none at rest)
     "throughput_rps": (0.2, 1.0),       # rise to 2x or more (see THROUGHPUT_DROP for falls). 300 s re-probe:
                                         # the flood gave 2.2-2.8x; control runs stayed within 1.3x of baseline
     "memory_mb": (20.0, 0.2),           # +20 MB and +20%
@@ -87,8 +88,9 @@ LATENCY_MIN_RPS = 0.1
 # run saw ad go 6.4x with nothing wrong. They need a 10x rise to count.
 LATENCY_LOW_TRAFFIC_RPS = 1.0
 LATENCY_LOW_TRAFFIC_FACTOR = 10.0
-# error_count only means something for services with (almost) no errors at rest.
+# error_count and slow_requests only mean something for services with (almost) none at rest.
 ERROR_COUNT_MAX_BASE = 1.0
+COUNT_SIGNALS = ("error_count", "slow_requests")
 # Not a service under test: the traffic source's own memory/CPU drift is noise.
 EXCLUDED_SERVICES = frozenset({"load-generator"})
 
@@ -119,7 +121,7 @@ def _moved(signal: str, base: Optional[float], value: Optional[float],
     if min_factor is not None and (base <= 0 or value < base * min_factor):
         return False
     delta = value - base
-    if signal == "error_count" and base > ERROR_COUNT_MAX_BASE:
+    if signal in COUNT_SIGNALS and base > ERROR_COUNT_MAX_BASE:
         return False
     if signal == "throughput_rps" and delta < 0:
         return base >= THROUGHPUT_MIN_BASE_RPS and (-delta / base) >= THROUGHPUT_DROP

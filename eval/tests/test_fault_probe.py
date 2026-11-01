@@ -490,3 +490,18 @@ def test_300s_slow_recoveries():
     assert items["imageSlowLoad"]["root_recovered_after_clear"] is False
     for item in ("paymentFailure", "cartFailure", "kafkaQueueProblems", "productCatalogLockContention", "adFailure"):
         assert items[item]["root_recovered_after_clear"] is True, item
+
+
+# ---------------------------------------------------------------- slow_requests (1 Nov)
+
+def test_slow_requests_moves_on_one_slow_request_only_where_none_at_rest():
+    assert flt._moved("slow_requests", 0.0, 1.0)
+    assert not flt._moved("slow_requests", 0.0, 0.0)
+    assert not flt._moved("slow_requests", 3.0, 20.0)      # already slow at rest: a count means nothing
+
+
+def test_sample_all_measures_slow_requests_for_span_services():
+    with FakePrometheus(lambda e, at: [({}, 1.0)]) as fp:
+        row = flt.sample_all(PromClient(fp.url), services={"shipping", "recommendation"})
+    assert row["shipping"]["slow_requests"] == 1.0          # the fake answers 1.0 to every query
+    assert "slow_requests" not in row["recommendation"]

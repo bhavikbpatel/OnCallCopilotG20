@@ -116,7 +116,7 @@ control run shows no movement on any service.
 | imageSlowLoad (5 s) | frontend-proxy p95 59 -> 7,700 ms; image-provider traffic drops ~75% | ~60 s | **slowly**: still ~5.5x baseline 2.5 min after |
 | paymentUnreachable | checkout error rate 0 -> 1.0 (payment itself healthy) | ~60 s | yes |
 | productCatalogLockContention | product-catalog p95 49 -> 15,000 ms, p50 9 -> 81 ms; wide knock-on slowness | ~120 s | yes (slowly in the 150 s run) |
-| intlShippingSlowdown (5 s) | **real but intermittent**: shipping p95 5,750 / 6,500 / 7,000 ms (control max 170 ms), each spike between normal readings at ~0.2 req/s, so never two in a row. A 5-minute window is being tested | - | - |
+| intlShippingSlowdown (5 s) | **real but intermittent**: shipping p95 5,750 / 6,500 / 7,000 ms (control max 170 ms), each spike between normal readings at ~0.2 req/s, so never two in a row. With a **5-minute window p95 showed nothing** (max 9 ms, 1 Nov): the slow requests are under 5% of a longer window. A `slow_requests` count (requests over 1 s) is being tested | - | - |
 | adFailure | ad error rate 0 -> 0.13 | ~60 s | yes |
 | flood (load only) | frontend traffic 13.9 -> 26-39 req/s (2.2-2.8x); **latency did not rise**. Caught once the traffic-rise bar is 2x (control runs stay within 1.3x of baseline) | ~90 s | yes |
 
@@ -129,7 +129,8 @@ Measurement lessons (built into the probe and its tests):
 - p95 latency is noisy: frontend swings ~4x and ad ~6x with nothing wrong; with
   under ~0.1 req/s (checkout) it is meaningless. Real latency faults were 14x-300x.
 - On services under ~1 req/s (shipping) a fault that hits only some requests shows as
-  isolated spikes in a 2-minute window.
+  isolated spikes in a 2-minute p95 and disappears in a 5-minute p95; count the slow
+  requests instead (`slow_requests`).
 - Docker's CPU figure behaves like a slow running average, so it shows neither a fault's
   start clearly nor its recovery.
 - Low-volume faults need an error **count**, not a rate (`error_count` signal).
@@ -144,13 +145,16 @@ Decisions taken from this (1 Nov, Person 4 with Bhavik):
   so the noise cases' FrontendTrafficHigh alert fires on the flood.
 - imageSlowLoad cases get 600 s to recover; emailMemoryLeak cases get 900 s, and "flag off plus
   restart email" is a correct option next to "flag off" alone.
-- intlShippingSlowdown: re-probe with a 5-minute window (`--window 5m`) before deciding.
+- intlShippingSlowdown: the 5-minute-window re-probe (1 Nov) hid the effect completely, so p95 is the wrong
+  measure for a fault that slows only some requests. New signal `slow_requests` (server requests slower
+  than 1 s in the window, from the latency histogram) is measured by the probe; a re-probe decides
+  whether cases and the ShippingLatencyHigh alert use it.
 
 ## Open items
 
 1. Person 5: agree (or not) the recommendation telemetry fix in section 4.
 2. Person 1: runbook note on background flag-lookup noise.
-3. Person 4: intlShippingSlowdown re-probe with a 5-minute window; then decide its signal (or exclude it).
+3. Person 4: intlShippingSlowdown re-probe with the `slow_requests` signal; then switch its case and alert to it (or exclude it).
 4. Team: confirm the two exclusions (recommendationCacheFailure, adHighCpu). Person 2's FaultType
    enum and flag allow-list still include them, which is fine: the agent may hypothesise them,
    cases just never inject them.
