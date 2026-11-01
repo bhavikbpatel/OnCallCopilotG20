@@ -344,7 +344,9 @@ class IncidentState(TypedDict, total=False):
     replan_reason: str | None              # set by assess / approval-reject / rollback; consumed by hypothesize
     runbook_advice: RunbookAdvice | None
     proposed_action: Action | None
-    action_purpose: Literal["fix", "rollback"]
+    action_purpose: Literal["fix", "follow_up", "rollback"]
+    follow_up_of: Action | None            # fix kept in place while a complementary step is tried (flag off → restart)
+    undo_action: Action | None             # restores the state before this attempt; set from the first undoable dry run
     expected_effect: str
     dry_run: DryRunResult | None
     approval: ApprovalRecord | None

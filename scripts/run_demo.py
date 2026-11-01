@@ -1,10 +1,12 @@
 """Run the incident graph end to end with real LLM calls against a stub shop (no MCP servers needed).
 
-    python scripts/run_demo.py                 # you approve / edit / reject in the terminal
-    python scripts/run_demo.py --auto          # auto-approve everything
-    python scripts/run_demo.py --no-recovery   # the fix "does not help" → rollback path
+    python scripts/run_demo.py                     # you approve / edit / reject in the terminal
+    python scripts/run_demo.py --auto              # auto-approve everything
+    python scripts/run_demo.py --no-recovery       # the fix "does not help" → follow-up / rollback path
+    python scripts/run_demo.py --scenario email    # two-step fix: flag off, then restart to free memory
 
-The stub shop simulates the paymentFailure fault: payment errors after a flag change, cart healthy.
+Scenarios: `payment` (paymentFailure at 50%: payment errors, checkout alert) and `email`
+(emailMemoryLeak at 100x: email memory keeps growing; turning the flag off stops growth, restart frees it).
 """
 from __future__ import annotations
 
@@ -30,6 +32,19 @@ from copilot.memory import make_checkpointer, make_store  # noqa: E402
 from copilot.state import Alert, DryRunResult, SetFlag  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
+SCENARIOS = {
+    "payment": {"flag": "paymentFailure", "variant": "50%", "service": "checkout", "signal": "error_rate",
+                "alert": "CheckoutErrorRateHigh", "summary": "Checkout error rate above 5% for 5 minutes",
+                "threshold": 0.05, "bad": 0.12, "good": 0.0},
+    "email": {"flag": "emailMemoryLeak", "variant": "100x", "service": "email", "signal": "memory_mb",
+              "alert": "EmailMemoryHigh", "summary": "email container memory above 300 MB and growing",
+              "threshold": 300.0, "bad": 620.0, "good": 140.0},
+}
+SC = SCENARIOS["payment"]
+
+
+def _series(name: str, labels: dict, values: list) -> str:
+    return json.dumps({"evidence_id": name, "series": [{"labels": labels, "values": values}]})
 
 
 # ---------- stub shop: telemetry tools for the Diagnosis agent ----------
@@ -38,27 +53,28 @@ NOW = datetime.now(timezone.utc)
 def query_promql(query: str, start: str = "", end: str = "", step: str = "30s") -> str:
     """Run a PromQL range query. Returns series with labels and values."""
     q = query.lower()
+    if SC["flag"] == "emailMemoryLeak":
+        if "email" in q or "memory" in q:
+            return _series("promql:email_memory:15m", {"container_name": "email"}, [[1, "210"], [2, "430"], [3, "620"]])
+        return _series("promql:errors:5m", {"service_name": "email"}, [[1, "0"], [2, "0"]])
     if "cart" in q or "valkey" in q:
-        return json.dumps({"evidence_id": "promql:cart_errors:5m", "series": [
-            {"labels": {"service": "cart"}, "values": [[1, "0.001"], [2, "0.001"]]}]})
+        return _series("promql:cart_errors:5m", {"service_name": "cart"}, [[1, "0.001"], [2, "0.001"]])
     if "payment" in q:
-        return json.dumps({"evidence_id": "promql:payment_errors:5m", "series": [
-            {"labels": {"service": "payment"}, "values": [[1, "0.001"], [2, "0.31"]]}]})
-    return json.dumps({"evidence_id": "promql:checkout_errors:5m", "series": [
-        {"labels": {"service": "checkout"}, "values": [[1, "0.12"]]}]})
+        return _series("promql:payment_errors:5m", {"service_name": "payment"}, [[1, "0.001"], [2, "0.31"]])
+    return _series("promql:checkout_errors:5m", {"service_name": "checkout"}, [[1, "0.12"]])
 
 
 @tool
 def recent_changes(since: str = "") -> str:
     """Feature-flag changes and deploys since a time."""
     return json.dumps({"evidence_id": "changes:30m", "changes": [
-        {"kind": "flag", "flag": "paymentFailure", "variant": "on", "at": NOW.isoformat()}]})
+        {"kind": "flag", "flag": SC["flag"], "variant": SC["variant"], "at": NOW.isoformat()}]})
 
 
 @tool
 def get_traces(service: str, status: str = "error", start: str = "", end: str = "", limit: int = 20) -> str:
     """Error trace summaries for a service."""
-    if service == "payment":
+    if service == "payment" and SC["flag"] == "paymentFailure":
         return json.dumps({"traces": [{"trace_id": "tr-9f1", "root": "checkout", "error_span": "payment.Charge",
                                        "message": "payment failed (flag paymentFailure)"}]})
     return json.dumps({"traces": []})
@@ -71,28 +87,38 @@ STUB_TOOLS = [query_promql, recent_changes, get_traces]
 
 class StubTelemetry:
     def __init__(self, recovers: bool):
-        self.recovers, self.fixed = recovers, False
+        self.recovers, self.flag_off, self.restarted = recovers, False, False
 
     @property
     def _healthy(self) -> bool:
-        return self.fixed and self.recovers
+        if not self.recovers:
+            return False
+        if SC["flag"] == "emailMemoryLeak":                 # memory only drops once the process restarts
+            return self.flag_off and self.restarted
+        return self.flag_off
+
+    @property
+    def _value(self) -> float:
+        return SC["good"] if self._healthy else SC["bad"]
 
     async def service_health(self, window="5m"):
+        if SC["flag"] == "emailMemoryLeak":
+            return [ServiceHealth(service="email", error_rate=0.0), ServiceHealth(service="checkout", error_rate=0.0)]
         return [ServiceHealth(service="checkout", error_rate=0.12), ServiceHealth(service="payment", error_rate=0.31),
                 ServiceHealth(service="cart", error_rate=0.0)]
 
     async def recent_changes(self, since):
-        return [{"kind": "flag", "flag": "paymentFailure", "variant": "50%", "at": NOW}]
+        return [{"kind": "flag", "flag": SC["flag"], "variant": SC["variant"], "at": NOW}]
 
     async def query_scalar(self, query):
-        return 0.0 if self._healthy else 0.12
+        return self._value
 
     async def signal_value(self, signal, service, window="2m"):
-        return 0.0 if self._healthy else 0.12
+        return self._value
 
     async def errors_since(self, service, since):
         requests = 12.0
-        errors = 0.0 if self._healthy else 6.0
+        errors = requests * self._value
         return RecoveryCount(errors=errors, requests=requests, error_rate=errors / requests)
 
 
@@ -104,7 +130,7 @@ class StubRunbooks:
 class StubOps:
     def __init__(self, telemetry: StubTelemetry):
         self.telemetry = telemetry
-        self.flags = {"paymentFailure": "50%"}            # the injected fault
+        self.flags = {SC["flag"]: SC["variant"]}            # the injected fault
 
     async def dry_run(self, action):
         undo = None
@@ -116,7 +142,9 @@ class StubOps:
     async def execute(self, action, token):
         if action.tool == "set_flag":
             self.flags[action.flag] = action.variant
-            self.telemetry.fixed = self.flags.get("paymentFailure") == "off"
+            self.telemetry.flag_off = self.flags.get(SC["flag"]) == "off"
+        elif action.tool == "restart_service":
+            self.telemetry.restarted = self.telemetry.flag_off   # restarting with the leak still on does not help
         print(f"   [shop] executed {action.model_dump_json()} with token {token}")
         return {"ok": True}
 
@@ -166,6 +194,8 @@ def ask_review(payload: dict, auto: bool) -> dict:
 # ---------- main ----------
 
 async def main(args: argparse.Namespace) -> None:
+    global SC
+    SC = SCENARIOS[args.scenario]
     load_dotenv(ROOT / ".env")
     settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3, "verify_initial_delay_s": 0})
     telemetry = StubTelemetry(recovers=not args.no_recovery)
@@ -175,9 +205,9 @@ async def main(args: argparse.Namespace) -> None:
                            tickets=StubTickets(), store=store, tools_factory=lambda agent: STUB_TOOLS)
         graph = build_graph(deps, checkpointer=saver, store=store)
         config = {"configurable": {"thread_id": f"INC-{uuid.uuid4().hex[:6]}", "engineer_id": "demo"}}
-        alert = Alert(alert_name="CheckoutErrorRateHigh", service="checkout", signal="error_rate",
-                      summary="Checkout error rate above 5% for 5 minutes", query="checkout_error_rate_5m",
-                      threshold=0.05, value=0.12, fired_at=NOW, fingerprint="demo")
+        alert = Alert(alert_name=SC["alert"], service=SC["service"], signal=SC["signal"], summary=SC["summary"],
+                      query=f"{SC['service']}_{SC['signal']}", threshold=SC["threshold"], value=SC["bad"],
+                      fired_at=NOW, fingerprint="demo")
 
         inp: dict | Command = {"alert": alert}
         while True:
@@ -199,11 +229,13 @@ async def main(args: argparse.Namespace) -> None:
               + (f" ({state['escalation_reason']})" if state.get("escalation_reason") else ""))
         if state.get("status_note"):
             print(f"status note: {state['status_note'].text}")
+        print(f"shop flags at end: {deps.ops.flags}")
         print(f"budget used: {state['budget'].total}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--auto", action="store_true", help="auto-approve every pause")
-    parser.add_argument("--no-recovery", action="store_true", help="the fix does not help → rollback path")
+    parser.add_argument("--no-recovery", action="store_true", help="the fix does not help → follow-up / rollback path")
+    parser.add_argument("--scenario", choices=sorted(SCENARIOS), default="payment")
     asyncio.run(main(parser.parse_args()))

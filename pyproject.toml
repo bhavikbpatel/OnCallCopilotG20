@@ -1,7 +1,7 @@
 [project]
 name = "oncall-copilot"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "langchain>=0.3",
     "langchain-openai>=0.3",

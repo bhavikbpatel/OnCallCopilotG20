@@ -9,7 +9,7 @@ models:
   comms:       {model: "openai/gpt-5-mini", temperature: 0.2}
 
 limits:
-  tool_calls: 20
+  tool_calls: 30          # 2–3 diagnoses × 6 + remediation, verify polls and one follow-up step
   tokens: 200000
   usd: 2.0
   per_diagnosis_tool_calls: 6

@@ -33,23 +33,34 @@ def make_propose_action(deps: CopilotDeps):
     @guarded("propose_action")
     async def propose_action(state: IncidentState) -> dict[str, Any]:
         outcome = state.get("outcome")
+        follow_up = state.get("action_purpose") == "follow_up" and state.get("follow_up_of") is not None \
+            and outcome is not None and outcome.action == state["follow_up_of"]
         view = remediation_view(state) | {
+            "fix_in_place_not_recovered": state["follow_up_of"].model_dump(mode="json") if follow_up else None,
             "last_rejection": state["approval"].reason
             if state.get("approval") and state["approval"].decision == "reject" else None,
             "already_failed_and_rolled_back": [outcome.action.model_dump(mode="json")]
             if outcome and outcome.rolled_back else [],
         }
         proposal, cost = await structured_call(deps, "remediation", "propose_action", ActionProposal, view)
+        if proposal.action is None and follow_up:     # no complementary step → after_propose routes to rollback
+            return {"proposed_action": None, "budget": cost,
+                    "timeline": [event("propose_action", "rollback", f"No follow-up step: {proposal.rationale}")]}
         if proposal.action is None:
             reason = f"no safe action: {proposal.rationale}"
             return {"escalation_reason": reason, "budget": cost, "timeline": [event("propose_action", "escalate", reason)]}
         allowed, why = is_allowed(proposal.action)
         if allowed and payload_hash(proposal.action) in state.get("failed_actions", []):
             allowed, why = False, f"{proposal.action.model_dump_json()} already failed and was rolled back"
+        if allowed and follow_up and proposal.action == state["follow_up_of"]:
+            allowed, why = False, f"{proposal.action.model_dump_json()} is already applied"
+        if not allowed and follow_up:                 # unusable follow-up → undo the fix rather than leave it half-done
+            return {"proposed_action": None, "budget": cost,
+                    "timeline": [event("propose_action", "rollback", f"Follow-up refused: {why}")]}
         if not allowed:
             return {"escalation_reason": why, "budget": cost, "timeline": [event("propose_action", "escalate", why)]}
         return {
-            "proposed_action": proposal.action, "action_purpose": "fix", "expected_effect": proposal.expected_effect,
+            "proposed_action": proposal.action, "action_purpose": "follow_up" if follow_up else "fix", "expected_effect": proposal.expected_effect,
             "approval": None, "budget": cost,
             "timeline": [event("propose_action", "action", f"Proposed {proposal.action.model_dump_json()}")],
         }
@@ -100,6 +111,8 @@ def make_approval_gate(deps: CopilotDeps):
         elif decision.decision == "reject":
             if state.get("action_purpose") == "rollback":
                 update["escalation_reason"] = f"rollback rejected: {decision.reason}"
+            elif state.get("action_purpose") == "follow_up":
+                update["proposed_action"] = None            # after_approval → roll back the fix still in place
             else:
                 update |= {"replan_reason": f"engineer rejected action: {decision.reason}", "proposed_action": None}
         elif not decision.token:
@@ -127,15 +140,20 @@ def make_execute(deps: CopilotDeps):
             refuted = [h.model_copy(update={"status": "refuted", "evidence": [*h.evidence, EvidenceRef(
                 evidence_id=f"action:{prev.approved_hash[:12]}", summary="approved fix did not recover the SLO")]})
                 for h in supported]
+            first = state.get("follow_up_of")
             update |= {
                 "hypotheses": refuted,
-                "failed_actions": [prev.approved_hash],
+                "failed_actions": [prev.approved_hash, *([payload_hash(first)] if first else [])],
+                "follow_up_of": None, "undo_action": None,
                 "outcome": prev.model_copy(update={"rolled_back": True}),
                 "replan_reason": "fix did not recover the metric; rolled back",
                 "proposed_action": None,
                 "timeline": [event("execute", "rollback", f"Rolled back with {action.model_dump_json()}: {result}")],
             }
         else:
+            # A follow-up (e.g. restart) usually has no undo; keep the first fix's undo so rollback restores the start.
+            if state["dry_run"].rollback_action is not None and not (purpose == "follow_up" and state.get("undo_action")):
+                update["undo_action"] = state["dry_run"].rollback_action
             update |= {
                 "executed_at": now(),
                 "outcome": ActionOutcome(action=action, approved_hash=approval.payload_hash, verified=False, rolled_back=False),
@@ -147,6 +165,12 @@ def make_execute(deps: CopilotDeps):
 
 
 SIGNAL_ALIASES = {"latency_p95": "latency_p95_ms", "cpu": "cpu_percent", "memory": "memory_mb"}
+HIGHER_IS_HEALTHY = {"throughput_rps"}
+
+
+def _healthy(signal: str, value: float, threshold: float) -> bool:
+    signal = SIGNAL_ALIASES.get(signal, signal)
+    return value > threshold if signal in HIGHER_IS_HEALTHY else value < threshold
 
 
 async def _measure(deps: CopilotDeps, state: IncidentState) -> tuple[float | None, bool, str, int]:
@@ -182,19 +206,24 @@ def make_verify(deps: CopilotDeps):
             value, judgeable, desc, n = await _measure(deps, state)
             calls, polls = calls + n, polls + 1
             emit({"node": "verify", "reading": desc, "threshold": alert.threshold})
-            if judgeable and value < alert.threshold:
+            if judgeable and _healthy(alert.signal, value, alert.threshold):
                 break
             if polls < max_polls:
                 await asyncio.sleep(poll_s)
 
-        recovered = judgeable and value < alert.threshold
+        recovered = judgeable and _healthy(alert.signal, value, alert.threshold)
         update: dict[str, Any] = {"outcome": state["outcome"].model_copy(update={"verified": recovered}),
                                   "budget": spend("remediation", tool_calls=calls)}
         if recovered:
-            text = f"recovered: {desc} < {alert.threshold}"
+            text = f"recovered: {desc} (threshold {alert.threshold})"
             update["final_status"] = "recovered"
+        elif judgeable and state.get("follow_up_of") is None:
+            # Some fixes take two steps (catalogue: emailMemoryLeak = flag off, then restart). Keep the fix
+            # and allow one complementary step before rolling back.
+            text = f"NOT recovered: {desc} (threshold {alert.threshold}); fix kept, one follow-up step allowed"
+            update |= {"follow_up_of": state["outcome"].action, "action_purpose": "follow_up"}
         elif judgeable:
-            text = f"NOT recovered: {desc} ≥ {alert.threshold}"
+            text = f"NOT recovered: {desc} (threshold {alert.threshold})"
         else:
             text = f"recovery could not be judged (too little data): {desc}"
             update["escalation_reason"] = text
@@ -204,7 +233,7 @@ def make_verify(deps: CopilotDeps):
 
 def make_rollback(deps: CopilotDeps):
     async def rollback(state: IncidentState) -> dict[str, Any]:
-        undo = state["dry_run"].rollback_action if state.get("dry_run") else None
+        undo = state.get("undo_action")
         if undo is None:
             reason = "fix did not recover and no rollback action is available"
             return {"escalation_reason": reason, "timeline": [event("rollback", "escalate", reason)]}

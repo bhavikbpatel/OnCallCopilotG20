@@ -21,7 +21,7 @@ class ToolError(RuntimeError):
 
 class ServiceHealth(BaseModel):
     service: str
-    error_rate: float
+    error_rate: float | None = None        # None: no traffic in the window (Prometheus NaN)
     latency_p95_ms: float | None = None
 
 

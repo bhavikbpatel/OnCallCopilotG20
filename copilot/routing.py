@@ -52,7 +52,13 @@ def make_routes(settings: AppSettings):
             return "escalate"
         return _replan_or_escalate(state, settings) if state.get("replan_reason") else "runbook"
 
-    def after_approval(state: IncidentState) -> Literal["execute", "dry_run", "commander_hypothesize", "escalate"]:
+    def after_propose(state: IncidentState) -> Literal["dry_run", "rollback", "escalate"]:
+        if _escalating(state):
+            return "escalate"
+        return "dry_run" if state.get("proposed_action") else "rollback"     # no follow-up step → undo the fix
+
+    def after_approval(state: IncidentState) -> Literal["execute", "dry_run", "rollback", "commander_hypothesize",
+                                                        "escalate"]:
         if _escalating(state):
             return "escalate"
         decision = state["approval"].decision
@@ -60,6 +66,8 @@ def make_routes(settings: AppSettings):
             return "execute"
         if decision == "edit":
             return "dry_run"
+        if state.get("action_purpose") == "follow_up":     # follow-up rejected → undo the fix still in place
+            return "rollback"
         return _replan_or_escalate(state, settings)
 
     def after_execute(state: IncidentState) -> Literal["verify", "commander_hypothesize", "escalate"]:
@@ -69,16 +77,22 @@ def make_routes(settings: AppSettings):
             return _replan_or_escalate(state, settings)
         return "verify"
 
-    def after_verify(state: IncidentState) -> Literal["comms", "rollback", "escalate"]:
+    def after_verify(state: IncidentState) -> Literal["comms", "propose_action", "rollback", "escalate"]:
         if _escalating(state):            # recovery could not be judged: never roll back on missing data
             return "escalate"
-        return "comms" if state["outcome"].verified else "rollback"
+        if state["outcome"].verified:
+            return "comms"
+        # verify just opened a follow-up (the unrecovered fix is the one kept in place) → one complementary step
+        if state["outcome"].action == state.get("follow_up_of") and not budget_exhausted(state.get("budget"), state["limits"]):
+            return "propose_action"
+        return "rollback"
 
     return {
         "ok_or_escalate": ok_or_escalate,
         "after_triage": after_triage,
         "fan_out": fan_out,
         "after_assess": after_assess,
+        "after_propose": after_propose,
         "after_approval": after_approval,
         "after_execute": after_execute,
         "after_verify": after_verify,

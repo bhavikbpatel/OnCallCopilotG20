@@ -98,7 +98,7 @@ def _last_value(series: dict[str, Any]) -> float | None:
     if not values:
         return None
     last = values[-1]
-    return float(last[1] if isinstance(last, (list, tuple)) else last)
+    return signals._clean(float(last[1] if isinstance(last, (list, tuple)) else last))   # NaN (0/0) → None
 
 
 class McpTelemetry:
@@ -142,7 +142,7 @@ class McpTelemetry:
             return s.get("labels", {}).get("service_name", "unknown")
 
         p95 = {name(s): _last_value(s) for s in latency}
-        return [ServiceHealth(service=name(s), error_rate=_last_value(s) or 0.0, latency_p95_ms=p95.get(name(s)))
+        return [ServiceHealth(service=name(s), error_rate=_last_value(s), latency_p95_ms=p95.get(name(s)))
                 for s in errors if name(s) != "flagd"]       # flagd: permanent background errors, not a suspect
 
     async def signal_value(self, signal: str, service: str, window: str = "2m") -> float | None:

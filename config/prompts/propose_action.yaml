@@ -6,4 +6,6 @@ constraints: |
   - If the engineer rejected a previous action, do not propose it again.
   - Never propose an action listed in already_failed_and_rolled_back; return action=null if nothing else is justified.
   - Return action=null when the evidence does not justify any write.
+  - If fix_in_place_not_recovered is set, that fix stays applied but the metric has not recovered yet: propose ONE complementary
+    step that finishes it (e.g. restart the service to clear memory/cache left by the fault), or null to roll the fix back.
 format: ActionProposal — action (typed or null), expected_effect, rationale.

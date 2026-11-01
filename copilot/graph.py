@@ -9,6 +9,7 @@
                                         │                     │ approve   ▲ edit / rollback
                                         │                     ↓           │
                                         └── rolled back ── execute → verify ─not recovered→ rollback
+                                                                       │ └ once: keep fix → propose_action (follow-up)
                                                                        │ recovered
                                                                        ↓
                                               escalate ─────────────→ comms → ⏸ review → END
@@ -66,12 +67,12 @@ def build_graph(deps: CopilotDeps, checkpointer: BaseCheckpointSaver | None = No
     g.add_edge("diagnosis", "commander_assess")                # waits for all parallel branches
     g.add_conditional_edges("commander_assess", r["after_assess"], ["runbook", "commander_hypothesize", "escalate"])
     g.add_conditional_edges("runbook", r["ok_or_escalate"]("propose_action"), ["propose_action", "escalate"])
-    g.add_conditional_edges("propose_action", r["ok_or_escalate"]("dry_run"), ["dry_run", "escalate"])
+    g.add_conditional_edges("propose_action", r["after_propose"], ["dry_run", "rollback", "escalate"])
     g.add_conditional_edges("dry_run", r["ok_or_escalate"]("approval_gate"), ["approval_gate", "escalate"])
     g.add_conditional_edges("approval_gate", r["after_approval"],
-                            ["execute", "dry_run", "commander_hypothesize", "escalate"])
+                            ["execute", "dry_run", "rollback", "commander_hypothesize", "escalate"])
     g.add_conditional_edges("execute", r["after_execute"], ["verify", "commander_hypothesize", "escalate"])
-    g.add_conditional_edges("verify", r["after_verify"], ["comms", "rollback", "escalate"])
+    g.add_conditional_edges("verify", r["after_verify"], ["comms", "propose_action", "rollback", "escalate"])
     g.add_conditional_edges("rollback", r["ok_or_escalate"]("dry_run"), ["dry_run", "escalate"])
     g.add_edge("escalate", "comms")
     g.add_edge("comms", "review")

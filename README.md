@@ -64,7 +64,8 @@ Runs the real incident graph with **real LLM calls**. The shop (the online store
 ```bash
 python scripts/run_demo.py                 # you decide at each pause: approve / edit / reject
 python scripts/run_demo.py --auto          # auto-approve everything
-python scripts/run_demo.py --no-recovery   # the fix "does not help" → rollback path → replan / escalate
+python scripts/run_demo.py --no-recovery   # the fix "does not help" → one follow-up step → rollback → replan / escalate
+python scripts/run_demo.py --scenario email  # two-step fix: emailMemoryLeak off, then restart email
 ```
 
 What you will see:
