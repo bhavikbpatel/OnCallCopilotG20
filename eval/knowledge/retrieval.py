@@ -231,11 +231,28 @@ class KnowledgeIndex:
             for index in candidates
         }
 
+    # Unit words carry no symptom meaning: "memory_mb" asks for memory, "latency_p95_ms" for latency.
+    _UNIT_WORDS = {"mb", "ms", "p95", "p50", "p99", "rps", "percent", "ratio", "bytes", "s"}
+
+    @classmethod
+    def _symptom_words(cls, text: str) -> list[str]:
+        """'error_rate' / 'Error rate' -> ['error', 'rate']: a metric ID and its plain words match alike."""
+        words = re.split(r"[\s_\-/]+", text.lower().strip())
+        return [w for w in words if w and w not in cls._UNIT_WORDS]
+
+    @classmethod
+    def _symptom_matches(cls, symptom: str, item: str) -> bool:
+        if symptom.lower() in item.lower():                 # plain-words symptoms behave as before
+            return True
+        wanted = cls._symptom_words(symptom)
+        have = " ".join(cls._symptom_words(item))
+        return bool(wanted) and all(re.search(r"\b%s" % re.escape(w), have) for w in wanted)
+
     def _filter(self, service: Optional[str], symptom: Optional[str]) -> set[int]:
         return {
             index for index, passage in enumerate(self.passages)
             if (service is None or service in passage.services)
-            and (symptom is None or any(symptom.lower() in item.lower() for item in passage.symptoms))
+            and (symptom is None or any(self._symptom_matches(symptom, item) for item in passage.symptoms))
         }
 
     @staticmethod
@@ -282,6 +299,8 @@ class KnowledgeIndex:
         if mode not in {"bm25", "hybrid"}:
             raise ValueError(f"unknown retrieval mode {mode!r}")
         candidates = self._filter(service, symptom)
+        if not candidates:                     # filters match nothing: no passages, never an error
+            return []
         generated = self.decompose_query(query, service, symptom) if mode == "hybrid" else []
         queries = list(dict.fromkeys([query] + generated + (subqueries or [])))
         if mode == "bm25":
@@ -299,6 +318,8 @@ class KnowledgeIndex:
             # Keep the fusion stage meaningful: rerank only its top-20 candidates,
             # then combine normalized fusion rank and lexical relevance.
             candidates_by_fusion = sorted(fused, key=lambda index: (-fused[index], index))[:20]
+            if not candidates_by_fusion:       # nothing scored: no passages (min()/max() below need values)
+                return []
             rerank_scores = {
                 index: self._rerank(query, self.passages[index])
                 for index in candidates_by_fusion
