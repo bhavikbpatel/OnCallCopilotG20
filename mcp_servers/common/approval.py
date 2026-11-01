@@ -3,10 +3,10 @@
 token = "tok:<expiry>:<HMAC(secret, payload_hash|expiry)>"
 
 * The gate issues the token when an engineer approves (make_token).
-* ops-actions, tickets and the hooks verify it (check_token).
+* ops_actions, tickets and the hooks verify it (check_token).
 * An agent cannot forge one (it never sees the secret), a token for payload A does not
   verify for payload B (an edit invalidates it), and it expires (default 10 minutes).
-* Single use is enforced by the servers that consume tokens, through tools.token_store
+* Single use is enforced by the servers that consume tokens, through mcp_servers.common.token_store
   (atomic, and it survives a server restart).
 
 FAILS CLOSED: set APPROVAL_SECRET to the same value in the gate/runner and in every MCP

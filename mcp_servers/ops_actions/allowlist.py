@@ -1,4 +1,4 @@
-"""What ops-actions is allowed to touch. Everything here is code, not model judgement.
+"""What ops_actions is allowed to touch. Everything here is code, not model judgement.
 
 Argument names and value rules follow eval.schemas.catalogue (Person 2's action models):
 set_flag(flag, variant), restart_service(service), scale_service(service, replicas 1-3),

@@ -14,31 +14,31 @@
     }
   ],
   "servers": {
-    "ops-actions": {
+    "ops_actions": {
       "type": "stdio",
       "command": "${input:python}",
-      "args": ["-m", "tools.ops_actions.server"],
+      "args": ["-m", "mcp_servers.ops_actions.server"],
       "cwd": "${workspaceFolder}",
       "env": { "APPROVAL_SECRET": "${input:approval-secret}", "PYTHONPATH": "${workspaceFolder}" }
     },
     "telemetry": {
       "type": "stdio",
       "command": "${input:python}",
-      "args": ["-m", "tools.telemetry.server"],
+      "args": ["-m", "mcp_servers.telemetry.server"],
       "cwd": "${workspaceFolder}",
       "env": { "PYTHONPATH": "${workspaceFolder}" }
     },
-    "runbooks-kb": {
+    "runbooks_kb": {
       "type": "stdio",
       "command": "${input:python}",
-      "args": ["-m", "tools.runbooks_kb.server"],
+      "args": ["-m", "mcp_servers.runbooks_kb.server"],
       "cwd": "${workspaceFolder}",
       "env": { "PYTHONPATH": "${workspaceFolder}" }
     },
     "tickets": {
       "type": "stdio",
       "command": "${input:python}",
-      "args": ["-m", "tools.tickets.server"],
+      "args": ["-m", "mcp_servers.tickets.server"],
       "cwd": "${workspaceFolder}",
       "env": { "APPROVAL_SECRET": "${input:approval-secret}", "PYTHONPATH": "${workspaceFolder}" }
     }

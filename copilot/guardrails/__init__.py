@@ -11,11 +11,11 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import yaml
 
-from tools.common import redact
+from mcp_servers.common import redact
 
 REMOVED = "[REMOVED: instruction-like text in untrusted data]"
 MAX_STRING = 2000
@@ -26,6 +26,10 @@ class GuardConfig:
     injection_filter: bool = True    # neutralise instruction-like lines in tool output
     redaction: bool = True           # remove secrets / PII from tool output and alerts
     permissions: bool = True         # per-agent tool permissions in the hooks
+    # Optional model layer (Prompt Guard 2 on tool results, Llama Guard 4 on engineer text): any callable
+    # text -> risk score 0..1. Not part of the on/off config; the app sets it. None = regex layer only.
+    classifier: Optional[Callable[[str], float]] = None
+    classifier_threshold: float = 0.5
 
     @classmethod
     def all_off(cls) -> "GuardConfig":
@@ -61,6 +65,16 @@ class GuardConfig:
                 if name.strip() in _DEFENCES:
                     values[name.strip()] = _on(value)
         return cls(**{name: values.get(name, True) for name in _DEFENCES})
+
+    def classify(self, text: str) -> bool:
+        """True when the model layer rates this text as an injection. A broken classifier counts as a hit
+        (fail closed): the text is withheld rather than trusted."""
+        if self.classifier is None or not self.injection_filter or not text.strip():
+            return False
+        try:
+            return float(self.classifier(text)) >= self.classifier_threshold
+        except Exception:
+            return True
 
 
 _DEFENCES = ("injection_filter", "redaction", "permissions")
@@ -115,6 +129,9 @@ def sanitize_obj(obj: Any, cfg: Optional[GuardConfig] = None) -> Tuple[Any, List
             if cfg.injection_filter:
                 value, found = neutralise(value)
                 flags.extend(found)
+                if cfg.classify(value):
+                    value = REMOVED
+                    flags.append("classifier")
             if cfg.redaction:
                 value = redact(value)
             return value
@@ -148,8 +165,27 @@ def input_guard(payload: Any, cfg: Optional[GuardConfig] = None) -> Dict[str, An
     return {"payload": clean, "flags": sorted(set(flags))}
 
 
-def output_guard(text: str, cfg: Optional[GuardConfig] = None, action: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Check what the agent says: no secrets, and any proposed action must be on the allow-list."""
+def check_citations(claims: Iterable[Dict[str, Any]], known_ids: Iterable[str]) -> List[str]:
+    """Every claim in a status note must cite an evidence_id the tools actually returned (design section 10).
+    claims: [{"text", "evidence_id"}]. Returns flags: uncited_claim:<n>, unknown_evidence:<id>."""
+    known = set(known_ids)
+    flags: List[str] = []
+    for n, claim in enumerate(claims):
+        cited = claim.get("evidence_id")
+        ids = cited if isinstance(cited, list) else [cited] if cited else []
+        if not ids:
+            flags.append("uncited_claim:%d" % n)
+        for evidence_id in ids:
+            if evidence_id not in known:
+                flags.append("unknown_evidence:%s" % evidence_id)
+    return flags
+
+
+def output_guard(text: str, cfg: Optional[GuardConfig] = None, action: Optional[Dict[str, Any]] = None,
+                 claims: Optional[Iterable[Dict[str, Any]]] = None,
+                 known_evidence: Optional[Iterable[str]] = None) -> Dict[str, Any]:
+    """Check what the agent says: no secrets, any proposed action on the allow-list, and (when the
+    claims are given) every claim cites an evidence_id the tools returned."""
     cfg = cfg or GuardConfig()
     flags: List[str] = []
     if cfg.redaction:
@@ -158,8 +194,12 @@ def output_guard(text: str, cfg: Optional[GuardConfig] = None, action: Optional[
             flags.append("secret_leak")
         text = cleaned
     blocked = False
+    if claims is not None:
+        bad = check_citations(claims, known_evidence or [])
+        flags.extend(bad)
+        blocked = blocked or bool(bad)
     if action is not None:
-        from tools.ops_actions.allowlist import validate_action
+        from mcp_servers.ops_actions.allowlist import validate_action
         problem = validate_action(action)
         if problem:
             flags.append("action_not_allowlisted:%s" % problem[0])

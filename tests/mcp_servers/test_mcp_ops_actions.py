@@ -1,49 +1,18 @@
-"""ops-actions: allow-list, dry run, approval binding, single use, expiry, no side effects on refusal."""
+"""ops_actions: allow-list, dry run, approval binding, single use, expiry, no side effects on refusal."""
 from __future__ import annotations
 
 from eval.injector import InMemoryFlagStore
 from eval.injector.flagstore import get_variant
 from eval.schemas import payload_hash
 
-from tools.approval import make_token
-from tools.ops_actions.executor import ExecutorError
-from tools.ops_actions.server import OpsActions
+from mcp_servers.common.approval import make_token
+from mcp_servers.ops_actions.executor import ExecutorError
+from mcp_servers.ops_actions.server import OpsActions
 
 SECRET = "test-secret"
 
 
-def flags():
-    return {
-        "paymentFailure": {"state": "ENABLED", "variants": {"100%": 1, "50%": 0.5, "off": 0}, "defaultVariant": "50%"},
-        "cartFailure": {"state": "ENABLED", "variants": {"100%": 1, "off": 0}, "defaultVariant": "off"},
-        "emitRawPii": {"state": "ENABLED", "variants": {"on": True, "off": False}, "defaultVariant": "off"},
-    }
-
-
-class FakeExecutor:
-    def __init__(self):
-        self.restarts, self.scales, self.rollbacks = [], [], []
-        self.counts = {"ad": 1, "cart": 1}
-        self.version = "3.1.0"
-        self.fail = False
-
-    def restart(self, service):
-        if self.fail:
-            raise ExecutorError("docker down")
-        self.restarts.append(service)
-
-    def scale(self, service, replicas):
-        self.scales.append((service, replicas))
-        self.counts[service] = replicas
-
-    def replicas(self, service):
-        return self.counts.get(service, 1)
-
-    def rollback(self, service, to_version):
-        self.rollbacks.append((service, to_version))
-
-    def current_version(self, service):
-        return self.version
+from mcp_fakes import FakeExecutor, flags  # noqa: E402
 
 
 def make(clock=None):
@@ -69,16 +38,16 @@ def test_dry_run_returns_hash_and_a_rollback_action():
     ops, store, _ = make()
     r = ops.dry_run(FIX)
     assert r["ok"]
-    assert r["data"]["payload_hash"] == payload_hash("set_flag", {"flag": "paymentFailure", "variant": "off"})
-    assert r["data"]["current_state"] == {"flag": "paymentFailure", "variant": "50%"}
-    assert r["data"]["rollback_action"] == {"tool": "set_flag", "flag": "paymentFailure", "variant": "50%"}
+    assert r["result"]["payload_hash"] == payload_hash("set_flag", {"flag": "paymentFailure", "variant": "off"})
+    assert r["result"]["current_state"] == {"flag": "paymentFailure", "variant": "50%"}
+    assert r["result"]["rollback_action"] == {"tool": "set_flag", "flag": "paymentFailure", "variant": "50%"}
     assert store.writes == []                       # a dry run changes nothing
 
 
 def test_dry_run_of_a_noop_has_no_rollback():
     ops, _, _ = make()
     r = ops.dry_run({"tool": "set_flag", "flag": "cartFailure", "variant": "off"})
-    assert r["ok"] and r["data"]["rollback_action"] is None
+    assert r["ok"] and r["result"]["rollback_action"] is None
 
 
 def test_allow_list_refusals():
@@ -123,7 +92,7 @@ def test_happy_path_changes_the_flag_and_returns_action_id():
     ops.dry_run(FIX)
     r = ops.set_flag("paymentFailure", "off", approve(FIX))
     assert r["ok"] and r["action_id"] == "A-0001"
-    assert r["data"]["before"] == "50%" and r["data"]["after"] == "off"
+    assert r["result"]["before"] == "50%" and r["result"]["after"] == "off"
     assert get_variant(store.read()["paymentFailure"]) == "off"
 
 
@@ -172,14 +141,14 @@ def test_restart_scale_and_rollback_use_the_executor():
 def test_scale_dry_run_offers_a_rollback_to_the_current_replicas():
     ops, _, _ = make()
     r = ops.dry_run({"tool": "scale_service", "service": "ad", "replicas": 3})
-    assert r["data"]["rollback_action"] == {"tool": "scale_service", "service": "ad", "replicas": 1}
+    assert r["result"]["rollback_action"] == {"tool": "scale_service", "service": "ad", "replicas": 1}
 
 
 def test_rollback_action_from_dry_run_undoes_a_fix():
     ops, store, _ = make()
     fix = ops.dry_run(FIX)
     ops.set_flag("paymentFailure", "off", approve(FIX))
-    undo = fix["data"]["rollback_action"]
+    undo = fix["result"]["rollback_action"]
     assert ops.dry_run(undo)["ok"]
     assert ops.set_flag("paymentFailure", undo["variant"], approve(undo))["ok"]
     assert get_variant(store.read()["paymentFailure"]) == "50%"

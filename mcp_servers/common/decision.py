@@ -1,6 +1,7 @@
-"""Approval gate logic: one decision about one exact action.
+"""Token minting for the approval gate: one decision about one exact action.
 
-The graph (Person 2) pauses with interrupt(proposal) and resumes with a decision; the
+This is a helper, not a second gate. The gate node is Person 2's (copilot/agents/remediation.py); it calls
+propose() and resolve() here. The graph (Person 2) pauses with interrupt(proposal) and resumes with a decision; the
 runner approves automatically in evaluation. Both call resolve(), so the rules are the same:
 
   approve -> a token for THIS payload hash (10-minute expiry, single use at the server)
@@ -8,7 +9,7 @@ runner approves automatically in evaluation. Both call resolve(), so the rules a
              must dry_run the edited action and ask again
   reject  -> no token; the reason goes back to the commander, which replans
 
-LangGraph usage inside the gate node:
+Inside the graph's gate node:
     proposal = propose(action, expected_effect=..., rollback_plan=..., rollback_action=...)
     decision = interrupt(proposal)            # engineer: {"decision", "decided_by", "payload_hash", "edited_action"?}
     outcome  = resolve(proposal, decision)    # outcome["token"] goes to the tool call; outcome["record"] to approvals
@@ -19,8 +20,8 @@ from typing import Any, Dict, Optional
 
 from eval.schemas import payload_hash
 
-from tools.approval import DEFAULT_TTL_S, ApprovalConfigError, make_token
-from tools.ops_actions.allowlist import split_action, validate_action
+from mcp_servers.common.approval import DEFAULT_TTL_S, ApprovalConfigError, make_token
+from mcp_servers.ops_actions.allowlist import split_action, validate_action
 
 DECISIONS = ("approve", "edit", "reject")
 

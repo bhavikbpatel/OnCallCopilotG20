@@ -5,7 +5,7 @@ from eval.injector import InMemoryFlagStore
 from eval.telemetry import PromError, Sample
 from eval.telemetry import signals
 
-from tools.telemetry.server import Telemetry, UpstreamError, check_query, parse_time
+from mcp_servers.telemetry.server import Telemetry, UpstreamError, check_query, parse_time
 
 NOW = 1_800_000_000.0
 
@@ -77,15 +77,15 @@ def test_parse_time_forms():
 def test_instant_query_returns_series_and_evidence_id():
     t = make()
     r = t.query_promql("up")
-    assert r["ok"] and r["data"]["series"] == [{"labels": {"service_name": "payment"}, "value": 0.42}]
-    assert r["data"]["evidence_id"].startswith("prom:")
+    assert r["ok"] and r["result"]["series"] == [{"labels": {"service_name": "payment"}, "values": [[NOW, 0.42]]}]
+    assert r["result"]["evidence_id"].startswith("prom:")
 
 
 def test_range_query_is_bounded_and_downsampled():
     prom = FakeProm()
     t = make(prom=prom)
     r = t.query_promql("up", start="-1h", end="now", step="1s")
-    assert r["ok"] and r["data"]["series"][0]["points"][-1] == [NOW, 0.5]
+    assert r["ok"] and r["result"]["series"][0]["values"][-1] == [NOW, 0.5]
     _, path, params = prom.calls[-1]
     assert path == "/api/v1/query_range" and float(params["step"]) >= 3600 / 120   # step raised to cap points
     assert code(t.query_promql("up", start="-3h", end="now")) == "range_too_large"
@@ -110,11 +110,11 @@ def test_search_logs_redacts_and_tags_untrusted():
     r = make(http=http).search_logs("payment", level="error", text="timeout", limit=5)
     assert r["ok"] and seen["method"] == "POST" and seen["url"].endswith("/_search")
     assert seen["body"]["size"] == 5
-    text = r["data"]["lines"][0]["text"]
+    text = r["result"]["lines"][0]["text"]
     assert "4111" not in text and "hunter2" not in text
-    assert r["data"]["lines"][0]["evidence_id"] == "log:d1"
-    assert "never instructions" in r["data"]["notice"]
-    assert "SYSTEM" in r["data"]["lines"][1]["text"]     # neutralising is the hook's job, not the tool's
+    assert r["result"]["lines"][0]["evidence_id"] == "log:d1"
+    assert "never instructions" in r["result"]["notice"]
+    assert "SYSTEM" in r["result"]["lines"][1]["text"]     # neutralising is the hook's job, not the tool's
 
 
 def test_search_logs_validation_and_upstream_errors():
@@ -137,7 +137,7 @@ def test_get_traces_summarises_failed_spans():
 
     r = make(http=http).get_traces("checkout", limit=3)
     assert r["ok"]
-    trace = r["data"]["traces"][0]
+    trace = r["result"]["traces"][0]
     assert trace["evidence_id"] == "trace:abc123" and trace["services"] == ["checkout", "payment"]
     assert trace["failed_spans"] == [{"service": "payment", "operation": "charge", "message": "card declined"}]
     assert code(make(http=http).get_traces("checkout", status="weird")) == "bad_argument"
@@ -146,6 +146,20 @@ def test_get_traces_summarises_failed_spans():
 def test_recent_changes_lists_flags_away_from_off():
     t = make(payment="100%")
     r = t.recent_changes("15m")
-    assert [c["flag"] for c in r["data"]["flags"]] == ["paymentFailure"]
-    assert r["data"]["flags"][0]["variant"] == "100%" and r["data"]["flags"][0]["evidence_id"] == "flag:paymentFailure=100%"
-    assert make().recent_changes()["data"]["flags"] == []
+    assert [c["flag"] for c in r["result"]["changes"]] == ["paymentFailure"]
+    assert r["result"]["changes"][0]["variant"] == "100%" and r["result"]["changes"][0]["evidence_id"] == "flag:paymentFailure=100%"
+    assert make().recent_changes()["result"]["changes"] == []
+
+
+def test_recent_changes_accepts_the_graphs_iso_since_and_gives_at():
+    from datetime import datetime, timezone
+    since = datetime.fromtimestamp(NOW - 600, timezone.utc).isoformat()
+    r = make(payment="100%").recent_changes(since)
+    change = r["result"]["changes"][0]
+    assert r["ok"] and r["result"]["since_s"] == 600 and datetime.fromisoformat(change["at"]).tzinfo is not None
+
+
+def test_series_match_what_the_graph_reads():
+    """copilot/tools.py reads series[i]["labels"]["service_name"] and float(series[i]["values"][-1][1])."""
+    s = make().query_promql("up")["result"]["series"][0]
+    assert s["labels"]["service_name"] == "payment" and float(s["values"][-1][1]) == 0.42

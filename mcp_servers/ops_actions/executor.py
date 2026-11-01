@@ -4,12 +4,17 @@ Every command is a fixed argument list built from validated, allow-listed values
 the model cannot inject flags, pipes or a second command. The system design plans a
 small actuator sidecar holding the Docker socket; this class is the same four
 operations done directly with `docker compose` (development), behind the same interface.
-A sidecar client can replace it later without touching ops-actions.
+ActuatorExecutor below is the System Design's sidecar client (section 6): ops_actions never holds
+the Docker socket; it calls four fixed HTTP endpoints. make_executor() picks one from the environment.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Callable, List, Optional
 
 from eval.schemas.catalogue import SHOP_VERSION
@@ -72,3 +77,58 @@ class ComposeExecutor:
 
     def current_version(self, service: str) -> str:
         return os.environ.get(self.version_var, SHOP_VERSION)
+
+
+class ActuatorExecutor:
+    """Client for the `actuator` sidecar, which alone holds the Docker socket (system design section 6).
+
+    Four fixed endpoints, JSON in and out, nothing else is ever called:
+        POST /restart   {"service": s}
+        POST /scale     {"service": s, "replicas": n}
+        POST /rollback  {"service": s, "to_version": v}
+        GET  /status?service=s  -> {"replicas": n, "version": v}
+    A non-2xx answer or an {"ok": false} body is an ExecutorError. The service and version values
+    were already checked against the allow-list by ops_actions before they get here.
+    """
+
+    def __init__(self, base_url: Optional[str] = None, timeout_s: float = 120.0, opener=None):
+        self.base_url = (base_url or os.environ.get("ACTUATOR_URL") or "").rstrip("/")
+        self.timeout_s = timeout_s
+        self._open = opener or urllib.request.urlopen
+
+    def _call(self, method: str, path: str, body: Optional[dict] = None) -> dict:
+        if not self.base_url:
+            raise ExecutorError("ACTUATOR_URL is not set; cannot reach the actuator sidecar")
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(self.base_url + path, data=data, method=method,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with self._open(req, timeout=self.timeout_s) as resp:
+                payload = json.loads(resp.read().decode() or "{}")
+        except urllib.error.HTTPError as exc:
+            raise ExecutorError("actuator %s %s failed: HTTP %s" % (method, path, exc.code)) from exc
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise ExecutorError("actuator %s %s unreachable: %s" % (method, path, exc)) from exc
+        if isinstance(payload, dict) and payload.get("ok") is False:
+            raise ExecutorError("actuator refused: %s" % str(payload.get("error"))[:300])
+        return payload if isinstance(payload, dict) else {}
+
+    def restart(self, service: str) -> None:
+        self._call("POST", "/restart", {"service": service})
+
+    def scale(self, service: str, replicas: int) -> None:
+        self._call("POST", "/scale", {"service": service, "replicas": int(replicas)})
+
+    def rollback(self, service: str, to_version: str) -> None:
+        self._call("POST", "/rollback", {"service": service, "to_version": to_version})
+
+    def replicas(self, service: str) -> int:
+        return int(self._call("GET", "/status?service=%s" % urllib.parse.quote(service)).get("replicas", 0))
+
+    def current_version(self, service: str) -> str:
+        return str(self._call("GET", "/status?service=%s" % urllib.parse.quote(service)).get("version") or SHOP_VERSION)
+
+
+def make_executor():
+    """ACTUATOR_URL set -> the sidecar client (Docker/Compose); otherwise direct `docker compose` (laptop dev)."""
+    return ActuatorExecutor() if os.environ.get("ACTUATOR_URL") else ComposeExecutor()

@@ -1,6 +1,6 @@
 """Shared helpers for the tool servers: result shape, read/write kinds, secret redaction.
 
-Every tool returns {"ok": True, "data": ...} or {"ok": False, "error": {"code", "message"}}
+Every tool returns {"ok": True, "result": ...} or {"ok": False, "error": {"code", "message"}}
 and never raises, so one bad call cannot crash an agent run.
 """
 from __future__ import annotations
@@ -20,19 +20,19 @@ TOOL_KINDS: Dict[str, str] = {
     "telemetry.search_logs": READ,
     "telemetry.get_traces": READ,
     "telemetry.recent_changes": READ,
-    "runbooks-kb.search": READ,
-    "runbooks-kb.get": READ,
+    "runbooks_kb.search": READ,
+    "runbooks_kb.get": READ,
     "tickets.get_incident": READ,
     "tickets.draft_status": READ,
     "tickets.create_incident": WRITE,      # internal: writes only our incident DB
     "tickets.append_timeline": WRITE,      # internal
     "tickets.save_postmortem": WRITE,      # internal
     "tickets.publish_status": WRITE,       # external: needs approval
-    "ops-actions.dry_run": READ,           # no side effects
-    "ops-actions.set_flag": WRITE,
-    "ops-actions.restart_service": WRITE,
-    "ops-actions.scale_service": WRITE,
-    "ops-actions.rollback": WRITE,
+    "ops_actions.dry_run": READ,           # no side effects
+    "ops_actions.set_flag": WRITE,
+    "ops_actions.restart_service": WRITE,
+    "ops_actions.scale_service": WRITE,
+    "ops_actions.rollback": WRITE,
 }
 
 
@@ -69,7 +69,7 @@ def run_server(mcp: Any, name: str) -> None:
 
 
 def ok(data: Any = None, **extra: Any) -> dict:
-    out = {"ok": True, "data": data}
+    out = {"ok": True, "result": data}
     out.update(extra)
     return out
 
@@ -94,11 +94,35 @@ _SECRET_PATTERNS = [
 ]
 
 
+_TOKENISH = re.compile(r"[A-Za-z0-9+/_\-=]{24,}")
+_SAFE_LONG = re.compile(r"^[0-9a-fA-F]{24,}$")      # trace ids and sha256 digests
+_NAME_LIKE = re.compile(r"^[A-Za-z0-9]{1,14}(?:[_-][A-Za-z0-9]{1,14})+$")   # metric / flag / service names: short parts
+ENTROPY_BITS = 3.5
+
+
+def _entropy(text: str) -> float:
+    from collections import Counter
+    from math import log2
+    counts = Counter(text)
+    return -sum(n / len(text) * log2(n / len(text)) for n in counts.values())
+
+
+def _redact_entropy(text: str) -> str:
+    """Catch keys no pattern knows: a long, random-looking run with letters AND digits.
+    Hex digests (trace ids, sha256) and names made of short snake/kebab parts (metrics, flags) are left alone."""
+    def repl(match):
+        word = match.group(0)
+        if _SAFE_LONG.match(word) or _NAME_LIKE.match(word) or not (any(c.isdigit() for c in word) and any(c.isalpha() for c in word)):
+            return word
+        return "[REDACTED-KEY]" if _entropy(word) >= ENTROPY_BITS else word
+    return _TOKENISH.sub(repl, text)
+
+
 def redact(text: str) -> str:
-    """Remove secrets and obvious PII (cards, emails, keys) from one string."""
+    """Remove secrets and obvious PII (cards, emails, keys) from one string: patterns, then entropy."""
     for pattern, repl in _SECRET_PATTERNS:
         text = pattern.sub(repl, text)
-    return text
+    return _redact_entropy(text)
 
 
 def redact_obj(obj: Any) -> Any:

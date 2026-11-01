@@ -1,4 +1,4 @@
-"""ops-actions MCP server: the only place that can change the shop.
+"""ops_actions MCP server: the only place that can change the shop.
 
 Tools: dry_run (read) and set_flag / restart_service / scale_service / rollback (write).
 
@@ -20,13 +20,14 @@ from eval.injector.flagstore import apply as apply_flags
 from eval.injector.flagstore import get_variant
 from eval.schemas import payload_hash
 
-from tools.approval import check_token
-from tools.common import err, marks, ok, run_server
-from tools.ops_actions.allowlist import split_action, validate_action
-from tools.ops_actions.executor import ComposeExecutor, ExecutorError
-from tools.token_store import UsedTokens
+from mcp_servers.common.approval import check_token
+from mcp_servers.common import err, marks, ok, run_server
+from mcp_servers.common.models import typed_output
+from mcp_servers.ops_actions.allowlist import split_action, validate_action
+from mcp_servers.ops_actions.executor import ExecutorError, make_executor
+from mcp_servers.common.token_store import UsedTokens
 
-SERVER = "ops-actions"
+SERVER = "ops_actions"
 
 
 def _flat(tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -37,12 +38,12 @@ class OpsActions:
     def __init__(self, store=None, executor=None, secret: Optional[str] = None,
                  journal_path: Optional[str] = None, clock=time.time, used_tokens: Optional[UsedTokens] = None):
         self.store = store or HttpFlagStore()
-        self.executor = executor or ComposeExecutor()
+        self.executor = executor or make_executor()
         self._secret = secret
         self._journal_path = journal_path
         self._clock = clock
         self._dry_runs = set()        # payload hashes that have been dry-run
-        self._used = used_tokens or UsedTokens()   # spent tokens: durable and atomic (tools/token_store.py)
+        self._used = used_tokens or UsedTokens()   # spent tokens: durable and atomic (mcp_servers/common/token_store.py)
         self.journal = {}             # action_id -> record
         self._n = 0
 
@@ -185,13 +186,14 @@ class OpsActions:
 
 
 def build_server(actions: Optional[OpsActions] = None):
-    """Build the FastMCP server. Run with:  python -m tools.ops_actions.server"""
+    """Build the FastMCP server. Run with:  python -m mcp_servers.ops_actions.server"""
     from fastmcp import FastMCP
 
     ops = actions or OpsActions()
-    mcp = FastMCP("ops-actions")
+    mcp = FastMCP("ops_actions")
 
     @mcp.tool(**marks(SERVER, "dry_run"))
+    @typed_output(SERVER, "dry_run")
     def dry_run(tool: str, flag: str = "", variant: str = "", service: str = "",
                 replicas: int = 0, to_version: str = "") -> dict:
         """READ. Preview one action without doing it. tool is set_flag, restart_service,
@@ -202,21 +204,25 @@ def build_server(actions: Optional[OpsActions] = None):
         return ops.dry_run({k: v for k, v in action.items() if v not in ("", None)})
 
     @mcp.tool(**marks(SERVER, "set_flag"))
+    @typed_output(SERVER, "set_flag")
     def set_flag(flag: str, variant: str, approval_token: str) -> dict:
         """WRITE (needs an approved dry_run). Switch a shop feature flag to a variant ('off' or a valid one)."""
         return ops.set_flag(flag, variant, approval_token)
 
     @mcp.tool(**marks(SERVER, "restart_service"))
+    @typed_output(SERVER, "restart_service")
     def restart_service(service: str, approval_token: str) -> dict:
         """WRITE (needs an approved dry_run). Restart one allow-listed service."""
         return ops.restart_service(service, approval_token)
 
     @mcp.tool(**marks(SERVER, "scale_service"))
+    @typed_output(SERVER, "scale_service")
     def scale_service(service: str, replicas: int, approval_token: str) -> dict:
         """WRITE (needs an approved dry_run). Scale one allow-listed service to 1-3 replicas."""
         return ops.scale_service(service, replicas, approval_token)
 
     @mcp.tool(**marks(SERVER, "rollback"))
+    @typed_output(SERVER, "rollback")
     def rollback(service: str, to_version: str, approval_token: str) -> dict:
         """WRITE (needs an approved dry_run). Redeploy a service at a known earlier version."""
         return ops.rollback(service, to_version, approval_token)

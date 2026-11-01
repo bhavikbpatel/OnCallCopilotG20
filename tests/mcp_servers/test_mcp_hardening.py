@@ -10,15 +10,15 @@ from eval.injector import InMemoryFlagStore
 from eval.schemas import payload_hash
 from eval.telemetry import signals
 
-from control.gate import auto_decision, propose, resolve
-from control.guardrails import GuardConfig, find_injection, neutralise
-from control.hooks import Hooks
-from tools.approval import ApprovalConfigError, check_token, make_token, verify_token
-from tools.common import READ, WRITE, DEFAULT_PORTS, kind_of, marks, run_server
-from tools.ops_actions.server import OpsActions
-from tools.telemetry.server import Telemetry, check_query
-from tools.tests.test_ops_actions import FakeExecutor, flags
-from tools.token_store import UsedTokens
+from mcp_servers.common.decision import auto_decision, propose, resolve
+from copilot.guardrails import GuardConfig, find_injection, neutralise
+from copilot.hooks import Hooks
+from mcp_servers.common.approval import ApprovalConfigError, check_token, make_token, verify_token
+from mcp_servers.common import READ, WRITE, DEFAULT_PORTS, kind_of, marks, run_server
+from mcp_servers.ops_actions.server import OpsActions
+from mcp_servers.telemetry.server import Telemetry, check_query
+from mcp_fakes import FakeExecutor, flags
+from mcp_servers.common.token_store import UsedTokens
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SECRET = "test-secret"
@@ -228,8 +228,8 @@ def test_hooks_pick_up_the_switch_from_the_environment(monkeypatch):
 # ---------------------------------------------------------------- read/write marking and transport
 
 def test_every_tool_has_a_kind_and_unknown_tools_count_as_writes():
-    assert kind_of("telemetry", "query_promql") == READ and kind_of("ops-actions", "set_flag") == WRITE
-    assert kind_of("ops-actions", "dry_run") == READ
+    assert kind_of("telemetry", "query_promql") == READ and kind_of("ops_actions", "set_flag") == WRITE
+    assert kind_of("ops_actions", "dry_run") == READ
     assert kind_of("weather-helper", "forecast") is None
     kw = marks("weather-helper", "forecast")
     assert kw == {} or kw["tags"] == {WRITE}
@@ -237,7 +237,7 @@ def test_every_tool_has_a_kind_and_unknown_tools_count_as_writes():
 
 def test_marks_describe_read_and_write_when_fastmcp_is_installed():
     pytest.importorskip("fastmcp")
-    read, write = marks("telemetry", "query_promql"), marks("ops-actions", "restart_service")
+    read, write = marks("telemetry", "query_promql"), marks("ops_actions", "restart_service")
     assert read.get("tags", {READ}) == {READ} and write.get("tags", {WRITE}) == {WRITE}
     if "annotations" in read:
         assert read["annotations"]["readOnlyHint"] is True and write["annotations"]["readOnlyHint"] is False

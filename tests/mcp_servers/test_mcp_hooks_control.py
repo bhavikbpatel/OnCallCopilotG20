@@ -1,4 +1,4 @@
-"""Hooks, guardrails and the approval gate, alone and together with ops-actions."""
+"""Hooks, guardrails and the approval gate, alone and together with ops_actions."""
 from __future__ import annotations
 
 import pytest
@@ -6,13 +6,13 @@ from eval.injector import InMemoryFlagStore
 from eval.injector.flagstore import get_variant
 from eval.schemas import payload_hash
 
-from control.gate import auto_decision, propose, resolve
-from control.guardrails import GuardConfig, input_guard, neutralise, output_guard, sanitize_obj
-from control.hooks import Hooks
-from tools.approval import make_token
-from tools.common import ok
-from tools.ops_actions.server import OpsActions
-from tools.tests.test_ops_actions import FakeExecutor, flags
+from mcp_servers.common.decision import auto_decision, propose, resolve
+from copilot.guardrails import GuardConfig, input_guard, neutralise, output_guard, sanitize_obj
+from copilot.hooks import Hooks
+from mcp_servers.common.approval import make_token
+from mcp_servers.common import ok
+from mcp_servers.ops_actions.server import OpsActions
+from mcp_fakes import FakeExecutor, flags
 
 SECRET = "test-secret"
 FIX = {"tool": "set_flag", "flag": "paymentFailure", "variant": "off"}
@@ -29,7 +29,7 @@ def stack(max_tool_calls=10, config=None):
 
 
 def dry(hooks, ops, action, agent="remediation-1", role="remediation"):
-    return hooks.call(agent, role, "ops-actions", "dry_run", action, ops.dry_run)
+    return hooks.call(agent, role, "ops_actions", "dry_run", action, ops.dry_run)
 
 
 # ---------------------------------------------------------------- guardrails
@@ -80,7 +80,7 @@ def test_output_guard_flags_secrets_and_off_list_actions():
 
 def test_diagnosis_agent_cannot_call_a_write_tool():
     ops, hooks = stack()
-    r = hooks.call("diagnosis-payment", "diagnosis", "ops-actions", "set_flag",
+    r = hooks.call("diagnosis-payment", "diagnosis", "ops_actions", "set_flag",
                    {"flag": "paymentFailure", "variant": "off", "approval_token": "x"}, lambda a: ok())
     assert code(r) == "blocked" and r["block_reason"] == "permission_denied"
     assert hooks.log[0]["blocked"] and hooks.log[0]["kind"] == "write"
@@ -90,9 +90,9 @@ def test_a_write_without_a_valid_token_is_blocked_before_the_server():
     ops, hooks = stack()
     called = []
     args = {"flag": "paymentFailure", "variant": "off"}
-    r = hooks.call("remediation-1", "remediation", "ops-actions", "set_flag", args, lambda a: called.append(a))
+    r = hooks.call("remediation-1", "remediation", "ops_actions", "set_flag", args, lambda a: called.append(a))
     assert r["block_reason"] == "approval_required"
-    r = hooks.call("remediation-1", "remediation", "ops-actions", "set_flag", dict(args, approval_token="tok:1:abc"),
+    r = hooks.call("remediation-1", "remediation", "ops_actions", "set_flag", dict(args, approval_token="tok:1:abc"),
                    lambda a: called.append(a))
     assert r["block_reason"] == "approval_hash_mismatch" and called == []
 
@@ -101,14 +101,14 @@ def test_full_fix_through_hooks_logs_matching_hashes_and_hides_the_token():
     ops, hooks = stack()
     d = dry(hooks, ops, FIX)
     assert d["ok"]
-    token = make_token(d["data"]["payload_hash"], secret=SECRET)
+    token = make_token(d["result"]["payload_hash"], secret=SECRET)
     args = {"flag": "paymentFailure", "variant": "off", "approval_token": token}
-    r = hooks.call("remediation-1", "remediation", "ops-actions", "set_flag", args,
+    r = hooks.call("remediation-1", "remediation", "ops_actions", "set_flag", args,
                    lambda a: ops.set_flag(a["flag"], a["variant"], a["approval_token"]), purpose="fix")
     assert r["ok"]
     dry_entry, write_entry = hooks.log
     assert dry_entry["kind"] == "read" and write_entry["kind"] == "write"
-    assert dry_entry["payload_hash"] == write_entry["payload_hash"] == d["data"]["payload_hash"]
+    assert dry_entry["payload_hash"] == write_entry["payload_hash"] == d["result"]["payload_hash"]
     assert write_entry["action_id"] == "A-0001" and write_entry["purpose"] == "fix"
     assert "approval_token" not in write_entry["args"] and token not in str(hooks.log)
 
@@ -116,7 +116,7 @@ def test_full_fix_through_hooks_logs_matching_hashes_and_hides_the_token():
 def test_budget_blocks_the_next_call_and_blocked_calls_do_not_count():
     ops, hooks = stack(max_tool_calls=2)
     hooks.call("triage-1", "triage", "telemetry", "query_promql", {"query": "up"}, lambda a: ok())
-    hooks.call("triage-1", "triage", "ops-actions", "set_flag", {"flag": "x"}, lambda a: ok())   # blocked: not allowed
+    hooks.call("triage-1", "triage", "ops_actions", "set_flag", {"flag": "x"}, lambda a: ok())   # blocked: not allowed
     hooks.call("triage-1", "triage", "telemetry", "recent_changes", {}, lambda a: ok())
     r = hooks.call("triage-1", "triage", "telemetry", "query_promql", {"query": "up2"}, lambda a: ok())
     assert r["block_reason"] == "budget_exceeded"
@@ -158,7 +158,7 @@ def test_unknown_tool_counts_as_a_write_and_unknown_role_is_blocked():
 
 def test_defences_off_lifts_the_permission_check_but_not_the_token_check():
     ops, hooks = stack(config=GuardConfig.all_off())
-    r = hooks.call("diagnosis-1", "diagnosis", "ops-actions", "set_flag",
+    r = hooks.call("diagnosis-1", "diagnosis", "ops_actions", "set_flag",
                    {"flag": "paymentFailure", "variant": "off"}, lambda a: ok())
     assert r["block_reason"] == "approval_required"       # no token: still refused
 
@@ -168,7 +168,7 @@ def test_log_entries_validate_against_the_evaluation_schema():
     from eval.schemas.result import ToolCall
     ops, hooks = stack()
     dry(hooks, ops, FIX)
-    hooks.call("diagnosis-1", "diagnosis", "ops-actions", "set_flag", {"flag": "paymentFailure"}, lambda a: ok())
+    hooks.call("diagnosis-1", "diagnosis", "ops_actions", "set_flag", {"flag": "paymentFailure"}, lambda a: ok())
     for entry in hooks.tool_calls():
         ToolCall.model_validate(entry)
 
@@ -195,7 +195,7 @@ def test_edit_gives_a_new_hash_and_the_old_token_stops_working():
     assert edited["status"] == "edited" and edited["token"] is None and edited["record"]["has_token"] is False
     assert edited["next_proposal"]["payload_hash"] != proposal["payload_hash"]
     ops.dry_run({"tool": "restart_service", "service": "checkout"})
-    r = hooks.call("remediation-1", "remediation", "ops-actions", "restart_service",
+    r = hooks.call("remediation-1", "remediation", "ops_actions", "restart_service",
                    {"service": "checkout", "approval_token": approved["token"]},
                    lambda a: ops.restart_service(a["service"], a["approval_token"]))
     assert r["block_reason"] == "approval_hash_mismatch"
@@ -221,3 +221,13 @@ def test_publish_status_goes_through_the_same_gate():
     proposal = propose({"tool": "publish_status", "incident_id": "INC-0001", "text": "Resolved."})
     assert proposal["payload_hash"] == payload_hash("publish_status", {"incident_id": "INC-0001", "text": "Resolved."})
     assert resolve(proposal, auto_decision(proposal), secret=SECRET)["status"] == "approved"
+
+
+def test_budget_comes_from_app_yaml_not_permissions(tmp_path):
+    from copilot.hooks import FALLBACK_MAX_TOOL_CALLS, Hooks, load_budget, load_permissions
+    cfg = tmp_path / "app.yaml"
+    cfg.write_text("limits:\n  tool_calls: 17\n")
+    assert load_budget(str(cfg)) == 17
+    assert load_budget(str(tmp_path / "missing.yaml")) == FALLBACK_MAX_TOOL_CALLS == 30
+    assert "default_budget" not in load_permissions()
+    assert Hooks(max_tool_calls=5).max_tool_calls == 5          # E4 override
