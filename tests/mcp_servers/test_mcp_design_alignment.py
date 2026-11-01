@@ -166,8 +166,8 @@ def test_every_tool_output_matches_its_model():
     doc = kb.search("payment errors", k=1)["result"]["passages"][0]["doc_id"]
     results += [("runbooks_kb", "search", kb.search("payment errors", k=2)), ("runbooks_kb", "get", kb.get(doc))]
     tk = Tickets(":memory:", secret=SECRET, clock=lambda: 1.0)
-    inc = tk.create_incident("HighErrorRate", "payment", "SEV-2")["result"]["incident_id"]
-    results += [("tickets", "create_incident", tk.create_incident("x", "payment", "SEV-2")),
+    inc = tk.create_incident(alert_name="HighErrorRate", service="payment", severity="SEV-2")["result"]["incident_id"]
+    results += [("tickets", "create_incident", tk.create_incident(alert_name="x", service="payment", severity="SEV-2")),
                 ("tickets", "append_timeline", tk.append_timeline(inc, "saw errors")),
                 ("tickets", "save_postmortem", tk.save_postmortem(inc, "text")),
                 ("tickets", "get_incident", tk.get_incident(inc)), ("tickets", "draft_status", tk.draft_status(inc))]
@@ -293,12 +293,13 @@ def test_sinks_receive_every_entry_and_a_broken_sink_cannot_stop_a_run(tmp_path)
     ToolCall.model_validate(entry)                                    # Person 4's schema still accepts the log
     broken = Hooks(config=GuardConfig.all_off(), sink=lambda e: 1 / 0)
     assert _call(broken)["ok"] and len(broken.log) == 1
+    assert broken.costs()["sink_errors"] == 1                         # counted, not silent
 
 
 def test_permissions_follow_the_design():
     roles = load_permissions()["roles"]
     assert roles["commander"]["allow"] == []                          # section 5: no tools of its own
-    assert "memory.search_incidents" in roles["comms"]["allow"] and "memory.search_incidents" in roles["runbook"]["allow"]
+    assert not [t for r in roles.values() for t in r["allow"] if t.startswith("memory.")]   # no memory MCP server exists
     assert not [t for t in roles["diagnosis"]["allow"] if t.startswith(("ops_actions", "tickets"))]
 
 
@@ -318,3 +319,6 @@ def test_permissions_file_works_for_both_readers():
     assert hooks.allowed("triage", "tickets.create_incident") and hooks.allowed("triage", "telemetry.recent_changes")
     assert hooks.allowed("remediation", "ops_actions.set_flag") and not hooks.allowed("diagnosis", "ops_actions.set_flag")
     assert not hooks.allowed("commander", "telemetry.query_promql") and hooks.allowed("single_agent", "ops_actions.rollback")
+
+
+

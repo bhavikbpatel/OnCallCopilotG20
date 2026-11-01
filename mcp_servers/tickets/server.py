@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 from eval.schemas import payload_hash
-from eval.schemas.catalogue import SERVICES, normalize_severity
+from eval.schemas.catalogue import SERVICES, SEVERITY_LEVELS, normalize_severity
 
 from mcp_servers.common.approval import check_token
 from mcp_servers.common import err, marks, ok, redact, run_server
@@ -45,26 +45,26 @@ def _iid(n: int) -> str:
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}")
 
 
-def _epoch(value: Any, default: float) -> float:
-    """`at` from the graph is ISO-8601 (or epoch seconds); anything unreadable falls back to now."""
+def _epoch(value: Any) -> Optional[float]:
+    """`at` from the graph is ISO-8601 (or epoch seconds). None means it could not be read."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp()
     except ValueError:
-        return default
+        return None
 
 
 def _alert_fields(alert: Any) -> tuple:
-    """(alert_name, service) from the graph's Alert object. Alert data is untrusted: a name or service we do
-    not recognise never stops the incident from being opened."""
+    """(alert_name, service) from the graph's Alert object (copilot/state.py: `alert_name`, `service`).
+    The Prometheus-style names are accepted too. Returns "" for anything missing; the caller decides."""
     if not isinstance(alert, dict):
         return "", ""
     labels = alert.get("labels") if isinstance(alert.get("labels"), dict) else {}
-    name = alert.get("alertname") or alert.get("name") or labels.get("alertname") or ""
+    name = alert.get("alert_name") or alert.get("alertname") or alert.get("name") or labels.get("alertname") or ""
     service = alert.get("service") or labels.get("service_name") or labels.get("service") or ""
-    return str(name), str(service) if str(service) in SERVICES else ""
+    return str(name), str(service)
 
 
 class Tickets:
@@ -86,38 +86,55 @@ class Tickets:
 
     def create_incident(self, incident_id: str = "", alert: Optional[dict] = None, severity: str = "",
                         alert_name: str = "", service: str = "") -> dict:
-        """WRITE (internal). Open an incident record. The graph passes its own incident_id and the alert;
-        without an incident_id one is generated. Calling again with the same id changes nothing."""
+        """WRITE (internal). Open an incident record. The graph passes its own incident_id and its Alert
+        (`alert_name`, `service`); without an incident_id one is generated.
+
+        Refused, never guessed: an alert with no name (missing_alert_name), a malformed incident_id or severity.
+        An alert whose service is not one of the shop's services still opens the incident (alert data is
+        untrusted and an outage must be handled): the service is left empty and `warnings` says so.
+        Calling again with an existing incident_id changes nothing and says so in `warnings`."""
         if incident_id and not (isinstance(incident_id, str) and _ID.fullmatch(incident_id)):
             return err("bad_argument", "incident_id must be 1-64 letters, digits or . _ : -")
         if incident_id and self._row(incident_id) is not None:
-            return ok({"incident_id": incident_id})
+            return ok({"incident_id": incident_id, "warnings": ["incident_already_exists"]})
         from_alert, alert_service = _alert_fields(alert)
-        name = (alert_name or from_alert).strip() or "unknown_alert"
-        service = service or alert_service
-        if service and service not in SERVICES:
-            return err("unknown_service", "service must be one of the shop's services")
+        name = (alert_name or from_alert).strip()
+        if not name:
+            return err("missing_alert_name", "the alert has no alert_name")
+        warnings = []
+        if service:
+            if service not in SERVICES:      # an explicit service argument is a programming error
+                return err("unknown_service", "service must be one of the shop's services")
+        else:
+            service = alert_service
+            if service and service not in SERVICES:
+                warnings.append("service_not_recognised:%s" % redact(service)[:40])
+                service = ""
         level = normalize_severity(severity) if severity else ""
-        if level not in ("", "SEV-1", "SEV-2", "SEV-3", "SEV-4", "NONE"):
-            return err("bad_argument", "severity must be SEV-1..SEV-4 or NONE (got %r)" % str(severity)[:20])
+        if level and level not in SEVERITY_LEVELS:
+            return err("bad_argument", "severity must be one of %s (got %r)" % (", ".join(SEVERITY_LEVELS), str(severity)[:20]))
         cur = self.db.execute("INSERT INTO incidents(alert_name, service, severity, created_at) VALUES (?,?,?,?)",
                               (redact(name)[:200], service or None, level or None, self._clock()))
         public = incident_id or _iid(cur.lastrowid)
         self.db.execute("UPDATE incidents SET public_id=? WHERE id=?", (public, cur.lastrowid))
         self.db.commit()
-        return ok({"incident_id": public})
+        return ok({"incident_id": public, "warnings": warnings})
 
     def append_timeline(self, incident_id: str, text: str = "", at: Any = None, event: str = "",
                         source: str = "") -> dict:
-        """WRITE (internal). Add one line to an incident's timeline (`text`, or `event`; `at` is ISO-8601)."""
+        """WRITE (internal). Add one line to an incident's timeline (`text`, or `event`; `at` is ISO-8601 or epoch
+        seconds and defaults to now when not given; an `at` that cannot be read is refused)."""
         row = self._row(incident_id)
         if row is None:
             return err("not_found", "no incident %r" % (incident_id,))
         line = text or event
         if not isinstance(line, str) or not line.strip():
             return err("bad_argument", "text must be a non-empty string")
+        when = self._clock() if at in (None, "") else _epoch(at)
+        if when is None:
+            return err("bad_argument", "at must be ISO-8601 or epoch seconds, got %r" % str(at)[:40])
         self.db.execute("INSERT INTO timeline(incident_id, at, source, event) VALUES (?,?,?,?)",
-                        (row["id"], _epoch(at, self._clock()), redact(str(source))[:60], redact(line.strip())[:MAX_EVENT]))
+                        (row["id"], when, redact(str(source or ""))[:60], redact(line.strip())[:MAX_EVENT]))
         self.db.commit()
         return ok({"incident_id": incident_id})
 
