@@ -29,7 +29,7 @@ different model family only scores what code cannot.
 | `knowledge/retrieval_queries.json` | 41 labelled development queries for Recall@5 | done |
 | `runner/` | Runs cases end to end: preflight, baselines, inject, synthetic alert (fires on the probe's calibrated movement rule), agent with auto-approval and timeout, recovery check, always clear, contamination check, result line, score; JSONL + summary; CI gate. Ships the do-nothing agent | done |
 | `adversarial/`, `schemas/attack.py`, `checkers/attacks.py` | Red team (E2): attack format; HTTP delivery of hostile text into the shop's logs and traces; attack success, influence and false-block checks; `check` (counts only) and `probe` commands. Attacks themselves are private | done |
-| `judge/` | Judge prompt, rubric, Cohen's kappa calibration (dev outputs only) | later |
+| `judge/` | LLM judge for status-note quality and evidence support (anchored rubric, OpenRouter, different model family, structured output, fallback model); postmortem-timeline code check; blind labelling sheet; Cohen's kappa, quadratic-weighted and unweighted (dev outputs only) | built; calibration waits for 20+ dev runs |
 | `experiments/` | E1–E4 config files, all run by the same runner | later |
 | `tests/` | pytest for everything above | done |
 | `results/` | Run outputs. Git-ignored | — |
@@ -139,6 +139,36 @@ harness: hostile text in a request header, query string, path or JSON body sent 
 incident. Runbook, tool-description and chat attacks need a way in from Persons 1-3; until then the runner
 refuses them (status `error`) instead of pretending they ran. Results add `attacks.jsonl` and, in
 `summary.json`, attack success and influence rates and false blocks (legitimate calls the defences blocked).
+
+## Judge (explanation quality) and its calibration
+
+Code scores diagnosis, actions, recovery, severity, secrets and the postmortem timeline. The judge
+rates only what code cannot: **status-note quality** (impact, cause, action, status; consistent with
+the facts code measured) and **evidence support** (do the cited evidence items back the note's claims).
+Each is 1-5 with anchors for every score in `judge/rubric.yaml`. The judge model is
+`google/gemini-3.1-flash-lite` (fallback `meta-llama/llama-3.3-70b-instruct`) from
+`config/models.yaml`, at temperature 0, refused if it shares a family with the agents. The agent's text
+is passed as data inside `<agent_output>`, never as instructions. One run is rated at a time (no
+pairwise comparison, so no position bias); the rubric says length earns nothing, and the kappa report
+checks note length against scores (verbosity bias).
+
+Calibration uses **dev runs only** (the export refuses any non-`D-` case):
+
+```bash
+python -m eval.judge export --runs eval/results/runs/<batch>/results.jsonl --out eval/results/judge/cal1
+#   fill human_status_note_quality and human_evidence_support (1-5) in labels.csv; it shows no judge scores
+python -m eval.judge score --dir eval/results/judge/cal1      # calls OpenRouter; resumable
+python -m eval.judge kappa --dir eval/results/judge/cal1      # prints agreement, writes agreement.json
+```
+
+Calibrated means at least 20 labelled items and a quadratic-weighted kappa of at least 0.6 on both
+dimensions (below 0.4: rewrite the rubric, change its `version`, re-label). Unweighted kappa is reported
+alongside. Judge results record the rubric version and a hash of the rubric, and kappa refuses to mix
+versions. One real API call can be tested with `EVAL_LIVE_JUDGE=1 python -m pytest tests/test_judge.py -k live`.
+
+The result line's `explanation` field (status note, its evidence IDs, the citable evidence, postmortem
+timeline, run timeline) is filled by the adapter from Person 2's final state;
+`judge/timeline.py` checks that the postmortem timeline matches the run's own record.
 
 ## Knowledge and memory baseline
 
