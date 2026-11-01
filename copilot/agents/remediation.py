@@ -235,7 +235,9 @@ def make_verify(deps: CopilotDeps):
 
         recovered = judgeable and _healthy(alert.signal, value, alert.threshold)
         update: dict[str, Any] = {"outcome": state["outcome"].model_copy(update={"verified": recovered}),
-                                  "budget": spend("remediation", tool_calls=calls)}
+                                  # Verify's readings are code-driven: logged as code_calls, outside the
+                                  # agent's tool-call budget, so E4's budget 5 is not used up by polling.
+                                  "budget": spend("remediation", code_calls=calls)}
         if recovered:
             text = f"recovered: {desc} (threshold {alert.threshold})"
             update["final_status"] = "recovered"

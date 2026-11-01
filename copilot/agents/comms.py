@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from copilot.agents.base import emit, event, guarded, structured_call
+from copilot.agents.remediation import HIGHER_IS_HEALTHY, SIGNAL_ALIASES
 from copilot.deps import CopilotDeps
 from copilot.memory.views import comms_view
 from copilot.state import IncidentState, Postmortem, ProposedLesson, StatusNote, TimelineEvent
@@ -29,11 +30,30 @@ def actions_taken(timeline: list[TimelineEvent]) -> str:
     return "; ".join(done) if done else "none taken"
 
 
+_SIGNAL_WORDS = {   # signal -> (words for a stakeholder, how to show the alert threshold)
+    "error_rate": ("error rate", lambda t: f"{t * 100:g}%"),
+    "latency_p95_ms": ("p95 latency", lambda t: f"{t:g} ms"),
+    "memory_mb": ("memory", lambda t: f"{t:g} MB"),
+    "consumer_lag": ("consumer lag", lambda t: f"{t:g} messages"),
+    "cpu_percent": ("CPU", lambda t: f"{t:g}%"),
+    "throughput_rps": ("throughput", lambda t: f"{t:g} requests/s"),
+}
+
+
+def recovered_words(alert: Any) -> str:
+    """'recovered; checkout error rate back below 5%' -- plain words; the raw reading stays in the timeline."""
+    if alert is None:
+        return "recovered"
+    sig = SIGNAL_ALIASES.get(alert.signal, alert.signal)
+    name, show = _SIGNAL_WORDS.get(sig, (sig.replace("_", " "), lambda t: f"{t:g}"))
+    side = "above" if sig in HIGHER_IS_HEALTHY else "below"
+    return f"recovered; {alert.service} {name} back {side} {show(alert.threshold)}"
+
+
 def status_line(state: IncidentState, timeline: list[TimelineEvent]) -> str:
     final = state.get("final_status")
     if final == "recovered":
-        verdict = next((e.text for e in reversed(timeline) if e.node == "verify"), "")
-        return f"recovered ({verdict})" if verdict else "recovered"
+        return recovered_words(state.get("alert"))
     if final == "noise":
         return "no action needed, the alert was judged noise"
     if final == "escalated" or state.get("escalation_reason"):

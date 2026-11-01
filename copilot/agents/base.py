@@ -34,8 +34,10 @@ def event(node: str, kind: str, text: str) -> TimelineEvent:
     return TimelineEvent(at=now(), node=node, kind=kind, text=text)
 
 
-def spend(agent: str, tool_calls: int = 0, tokens: int = 0, usd: float = 0.0) -> BudgetLedger:
-    return BudgetLedger(by_agent={agent: AgentSpend(tool_calls=tool_calls, tokens=tokens, usd=usd)})
+def spend(agent: str, tool_calls: int = 0, tokens: int = 0, usd: float = 0.0, code_calls: int = 0) -> BudgetLedger:
+    """tool_calls: the agent's own calls (budgeted); code_calls: calls code makes by itself (not budgeted)."""
+    return BudgetLedger(by_agent={agent: AgentSpend(tool_calls=tool_calls, tokens=tokens, usd=usd,
+                                                    code_calls=code_calls)})
 
 
 def emit(payload: dict[str, Any]) -> None:

@@ -159,3 +159,23 @@ def test_set_flag_variant_must_exist(variant, ok):
     else:
         with pytest.raises(ValueError):
             SetFlag(flag="paymentFailure", variant=variant)
+
+
+def test_verify_readings_do_not_use_the_agents_tool_call_budget():
+    """E4 budget 5: a long memory verify (many polls) must not exhaust the agent's budget
+    (docs/eval-result-contract.md: code-driven calls do not count)."""
+    from copilot.policy import budget_exhausted
+    from copilot.state import BudgetLedger, sum_ledgers
+    out, _ = run_verify(state(EMAIL_OFF, "memory_mb", "email", 300), Telemetry(value=620.0),
+                        verify_window_by_signal={"memory_mb": 30})          # 31 polls, never recovers
+    spent = out["budget"].total
+    assert spent.code_calls >= 6 and spent.tool_calls == 0
+    agent_so_far = BudgetLedger(by_agent={"diagnosis:h1": {"tool_calls": 4}})
+    assert not budget_exhausted(sum_ledgers(agent_so_far, out["budget"]), BudgetLimits(tool_calls=5))
+
+
+def test_code_calls_add_up_and_are_kept_apart_from_tool_calls():
+    from copilot.agents.base import spend
+    from copilot.state import sum_ledgers
+    total = sum_ledgers(spend("remediation", tool_calls=1), spend("remediation", code_calls=3)).total
+    assert (total.tool_calls, total.code_calls) == (1, 3)
