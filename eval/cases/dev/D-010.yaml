@@ -40,7 +40,7 @@ expected:
     within_s: 600
   severity:
     level: SEV-2
-    rule: null
+    rule: S2.1
     provisional: true
 notes: Delay is injected by Envoy in front of image-provider; image-provider itself is healthy.
 needs_verification:

@@ -41,8 +41,8 @@ expected:
     within_s: 420
     settle_s: 90
   severity:
-    level: SEV-2
-    rule: null
+    level: SEV-1
+    rule: S1.1
     provisional: true
 notes: 'Fault flips on and off every minute: tests the agent does not conclude ''recovered'' too early.'
 needs_verification:

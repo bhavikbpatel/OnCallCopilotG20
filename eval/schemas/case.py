@@ -18,6 +18,7 @@ from .catalogue import (
     FLAG_VARIANTS,
     SERVICES,
     accepted_services,
+    SEVERITY_RULES,
     check_action_args,
     normalize_severity,
 )
@@ -202,6 +203,16 @@ class SeverityExpectation(_Strict):
     @classmethod
     def _norm(cls, v: Any) -> Any:
         return normalize_severity(v) if isinstance(v, str) else v
+
+    @model_validator(mode="after")
+    def _rule_matches_level(self) -> "SeverityExpectation":
+        if self.rule is not None:
+            if self.rule not in SEVERITY_RULES:
+                raise ValueError(f"unknown severity rule {self.rule!r}; Person 1's policy defines "
+                                 f"{sorted(SEVERITY_RULES)}")
+            if SEVERITY_RULES[self.rule] != self.level:
+                raise ValueError(f"rule {self.rule} gives {SEVERITY_RULES[self.rule]}, not {self.level}")
+        return self
 
 
 class Expected(_Strict):

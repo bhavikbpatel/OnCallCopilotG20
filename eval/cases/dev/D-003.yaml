@@ -42,7 +42,7 @@ expected:
     settle_s: 90
   severity:
     level: SEV-2
-    rule: null
+    rule: S2.1
     provisional: true
 notes: 'Low intensity: only some EmptyCart calls fail, so the signal is weak.'
 needs_verification:

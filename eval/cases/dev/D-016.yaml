@@ -17,7 +17,7 @@ expected:
   verdict: noise
   severity:
     level: NONE
-    rule: null
+    rule: S0.1
     provisional: true
 notes: Transient burst that clears by itself during the investigation (traffic alert, see D-015).
 needs_verification:

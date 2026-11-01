@@ -44,7 +44,7 @@ expected:
     within_s: 900
   severity:
     level: SEV-3
-    rule: null
+    rule: S3.1
     provisional: true
 notes: Slower leak that starts two minutes in. Flag off alone, or flag off plus a restart of email, is
   correct (see D-009).

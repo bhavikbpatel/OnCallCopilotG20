@@ -32,6 +32,7 @@ Person 2's graph does not need to write result lines. The runner takes the final
 | `final_status`, `escalation_reason`, `run_id`, `incident_id` | copied |
 | `hypotheses` (no rank) | ranked: supported, then open, then refuted; graph order kept inside each |
 | `severity` (`SEV-2`) | `severity.level` |
+| `severity_rule` (or `triage.severity_rule`), Person 1's rule ID | `severity.rule` |
 | `outcome.verified`, `outcome.rolled_back` | `verification` |
 | `limits.tool_calls` | `budget.max_tool_calls` |
 | `budget` ledger | `cost.tokens_total`, `cost.usd` |
@@ -55,8 +56,10 @@ in the list (they are the signature-A replan evidence) and skipped when scoring
 top-1 and top-3. Confidence values are ignored if present.
 
 **`severity`**: `level` as Person 2's `Severity` enum writes it (`SEV-1` ... `SEV-4`), or
-`NONE` for noise, and `rule`, the ID of the severity-policy rule applied. Old labels
-such as `SEV2` are read as `SEV-2`.
+`NONE` for noise, and `rule`, the ID of the rule applied from Person 1's severity policy
+(`docs/severity-policy.md`: `S1.1`, `S2.1`, `S3.0`, `S3.1`, `S0.1`). Labels such as `SEV2` or
+`SEV1` (the policy's own form) are read as `SEV-2` / `SEV-1`. Every dev and held-out case states the
+expected level and rule from that policy, applied to the fault's measured effect.
 
 **`tool_calls`**: every tool call from the hooks log, **including blocked
 calls**, in order:
