@@ -235,12 +235,19 @@ def test_every_tool_has_a_kind_and_unknown_tools_count_as_writes():
     assert kw == {} or kw["tags"] == {WRITE}
 
 
-def test_marks_describe_read_and_write_when_fastmcp_is_installed():
+def test_all_four_servers_build_with_the_real_fastmcp(monkeypatch):
+    """Skipped only when fastmcp is not installed. If it IS installed but broken (for example a version
+    mismatch with the `mcp` package), this fails on purpose: that is the error a server start would hit."""
     pytest.importorskip("fastmcp")
+    from fastmcp import FastMCP          # raises ImportError when fastmcp and mcp do not fit together
+    import importlib
+    monkeypatch.setenv("INCIDENT_DB", ":memory:")
+    for name in ("telemetry", "runbooks_kb", "tickets", "ops_actions"):
+        server = importlib.import_module("mcp_servers.%s.server" % name).build_server()
+        assert isinstance(server, FastMCP), name
     read, write = marks("telemetry", "query_promql"), marks("ops_actions", "restart_service")
-    assert read.get("tags", {READ}) == {READ} and write.get("tags", {WRITE}) == {WRITE}
-    if "annotations" in read:
-        assert read["annotations"]["readOnlyHint"] is True and write["annotations"]["readOnlyHint"] is False
+    assert read and write, "marks() returned nothing: this FastMCP does not accept tags/annotations"
+    assert read["tags"] == {READ} and write["tags"] == {WRITE}
 
 
 class FakeMcp:
