@@ -55,10 +55,10 @@ rebuilds a best-effort log of the shop writes from the state and marks the line
 in the list (they are the signature-A replan evidence) and skipped when scoring
 top-1 and top-3. Confidence values are ignored if present.
 
-**`severity`**: `level` as Person 2's `Severity` enum writes it (`SEV-1` ... `SEV-4`), or
-`NONE` for noise, and `rule`, the ID of the rule applied from Person 1's severity policy
-(`docs/severity-policy.md`: `S1.1`, `S2.1`, `S3.0`, `S3.1`, `S0.1`). Labels such as `SEV2` or
-`SEV1` (the policy's own form) are read as `SEV-2` / `SEV-1`. Every dev and held-out case states the
+**`severity`**: `level` in canonical `SEV-1` ... `SEV-4` form, or `NONE` for noise, and `rule`, the
+ID of the rule applied from Person 1's severity policy (`docs/severity-policy.md`: `S1.1`, `S2.1`,
+`S3.0`, `S3.1`, `S0.1`). Case input continues to normalize labels such as `SEV2` or `SEV1` to the
+canonical `SEV-2` / `SEV-1` form. Every dev and held-out case states the
 expected level and rule from that policy, applied to the fault's measured effect.
 
 **`tool_calls`**: every tool call from the hooks log, **including blocked
@@ -169,4 +169,4 @@ same way.
    should carry the fields in the `tool_calls` table (including `purpose`).
 2. Person 2: see the review notes (tool-call log events, approvals history).
 3. Person 5: alert names in the cases are provisional until the Prometheus rules exist.
-4. Person 1: case severities are provisional until the severity policy is agreed.
+4. Severity classification follows the final-impact and five-minute re-evaluation decision in `docs/severity-policy.md`.

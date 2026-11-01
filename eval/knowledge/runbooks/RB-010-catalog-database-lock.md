@@ -17,7 +17,7 @@ Compare catalog p95 with astronomy-db span duration and lock/wait evidence if in
 ## Preconditions
 Require traces showing catalog calls blocked on the database and an active `productCatalogLockContention` flag. High catalog latency alone is insufficient.
 ## Action
-Propose `set_flag(flag="productCatalogLockContention", value="off")` only. Dry-run and exact approval are mandatory; do not kill queries or restart the database.
+Propose `set_flag(flag="productCatalogLockContention", variant="off")` only. Dry-run and exact approval are mandatory; do not kill queries or restart the database.
 ## Expected effect
 Database wait time and catalog p95 return toward baseline.
 ## Verification

@@ -13,11 +13,11 @@ reviewed_on: 2026-10-31
 ## Symptoms
 Cart operations fail or time out; cart and possibly Valkey-cart spans show errors. Cart-only impact is different from checkout/payment failure.
 ## Checks
-Compare cart server-span error rate and latency with Valkey-cart dependency spans. Inspect traces for connection/reset errors and recent `cartFailure` flag changes; compare unaffected services and baseline traffic.
+Compare cart server-span error rate, request volume and latency with Valkey-cart dependency spans. Inspect traces for connection/reset errors and recent `cartFailure` flag changes; compare unaffected services and baseline traffic so a traffic drop is not mistaken for recovery.
 ## Preconditions
 Use this action only when cart errors correlate with an active `cartFailure` flag. If only Valkey-cart errors exist without the flag change, gather dependency evidence and escalate; do not claim the flag is causal.
 ## Action
-Propose `set_flag(flag="cartFailure", value="off")` only. Require a dry run, exact-command human approval and the recorded previous flag value; diagnosis remains read-only.
+Propose `set_flag(flag="cartFailure", variant="off")` only. Require a dry run, exact-command human approval and the recorded previous flag value; diagnosis remains read-only.
 ## Expected effect
 Cart error rate falls to its baseline and new cart operations succeed within five minutes.
 ## Verification

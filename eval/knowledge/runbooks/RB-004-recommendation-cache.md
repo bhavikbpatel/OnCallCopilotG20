@@ -17,7 +17,7 @@ Inspect recommendation p95 latency, memory samples and error traces; compare pro
 ## Preconditions
 Use the flag action only with matching cache errors and an active flag. Restart is a separate, higher-impact action and is not authorized by this runbook; a persistently unhealthy service requires human escalation.
 ## Action
-Propose `set_flag(flag="recommendationCacheFailure", value="off")` after dry-run and exact-command approval. No automatic restart or scaling.
+Propose `set_flag(flag="recommendationCacheFailure", variant="off")` after dry-run and exact-command approval. No automatic restart or scaling.
 ## Expected effect
 Cache errors and recommendation latency decline toward baseline without increasing failures in product-catalog.
 ## Verification

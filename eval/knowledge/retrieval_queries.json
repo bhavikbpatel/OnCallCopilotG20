@@ -1,5 +1,5 @@
 [
-  {"id":"Q-001","query":"CheckoutPaymentErrors alert: checkout attempts fail shortly after the payment rollout","service":"payment","relevant":["RB-001#checks","RB-016#symptoms","RB-016#preconditions"]},
+  {"id":"Q-001","query":"CheckoutPaymentErrors alert: checkout attempts fail shortly after the payment rollout","service":"payment","relevant":["RB-001#checks","RB-001#preconditions"]},
   {"id":"Q-002","query":"PayGatewayUnavailable: processor returns HTTP 503 for new purchases","service":"payment","relevant":["RB-001#checks"]},
   {"id":"Q-003","query":"Should we disable payments? Checkout is failing; what evidence must be verified first?","service":"payment","relevant":["RB-001#preconditions"]},
   {"id":"Q-004","query":"CartWriteFailures: add-item requests are timing out in the basket API","service":"cart","relevant":["RB-002#checks","RB-002#symptoms"]},
@@ -29,15 +29,15 @@
   {"id":"Q-028","query":"CatalogRequestLatencyP95 breached; database calls appear to dominate product detail spans","service":"astronomy-db","relevant":["RB-010#checks","RB-010#preconditions"]},
   {"id":"Q-029","query":"catalog latency alone does not establish database contention","service":"product-catalog","relevant":["RB-010#preconditions"]},
   {"id":"Q-030","query":"database wait time and catalog latency recovery","service":"astronomy-db","relevant":["RB-010#verification","RB-010#expected-effect"]},
-  {"id":"Q-031","query":"ShippingQuoteSlow for overseas destinations, local delivery estimates still respond normally","service":"shipping","relevant":["RB-011#checks","RB-019#symptoms"]},
+  {"id":"Q-031","query":"ShippingQuoteSlow for overseas destinations, local delivery estimates still respond normally","service":"shipping","relevant":["RB-011#checks","RB-011#symptoms"]},
   {"id":"Q-032","query":"international shipping slowdown flag matching evidence","service":"shipping","relevant":["RB-011#preconditions"]},
   {"id":"Q-033","query":"international quote latency and domestic behavior verification","service":"shipping","relevant":["RB-011#verification"]},
   {"id":"Q-034","query":"SponsoredContentPartialFailure: ad requests fail for some impressions but checkout succeeds","service":"ad","relevant":["RB-012#checks","RB-012#symptoms"]},
   {"id":"Q-035","query":"adFailure active and user impact severity","service":"ad","relevant":["RB-012#preconditions"]},
   {"id":"Q-036","query":"Homepage p95 alert during a campaign traffic surge; request volume is up but no clear failures","service":"frontend","relevant":["RB-013#checks","RB-013#symptoms"]},
-  {"id":"Q-037","query":"Checkout success collapses during peak traffic and processor spans return errors","service":"payment","relevant":["RB-016#checks"]},
-  {"id":"Q-038","query":"cart errors during traffic surge compare Valkey traces and traffic volume","service":"cart","relevant":["RB-017#checks"]},
-  {"id":"Q-039","query":"partial ad failures while core frontend shopping flows remain healthy","service":"ad","relevant":["RB-018#symptoms"]},
-  {"id":"Q-040","query":"international shipping route delayed compare with domestic quotes","service":"shipping","relevant":["RB-019#checks"]},
-  {"id":"Q-041","query":"payment and image faults need separate evidence and separate approvals","service":"image-provider","relevant":["RB-020#action"]}
+  {"id":"Q-037","query":"Checkout success collapses during peak traffic and processor spans return errors","service":"payment","relevant":["RB-001#checks"]},
+  {"id":"Q-038","query":"cart errors during traffic surge compare Valkey traces and traffic volume","service":"cart","relevant":["RB-002#checks"]},
+  {"id":"Q-039","query":"partial ad failures while core frontend shopping flows remain healthy","service":"ad","relevant":["RB-012#symptoms"]},
+  {"id":"Q-040","query":"international shipping route delayed compare with domestic quotes","service":"shipping","relevant":["RB-011#checks"]},
+  {"id":"Q-041","query":"payment and image faults need separate evidence and separate approvals","service":"image-provider","relevant":["RB-015#action"]}
 ]

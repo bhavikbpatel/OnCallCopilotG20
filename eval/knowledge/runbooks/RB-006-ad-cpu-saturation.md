@@ -17,7 +17,7 @@ Compare `container_cpu_utilization_ratio` by service with ad request latency and
 ## Preconditions
 Require two or more fresh CPU samples above the service's known healthy range and evidence that `adHighCpu` is active. Do not scale based on one sample.
 ## Action
-First propose `set_flag(flag="adHighCpu", value="off")` after dry-run and exact approval. Scaling is not part of this procedure; it requires a separate incident decision and a typed `scale(service="ad", replicas=2|3)` action.
+First propose `set_flag(flag="adHighCpu", variant="off")` after dry-run and exact approval. Scaling is not part of this procedure; it requires a separate incident decision and a typed `scale_service(service="ad", replicas=2|3)` action.
 ## Expected effect
 Ad CPU and latency fall toward baseline without degrading frontend request success.
 ## Verification

@@ -22,7 +22,7 @@ different model family only scores what code cannot.
 | `telemetry/signals.py` | The agreed signal → PromQL map (error rate, error count, p95, p50, slow requests > 1 s, throughput, memory, CPU %, Kafka lag) and `errors_since` for recovery; lesson predicates use supported service-scoped signals | done |
 | `probes/` | Live-shop probes. `discover`: metric names, baselines, error breakdown, noise check. `faults`: inject each fault, measure which signals move, how fast, and whether they recover after the flag is cleared | done |
 | `recovery/` | Independent recovery check from Prometheus for the result line: errors since the fix (low-traffic paths) or the signal past its limit in 2 distinct data points; threshold or factor x pre-injection baseline; "cannot judge" (never "healthy") when there is no data, too little traffic or no baseline | done |
-| `knowledge/runbooks/`, `knowledge/postmortems/` | 20 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
+| `knowledge/runbooks/`, `knowledge/postmortems/` | 15 operational runbooks and 10 explicitly synthetic dev postmortems | done (local corpus) |
 | `knowledge/retrieval.py` | Markdown ingestion, metadata filters, generated diagnostic subqueries, BM25 + TF-IDF vector RRF + top-20 deterministic reranker | local baseline |
 | `knowledge/memory.py` | SQLite accepted-incident store, lesson review/deletion lifecycle and fail-closed preconditions | local baseline |
 | `knowledge/severity.py` | Deterministic severity classifier matching `../docs/severity-policy.md`; unknowns fail closed | done |
