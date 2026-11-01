@@ -60,7 +60,8 @@ def test_every_dev_case_cites_a_policy_rule_matching_its_level():
         sev = c.expected.severity
         assert sev.rule is not None, c.case_id
         assert SEVERITY_RULES[sev.rule] == sev.level, c.case_id
-    cases = {c.case_id: c for c in load_cases(DEV_DIR)}
+
+
 def test_dev_severity_mapping_and_two_faults_use_worst_level():
     cases = {c.case_id: c for c in load_cases(DEV_DIR)}
     for cid in ("D-001", "D-002", "D-011", "D-017", "D-019"):

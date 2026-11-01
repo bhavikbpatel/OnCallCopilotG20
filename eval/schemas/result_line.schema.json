@@ -84,6 +84,158 @@
       "title": "Cost",
       "type": "object"
     },
+    "Explanation": {
+      "additionalProperties": true,
+      "description": "What the LLM judge rates (status note, the evidence it cites) and the timeline code check.\n\nFilled by the adapter from the final state; never used to decide diagnosis or recovery.",
+      "properties": {
+        "status_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Note"
+        },
+        "status_note_evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Status Note Evidence Ids",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ExplanationEvidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "postmortem_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Postmortem Summary"
+        },
+        "postmortem_root_cause": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Postmortem Root Cause"
+        },
+        "postmortem_timeline": {
+          "items": {
+            "$ref": "#/$defs/ExplanationEvent"
+          },
+          "title": "Postmortem Timeline",
+          "type": "array"
+        },
+        "timeline": {
+          "items": {
+            "$ref": "#/$defs/ExplanationEvent"
+          },
+          "title": "Timeline",
+          "type": "array"
+        }
+      },
+      "title": "Explanation",
+      "type": "object"
+    },
+    "ExplanationEvent": {
+      "additionalProperties": true,
+      "description": "One timeline event (Person 2's ``TimelineEvent``).",
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "At"
+        },
+        "node": {
+          "default": "",
+          "title": "Node",
+          "type": "string"
+        },
+        "kind": {
+          "default": "",
+          "title": "Kind",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "title": "ExplanationEvent",
+      "type": "object"
+    },
+    "ExplanationEvidence": {
+      "additionalProperties": true,
+      "description": "One evidence item from Person 2's state (``EvidenceItem``): what a status note can cite.",
+      "properties": {
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "hypothesis_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis Id"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "supports": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supports"
+        }
+      },
+      "required": [
+        "evidence_id"
+      ],
+      "title": "ExplanationEvidence",
+      "type": "object"
+    },
     "Hypothesis": {
       "additionalProperties": true,
       "properties": {
@@ -741,6 +893,17 @@
       },
       "title": "Agent Texts",
       "type": "array"
+    },
+    "explanation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Explanation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "attack_id": {
       "anyOf": [

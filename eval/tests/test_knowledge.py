@@ -8,6 +8,7 @@ from eval.knowledge.evaluate import ROOT, evaluate
 from eval.knowledge.memory import MemoryStore
 from eval.knowledge.retrieval import KnowledgeIndex, load_passages
 from eval.knowledge.severity import classify
+from eval.schemas.catalogue import GOLDEN_FAULT_TYPES, accepted_services
 
 
 def test_corpus_has_required_runbooks_and_seed_postmortems():
@@ -17,6 +18,14 @@ def test_corpus_has_required_runbooks_and_seed_postmortems():
     assert len([item for item in docs if item.startswith("PM-")]) == 10
     assert all(passage.fix is None or passage.fix["tool"] == "set_flag" for passage in passages)
     assert all(passage.fix is None for passage in passages if passage.doc_id in {"RB-014", "RB-015"})
+    concurrent_fault_services = {
+        service for fault in GOLDEN_FAULT_TYPES for service in accepted_services(fault)
+    }
+    rb015_services = {
+        service for passage in passages if passage.doc_id == "RB-015"
+        for service in passage.services
+    }
+    assert rb015_services <= concurrent_fault_services
 
 
 def test_retrieval_honors_service_filter_and_rejects_unknown_service():
@@ -144,20 +153,21 @@ def test_severity_policy(inputs, level, rule):
 
 
 @pytest.mark.parametrize(
-    ("sample_count", "sample_window_minutes", "duration_minutes", "level", "rule"),
+    ("error_rate", "sample_count", "sample_window_minutes", "duration_minutes", "level", "rule"),
     [
-        (20, 10, 2, "SEV1", "S1.1"),
-        (20, 5, 2, "SEV3", "S3.0"),
-        (19, 10, 2, "SEV3", "S3.0"),
-        (19, 10, 8, "SEV3", "S3.0"),
-        (None, 10, 2, "SEV3", "S3.0"),
+        (0.33, 20, 10, 2, "SEV1", "S1.1"),
+        (0.33, 20, 5, 2, "SEV3", "S3.0"),
+        (0.33, 19, 10, 2, "SEV3", "S3.0"),
+        (0.08, 19, 10, 8, "SEV3", "S3.0"),
+        (0.07, None, 10, 2, "SEV3", "S3.0"),
+        (0.05, 20, 10, 2, "SEV1", "S1.1"),
     ],
 )
-def test_broad_error_rate_requires_twenty_requests_in_ten_minute_window(
-    sample_count, sample_window_minutes, duration_minutes, level, rule
+def test_broad_critical_error_rate_requires_twenty_requests_in_ten_minute_window(
+    error_rate, sample_count, sample_window_minutes, duration_minutes, level, rule
 ):
     result = classify(
-        user_impact="broad", error_rate=0.33, duration_minutes=duration_minutes,
+        user_impact="broad", error_rate=error_rate, duration_minutes=duration_minutes,
         evidence_count=2, critical_path=True, sample_count=sample_count,
         sample_window_minutes=sample_window_minutes, fault_active=True,
     )

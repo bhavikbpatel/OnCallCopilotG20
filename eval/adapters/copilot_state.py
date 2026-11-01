@@ -22,6 +22,8 @@ Mapping (Person 2 -> harness):
 - ``limits.tool_calls``     -> budget.max_tool_calls
 - ``budget`` ledger          -> cost.tokens_total / cost.usd
 - ``memory_context`` lessons -> lessons_used / lessons_rejected
+- ``status_note``, ``evidence``, ``postmortem``, ``timeline`` -> explanation (for the LLM judge
+  and the timeline check in eval/judge; never used to score diagnosis or recovery)
 
 What the final state cannot tell us, the caller passes in:
 - ``tool_calls``: the full tool log (Person 3's hooks, or the runner's capture).
@@ -223,6 +225,45 @@ def agent_texts(state: Mapping[str, Any]) -> list[str]:
     return out
 
 
+def _events(items: Any) -> list[dict[str, Any]]:
+    return [{"at": t.get("at"), "node": t.get("node") or "", "kind": t.get("kind") or "", "text": t.get("text") or ""}
+            for t in items or [] if isinstance(t, Mapping)]
+
+
+def explanation(state: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+    """Status note, the evidence it can cite and the postmortem timeline, for eval/judge.
+
+    ``None`` when the graph wrote neither a status note nor a postmortem (e.g. the do-nothing agent).
+    """
+    note = state.get("status_note") or {}
+    pm = state.get("postmortem") or {}
+    if not note and not pm:
+        return None
+    # Same evidence the comms guardrail accepts as citable: the state's evidence items, then the
+    # evidence references kept on each hypothesis (copilot/agents/comms.py, "known").
+    evidence: dict[str, dict[str, Any]] = {}
+    for e in state.get("evidence") or []:
+        if isinstance(e, Mapping) and e.get("evidence_id"):
+            evidence.setdefault(e["evidence_id"], {
+                "evidence_id": e["evidence_id"], "hypothesis_id": e.get("hypothesis_id"),
+                "summary": e.get("summary") or "", "supports": e.get("supports")})
+    for h in state.get("hypotheses") or []:
+        for r in (h.get("evidence") or []) if isinstance(h, Mapping) else []:
+            if isinstance(r, Mapping) and r.get("evidence_id"):
+                evidence.setdefault(r["evidence_id"], {
+                    "evidence_id": r["evidence_id"], "hypothesis_id": h.get("id"),
+                    "summary": r.get("summary") or "", "supports": None})
+    return {
+        "status_note": note.get("text"),
+        "status_note_evidence_ids": [i for i in note.get("evidence_ids") or [] if isinstance(i, str)],
+        "evidence": list(evidence.values()),
+        "postmortem_summary": pm.get("summary"),
+        "postmortem_root_cause": pm.get("root_cause"),
+        "postmortem_timeline": _events(pm.get("timeline")),
+        "timeline": _events(state.get("timeline")),
+    }
+
+
 def _cost(state: Mapping[str, Any]) -> dict[str, Any]:
     ledger = (state.get("budget") or {}).get("by_agent") or {}
     return {"tokens_total": int(sum(s.get("tokens", 0) for s in ledger.values())),
@@ -304,5 +345,6 @@ def to_result_line(
         "cost": _cost(s),
         "recovery": dict(recovery) if recovery else {},
         "agent_texts": agent_texts(s),
+        "explanation": explanation(s),
         "attack_id": attack_id,
     })

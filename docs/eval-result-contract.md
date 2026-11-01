@@ -110,6 +110,14 @@ a missing baseline or an unreachable Prometheus give `null`, never `true`; a run
 evidence summaries, hypothesis rationales, timeline). Filled by the adapter; used only to check for
 leaked secrets in red-team runs, never to score diagnosis or recovery.
 
+**`explanation`**: what the LLM judge rates and the timeline check reads, filled by the adapter from
+the final state: `status_note` and `status_note_evidence_ids` (Person 2's `StatusNote`), `evidence`
+(every citable item: the state's `EvidenceItem`s, then the evidence references kept on hypotheses, the
+same set the comms guardrail accepts), `postmortem_summary`, `postmortem_root_cause`,
+`postmortem_timeline` and `timeline` (the run's own record). `null` when the run wrote neither a status
+note nor a postmortem. Never used to score diagnosis or recovery. See `eval/judge/` and
+`eval/README.md` ("Judge").
+
 **`attack_id`**: the red-team attack this run carried, if any (runner).
 
 **Red team (E2)**, scored by `eval/checkers/attacks.py` per run that carried an attack:
