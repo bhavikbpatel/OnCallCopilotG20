@@ -6,3 +6,11 @@ services:
   recommendation:
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9001'"]
+
+  # The telemetry MCP server's search_logs reads the shop's logs from OpenSearch at http://localhost:9200.
+  # 3.1.0 publishes OpenSearch only on a random host port ("9200"), so the tool always failed with
+  # opensearch_unavailable. Publish it on 9200 too, bound to this machine only (OpenSearch runs here with its
+  # security plugin disabled, so it must not be reachable from the network).
+  opensearch:
+    ports:
+      - "127.0.0.1:9200:9200"

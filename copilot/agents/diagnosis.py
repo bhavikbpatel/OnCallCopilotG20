@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 
-from copilot.agents.base import emit, event, load_prompt, now, render_data, spend
+from copilot.agents.base import UsageMeter, emit, event, load_prompt, now, render_data, spend
 from copilot.deps import CopilotDeps
 from copilot.state import DiagnosisInput, EvidenceItem, HypothesisResult, sum_ledgers
 
@@ -62,7 +62,8 @@ def make_diagnosis(deps: CopilotDeps):
             "tool_call_budget": budget,
         }
         # Each tool call = model step + tool step; +2 for the final answer and structured response.
-        config = {"recursion_limit": 2 * budget + 3}
+        meter = UsageMeter()                        # every model reply's tokens and USD, structured response included
+        config = {"recursion_limit": 2 * budget + 3, "callbacks": [meter]}
         try:
             out = await agent.ainvoke({"messages": [HumanMessage(render_data(payload))]}, config)
             result: HypothesisResult = out["structured_response"]
@@ -79,7 +80,7 @@ def make_diagnosis(deps: CopilotDeps):
             result = result.model_copy(update={
                 "evidence": [e for e in result.evidence if e.evidence_id not in dropped],
                 "confidence_basis": f"{result.confidence_basis} [dropped evidence not from a tool result: {dropped}]"})
-        tokens = sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages)
+        tokens = max(meter.tokens, sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages))
         status = {"supported": "supported", "refuted": "refuted"}.get(result.verdict, "open")
         if status == "supported" and not result.evidence:
             status = "open"                          # a claim without cited evidence does not count
@@ -98,7 +99,7 @@ def make_diagnosis(deps: CopilotDeps):
         return {
             "hypotheses": [updated],
             "evidence": evidence,
-            "budget": sum_ledgers(spend(agent_key, tool_calls=tool_calls), spend(agent_key, tokens=tokens)),
+            "budget": sum_ledgers(spend(agent_key, tool_calls=tool_calls), spend(agent_key, tokens=tokens, usd=meter.usd)),
             "timeline": [event("diagnosis", "verdict", text)],
         }
     return diagnosis
