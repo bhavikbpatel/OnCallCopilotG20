@@ -163,20 +163,19 @@ class Hooks:
 
     # ------------------------------------------------------------- the call
 
-    def call(self, agent: str, role: str, server: str, tool: str, args: Optional[Dict[str, Any]],
-             invoke: Callable[[Dict[str, Any]], Dict[str, Any]], purpose: Optional[str] = None) -> Dict[str, Any]:
-        """Run one tool call through the hooks. `invoke(args)` performs the real call."""
-        args = dict(args or {})
+    def _begin(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any],
+               purpose: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Pre-tool hooks. Returns the 'blocked' envelope (already logged) or None to go ahead."""
         reason = self._pre(agent, role, server, tool, args)
-        if reason:
-            self._append(agent, role, server, tool, args, ok=False, blocked=True, reason=reason,
-                         result=None, purpose=purpose, flags=[])
-            return err("blocked", "call blocked by hook: %s" % reason, block_reason=reason)
-        started = time.monotonic()
-        try:
-            result = invoke(args)
-        except Exception as exc:  # a tool must never crash the run
-            result = err("tool_exception", "%s: %s" % (type(exc).__name__, exc))
+        if not reason:
+            return None
+        self._append(agent, role, server, tool, args, ok=False, blocked=True, reason=reason,
+                     result=None, purpose=purpose, flags=[])
+        return err("blocked", "call blocked by hook: %s" % reason, block_reason=reason)
+
+    def _finish(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any], result: Any,
+                started: float, purpose: Optional[str]) -> Any:
+        """Post-tool hooks: sanitize, redact, log."""
         self._latency_ms = int((time.monotonic() - started) * 1000)
         flags: List[str] = []
         if isinstance(result, dict):
@@ -187,6 +186,34 @@ class Hooks:
         if flags and isinstance(result, dict):
             result = dict(result, injection_flags=sorted(set(flags)))
         return result
+
+    def call(self, agent: str, role: str, server: str, tool: str, args: Optional[Dict[str, Any]],
+             invoke: Callable[[Dict[str, Any]], Dict[str, Any]], purpose: Optional[str] = None) -> Dict[str, Any]:
+        """Run one tool call through the hooks. `invoke(args)` performs the real call."""
+        args = dict(args or {})
+        blocked = self._begin(agent, role, server, tool, args, purpose)
+        if blocked:
+            return blocked
+        started = time.monotonic()
+        try:
+            result = invoke(args)
+        except Exception as exc:  # a tool must never crash the run
+            result = err("tool_exception", "%s: %s" % (type(exc).__name__, exc))
+        return self._finish(agent, role, server, tool, args, result, started, purpose)
+
+    async def acall(self, agent: str, role: str, server: str, tool: str, args: Optional[Dict[str, Any]],
+                    invoke: Callable[[Dict[str, Any]], Any], purpose: Optional[str] = None) -> Dict[str, Any]:
+        """Same as call(), for an async `invoke` (the graph's tool calls are async). The hooks themselves do no I/O."""
+        args = dict(args or {})
+        blocked = self._begin(agent, role, server, tool, args, purpose)
+        if blocked:
+            return blocked
+        started = time.monotonic()
+        try:
+            result = await invoke(args)
+        except Exception as exc:
+            result = err("tool_exception", "%s: %s" % (type(exc).__name__, exc))
+        return self._finish(agent, role, server, tool, args, result, started, purpose)
 
     def _append(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any], ok: bool,
                 blocked: bool, reason: Optional[str], result: Any, purpose: Optional[str], flags: List[str]) -> None:

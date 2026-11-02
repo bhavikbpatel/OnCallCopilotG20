@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
 from copilot.deps import CopilotDeps
+from copilot.hooked_toolbox import with_role
 from copilot.policy import is_noise, severity_for
 from copilot.state import IncidentState, ServiceName, TriageReport, sum_ledgers
 
@@ -21,6 +22,7 @@ class TriageDraft(BaseModel):
 
 
 def make_triage(deps: CopilotDeps):
+    @with_role("triage")
     @guarded("triage")
     async def triage(state: IncidentState) -> dict[str, Any]:
         alert = state["alert"]

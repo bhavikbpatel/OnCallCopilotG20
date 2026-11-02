@@ -5,11 +5,13 @@ from typing import Any
 
 from copilot.agents.base import emit, event, guarded, spend, structured_call
 from copilot.deps import CopilotDeps
+from copilot.hooked_toolbox import with_role
 from copilot.memory.views import runbook_view
 from copilot.state import IncidentState, RunbookAdvice, sum_ledgers
 
 
 def make_runbook(deps: CopilotDeps):
+    @with_role("runbook")
     @guarded("runbook")
     async def runbook(state: IncidentState) -> dict[str, Any]:
         alert = state["alert"]
