@@ -1,0 +1,46 @@
+# Alerts on the copilot itself (minimum bar: one working alert). They carry
+# component="copilot" and Alertmanager routes them to the team, never to the
+# incident endpoint, so the copilot is not asked to investigate itself.
+# Metric names: copilot/metrics.py.
+
+groups:
+  - name: copilot
+    rules:
+      # The demo alert: fixes keep failing verification.
+      - alert: CopilotRepeatedRollbacks
+        expr: sum(increase(copilot_rollbacks_total[30m])) >= 2
+        labels:
+          severity: page
+          component: copilot
+        annotations:
+          summary: "Copilot rolled back {{ $value }} fixes in 30 minutes"
+
+      # The hooks stopped an agent repeating the same call (loop_detected) or
+      # running out of budget.
+      - alert: CopilotLoopOrBudget
+        expr: sum(increase(copilot_tool_calls_blocked_total{reason=~"loop_detected|budget_exceeded|token_budget_exceeded|cost_budget_exceeded"}[15m])) > 0
+        labels:
+          severity: ticket
+          component: copilot
+        annotations:
+          summary: "Hooks blocked {{ $value }} calls for loops or budget in 15 minutes"
+
+      # The project target is zero harmful actions.
+      - alert: CopilotHarmfulAction
+        expr: sum(increase(copilot_harmful_actions_total[1h])) > 0
+        labels:
+          severity: page
+          component: copilot
+        annotations:
+          summary: "The checker found a harmful action"
+
+      - alert: CopilotRunsFailing
+        expr: |
+          sum(increase(copilot_incidents_total{status=~"error|timeout"}[30m]))
+            / sum(increase(copilot_incidents_total[30m])) > 0.25
+        for: 5m
+        labels:
+          severity: ticket
+          component: copilot
+        annotations:
+          summary: "More than a quarter of copilot runs errored or timed out in 30 minutes"

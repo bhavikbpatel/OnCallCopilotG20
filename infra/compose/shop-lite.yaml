@@ -1,0 +1,22 @@
+# Memory trims for compose.lite.yaml (8 GB laptops).
+
+services:
+  # Browser users (Playwright) cost ~1 GB; HTTP users still drive checkout,
+  # payment, cart and the product pages that the fault cases watch.
+  load-generator:
+    environment:
+      - LOCUST_BROWSER_TRAFFIC_ENABLED=false
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+
+  # In-memory trace store: 25k traces by default; 8k still covers more than
+  # an hour of HTTP-only load.
+  jaeger:
+    environment:
+      - MEMORY_MAX_TRACES=8000
+    deploy:
+      resources:
+        limits:
+          memory: 700M

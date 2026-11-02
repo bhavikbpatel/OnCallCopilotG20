@@ -1,0 +1,21 @@
+# Same stack as compose.yaml with the shop's minimal layout (no Kafka,
+# accounting or fraud-detection) and smaller limits, for 8 GB laptops:
+#
+#   docker compose -f compose.lite.yaml up -d
+#
+# Cases on kafkaQueueProblems (KafkaConsumerLagHigh) need the full layout.
+
+include:
+  - path:
+      - vendor/opentelemetry-demo/compose.yaml
+      - vendor/opentelemetry-demo/compose.observability.yaml
+      - vendor/opentelemetry-demo/compose.extras.yaml
+      - shop/astronomy/compose.capstone.yaml
+      - infra/compose/shop-monitoring.yaml
+      - infra/compose/shop-lite.yaml
+    project_directory: vendor/opentelemetry-demo
+    env_file:
+      - vendor/opentelemetry-demo/.env
+      - vendor/opentelemetry-demo/.env.override
+  - path: infra/compose/copilot.yaml
+    project_directory: .

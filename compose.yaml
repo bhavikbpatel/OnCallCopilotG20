@@ -1,0 +1,23 @@
+# One command starts the shop, its observability stack, the four MCP servers
+# and Alertmanager:
+#
+#   docker compose up -d                       # full shop (with Kafka), ~6-7 GB RAM
+#   docker compose -f compose.lite.yaml up -d  # minimal shop, no Kafka, for 8 GB laptops
+#
+# The shop is the pinned submodule vendor/opentelemetry-demo (3.1.0), started
+# with the same files as shop/astronomy/start.sh plus our overrides.
+
+include:
+  - path:
+      - vendor/opentelemetry-demo/compose.yaml
+      - vendor/opentelemetry-demo/compose.full.yaml
+      - vendor/opentelemetry-demo/compose.observability.yaml
+      - vendor/opentelemetry-demo/compose.extras.yaml
+      - shop/astronomy/compose.capstone.yaml
+      - infra/compose/shop-monitoring.yaml
+    project_directory: vendor/opentelemetry-demo
+    env_file:
+      - vendor/opentelemetry-demo/.env
+      - vendor/opentelemetry-demo/.env.override
+  - path: infra/compose/copilot.yaml
+    project_directory: .

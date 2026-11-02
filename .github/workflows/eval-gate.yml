@@ -1,0 +1,79 @@
+# Evaluation gate (minimum bar: "Run evaluation in CI and fail below a threshold").
+# Starts the lite stack on the runner, injects development cases with the eval
+# runner, and fails when task success is below min_success. Development cases
+# only: held-out cases are never in this repository.
+#
+# Manual (Actions tab -> eval-gate -> Run workflow) because each case takes
+# several minutes of real shop time and LLM spend. Needs repository secrets
+# OPENAI_API_KEY (OpenRouter) and APPROVAL_SECRET.
+
+name: eval-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: "Development case IDs (comma-separated)"
+        default: "D-001"
+      agent:
+        description: "Runner agent (eval/runner/agents.py)"
+        default: "do-nothing"
+      min_success:
+        description: "Fail below this task success rate"
+        default: "0.6"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      APPROVAL_SECRET: ${{ secrets.APPROVAL_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      COPILOT_METRICS_PORT: "9464"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev,metrics]"
+
+      - name: Start the lite stack
+        run: |
+          test -n "$APPROVAL_SECRET" || { echo "::error::APPROVAL_SECRET secret is not set"; exit 1; }
+          docker compose -f compose.lite.yaml up -d --quiet-pull
+      - name: Wait for span metrics in Prometheus
+        run: |
+          for i in $(seq 1 60); do
+            n=$(curl -s 'http://localhost:9090/api/v1/query?query=count(traces_span_metrics_calls_total)' \
+                | python -c 'import json,sys; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else 0)' || echo 0)
+            [ "${n%.*}" -gt 0 ] && { echo "span metrics ready ($n series)"; exit 0; }
+            sleep 10
+          done
+          echo "::error::no span metrics after 10 minutes"; docker compose -f compose.lite.yaml ps; exit 1
+
+      - name: Run development cases and gate
+        env:
+          CASES: ${{ inputs.cases }}
+          AGENT: ${{ inputs.agent }}
+          MIN_SUCCESS: ${{ inputs.min_success }}
+        run: |
+          python -m eval.runner --cases eval/cases/dev --only "$CASES" \
+            --agent "$AGENT" --config-id CI --force-clear \
+            --prom-url http://localhost:9090 --flags-url http://localhost:8080/feature \
+            --min-success "$MIN_SUCCESS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-gate-results
+          path: eval/results/runs/
+          if-no-files-found: ignore
+      - name: Stack status on failure
+        if: failure()
+        run: docker compose -f compose.lite.yaml ps -a && docker compose -f compose.lite.yaml logs --tail 50 mcp-ops mcp-telemetry prometheus
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f compose.lite.yaml down -v

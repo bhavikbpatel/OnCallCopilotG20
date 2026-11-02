@@ -107,6 +107,48 @@ async with copilot_runtime() as rt:                       # loads .env, connects
 
 Resume payloads: `ApprovalDecision` at the approval gate and `ReviewDecision` at the review gate (both in `copilot/state.py`).
 
+### Option C — Everything in Docker (shop, MCP servers, monitoring)
+
+One command starts the Astronomy Shop (pinned submodule, 3.1.0), its Prometheus, Grafana, Jaeger and
+OpenSearch, the four MCP servers on the ports in `config/mcp_servers.yaml`, and Alertmanager:
+
+```bash
+git submodule update --init        # once: fetches vendor/opentelemetry-demo at 3.1.0
+cp .env.example .env               # set APPROVAL_SECRET (and OPENAI_API_KEY)
+docker compose up -d               # full shop, ~6-7 GB RAM for Docker
+docker compose -f compose.lite.yaml up -d   # 8 GB laptops: no Kafka, no browser load, smaller Jaeger
+```
+
+On Windows, give WSL 2 enough memory first: `%UserProfile%\.wslconfig` with `[wsl2]`, `memory=6GB`,
+`swap=4GB`, then `wsl --shutdown`.
+
+| What | URL |
+| :-- | :-- |
+| Shop / flags | http://localhost:8080 , http://localhost:8080/feature |
+| Grafana (shop dashboards + "On-Call Copilot" folder) | http://localhost:8080/grafana |
+| Prometheus / Alertmanager | http://localhost:9090 , http://localhost:9093 |
+| MCP servers | http://localhost:8101/mcp … 8104/mcp (localhost only) |
+
+`set_flag` works from the container. `restart_service`, `scale_service` and `rollback` need the actuator
+sidecar (`ACTUATOR_URL`, not built yet) and return an executor error in Docker until then.
+
+**Alerts.** `infra/prometheus/rules/shop.yml` holds one rule per alert name the cases use
+(`CheckoutErrorRateHigh`, `CartErrorRateHigh`, …), generated from `eval/telemetry/signals.py` so a live alert
+watches the same PromQL as the runner: `python infra/prometheus/build_rules.py` after changing either.
+Alertmanager posts them to the incident endpoint at `http://host.docker.internal:8000/alerts`.
+`infra/prometheus/rules/agent.yml` watches the copilot itself (repeated rollbacks, loop or budget blocks,
+harmful actions, failing runs); those go to the team, never to the copilot.
+
+**Agent metrics.** Set `COPILOT_METRICS_PORT=9464` and the eval runner serves `/metrics` (`copilot/metrics.py`);
+Prometheus scrapes it and the "On-Call Copilot: agent" dashboard shows runs, success, rollbacks, harmful
+actions, cost, durations, tool calls and hook blocks. Rebuild the dashboard with
+`python infra/grafana/build_dashboard.py`.
+
+**CI.** `.github/workflows/ci.yml` runs both test suites, `docker compose config` (full and lite),
+`promtool`, `amtool` and the MCP image build on every PR. `.github/workflows/eval-gate.yml` (manual) starts
+the lite stack on a GitHub runner, runs development cases with `eval.runner --min-success`, and fails
+below the threshold. It needs the `OPENAI_API_KEY` and `APPROVAL_SECRET` repository secrets.
+
 ---
 
 ## 3. Configuration

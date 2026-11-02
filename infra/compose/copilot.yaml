@@ -1,0 +1,98 @@
+# Our services (included with project_directory = repo root, so paths below
+# are relative to the repo root), on the shop's network so they reach prometheus:9090,
+# jaeger:16686, opensearch:9200 and frontend-proxy:8080 by name. Names, ports
+# and environment follow mcp_servers/README.md ("Compose names, ports and images").
+#
+# Ports bind to 127.0.0.1 only: ops-actions can change the shop, so it must
+# not be reachable from the network.
+
+x-mcp: &mcp
+  build:
+    context: .
+    dockerfile: infra/docker/mcp.Dockerfile
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    - copilot-state:/state
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 250M
+  logging:
+    driver: json-file
+    options:
+      max-size: "5m"
+      max-file: "2"
+
+x-mcp-env: &mcp-env
+  MCP_TRANSPORT: http
+  MCP_HOST: 0.0.0.0
+  APPROVAL_SECRET: ${APPROVAL_SECRET:?set APPROVAL_SECRET in .env (same value for the agent and every server)}
+  APPROVAL_STATE_DB: /state/approval_state.db
+  PROM_URL: http://prometheus:9090
+  FLAG_UI_URL: http://frontend-proxy:8080/feature
+  JAEGER_URL: http://jaeger:16686/jaeger/ui
+  OPENSEARCH_URL: http://opensearch:9200
+
+services:
+  mcp-telemetry:
+    <<: *mcp
+    container_name: mcp-telemetry
+    command: ["python", "-m", "mcp_servers.telemetry.server"]
+    environment:
+      <<: *mcp-env
+      MCP_PORT: "8101"
+    ports: ["127.0.0.1:8101:8101"]
+
+  mcp-runbooks:
+    <<: *mcp
+    container_name: mcp-runbooks
+    command: ["python", "-m", "mcp_servers.runbooks_kb.server"]
+    environment:
+      <<: *mcp-env
+      MCP_PORT: "8102"
+    ports: ["127.0.0.1:8102:8102"]
+
+  mcp-tickets:
+    <<: *mcp
+    container_name: mcp-tickets
+    command: ["python", "-m", "mcp_servers.tickets.server"]
+    environment:
+      <<: *mcp-env
+      MCP_PORT: "8103"
+      INCIDENT_DB: /state/incidents.db
+    ports: ["127.0.0.1:8103:8103"]
+
+  # set_flag works through the shop's flag UI. restart, scale and rollback need
+  # the actuator sidecar (ACTUATOR_URL); until it exists they return a
+  # structured executor error inside the container instead of acting.
+  mcp-ops:
+    <<: *mcp
+    container_name: mcp-ops
+    command: ["python", "-m", "mcp_servers.ops_actions.server"]
+    environment:
+      <<: *mcp-env
+      MCP_PORT: "8104"
+    ports: ["127.0.0.1:8104:8104"]
+
+  alertmanager:
+    image: quay.io/prometheus/alertmanager:v0.28.1
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports: ["127.0.0.1:9093:9093"]
+    deploy:
+      resources:
+        limits:
+          memory: 60M
+    restart: unless-stopped
+
+volumes:
+  copilot-state:

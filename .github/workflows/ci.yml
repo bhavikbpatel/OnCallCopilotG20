@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - name: Agent, MCP server and infra tests
+        run: python -m pytest -q
+      - name: Eval harness tests (live tests skip without the shop)
+        working-directory: eval
+        run: python -m pytest -q
+
+  stack:
+    runs-on: ubuntu-latest
+    env:
+      APPROVAL_SECRET: ci-config-check-only
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Compose files resolve (full and lite)
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.lite.yaml config --quiet
+      - name: Prometheus config and rules are valid
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/infra/prometheus:/p:ro" \
+            quay.io/prometheus/prometheus:v3.13.1 check rules /p/rules/shop.yml /p/rules/agent.yml
+      - name: Alertmanager config is valid
+        run: |
+          docker run --rm --entrypoint amtool -v "$PWD/infra/alertmanager:/a:ro" \
+            quay.io/prometheus/alertmanager:v0.28.1 check-config /a/alertmanager.yml
+      - name: MCP server image builds
+        run: docker build -f infra/docker/mcp.Dockerfile -t oncall-copilot-mcp:ci .

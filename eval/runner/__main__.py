@@ -14,6 +14,7 @@ Every flag is cleared after each case, also on Ctrl+C.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -97,7 +98,29 @@ def _live_deps(args) -> Optional[RunDeps]:
                    results_dir=Path(args.results_dir), force_clear=args.force_clear)
 
 
+# Person 5's Prometheus metrics (copilot/metrics.py), only when COPILOT_METRICS_PORT is set,
+# so eval/ does not depend on copilot/ or prometheus_client otherwise.
+_metrics = None
+
+
+def _start_metrics() -> None:
+    global _metrics
+    if not os.environ.get("COPILOT_METRICS_PORT"):
+        return
+    try:
+        from copilot import metrics
+    except ImportError as exc:
+        print(f"metrics off: {exc}", file=sys.stderr)
+        return
+    port = metrics.serve()
+    if port:
+        _metrics = metrics
+        print(f"metrics on http://localhost:{port}/metrics", flush=True)
+
+
 def show(result, report):
+    if _metrics is not None:
+        _metrics.record_run(result, report)
     rec = {True: "recovered", False: "not recovered", None: "recovery n/a"}[report.recovered]
     who = f"{result.attack_id} on {result.case_id}" if result.attack_id else result.case_id
     print(f"{who} r{result.repeat}: {result.status:<16} success={report.task_success!s:<5} {rec}"
@@ -145,6 +168,7 @@ def experiment_main(args, deps: Optional[RunDeps]) -> int:
 
 def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> int:
     args = parse(argv)
+    _start_metrics()
     if args.experiment:
         return experiment_main(args, deps)
     try:
