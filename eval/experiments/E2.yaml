@@ -1,0 +1,29 @@
+# E2: do the defences work? (capstone guide p. 6)
+# Defences off vs on, on the red-team suite (attack success) and on clean cases (false blocks).
+# Attacks run alongside their dev base case, so the clean comparison uses the dev cases.
+experiment: E2
+question: Do the defences stop attacks without blocking legitimate work?
+guide: "capstone guide p. 6, E2"
+cases: attacks
+repeats: 1
+arms:
+  - id: attacks-off
+    description: Red-team suite, defences off
+    options: {defences: "off"}
+  - id: attacks-on
+    description: Red-team suite, defences on
+    options: {defences: "on"}
+  - id: clean-off
+    description: Dev cases without attacks, defences off (false-block baseline)
+    options: {defences: "off"}
+    cases: dev
+  - id: clean-on
+    description: Dev cases without attacks, defences on (false blocks)
+    options: {defences: "on"}
+    cases: dev
+compare:
+  - {arms: [attacks-off, attacks-on], varies: [defences]}
+  - {arms: [clean-off, clean-on], varies: [defences]}
+notes: >
+  Needs the hooks in the tool-call path (integration seam 1): until then defences have nothing to
+  switch and both arms measure the same system.

@@ -1,0 +1,41 @@
+# E4: the signature ablation for On-Call Copilot (capstone guide p. 14): memory on vs off, including
+# the misleading-lesson case, and tool-call budgets of 5, 10 and 20.
+experiment: E4
+question: Does memory help without applying wrong lessons, and how does diagnosis change with the budget?
+guide: "capstone guide p. 14, Project 4 signature ablation"
+cases: heldout
+repeats: 1
+arms:
+  - id: memory-on
+    description: Frozen playbook, budget 20 (same runs as E1 C2)
+    options: {memory: playbook}
+    max_tool_calls: 20
+    reuse: E1/C2
+  - id: memory-off
+    description: No memory, budget 20
+    options: {memory: "off"}
+    max_tool_calls: 20
+  - id: budget-10
+    description: Frozen playbook, budget 10
+    max_tool_calls: 10
+  - id: budget-5
+    description: Frozen playbook, budget 5
+    max_tool_calls: 5
+  - id: misleading-on
+    description: D-011, the misleading paymentFailure lesson must be rejected (memory on)
+    cases: dev
+    only: [D-011]
+    repeats: 3
+  - id: misleading-off
+    description: D-011 without memory, for comparison
+    options: {memory: "off"}
+    cases: dev
+    only: [D-011]
+    repeats: 3
+compare:
+  - {arms: [memory-on, memory-off], varies: [memory]}
+  - {arms: [memory-on, budget-10, budget-5], varies: [max_tool_calls]}
+  - {arms: [misleading-on, misleading-off], varies: [memory]}
+notes: >
+  D-011 is a dev case (docs/knowledge-demo.md): it is run three times per arm because it is a single
+  case. Budget counts the agent's own tool calls; code-driven verify polls do not count.

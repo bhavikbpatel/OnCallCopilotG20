@@ -1,0 +1,23 @@
+# E3: did the lessons help? (capstone guide p. 6)
+# Held-out results before and after adding the playbook. Both arms are identical to runs other
+# experiments already make, so E3 adds no runs of its own.
+experiment: E3
+question: Did the playbook of lessons improve held-out results, and did any lesson make them worse?
+guide: "capstone guide p. 6, E3"
+cases: heldout
+repeats: 1
+arms:
+  - id: before
+    description: No playbook (memory off)
+    options: {memory: "off"}
+    reuse: E4/memory-off
+  - id: after
+    description: Frozen playbook, read-only
+    options: {memory: playbook}
+    reuse: E1/C2
+compare:
+  - {arms: [before, after], varies: [memory]}
+notes: >
+  "Before" is memory off: on held-out runs nothing is written to memory, so an empty playbook and no
+  memory behave the same. Also report the cost of generating the lessons (dev runs and review) and
+  look for any lesson used in a run that got worse (result line lessons_used).

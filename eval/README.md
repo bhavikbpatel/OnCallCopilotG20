@@ -30,7 +30,7 @@ different model family only scores what code cannot.
 | `runner/` | Runs cases end to end: preflight, baselines, inject, synthetic alert (fires on the probe's calibrated movement rule), agent with auto-approval and timeout, recovery check, always clear, contamination check, result line, score; JSONL + summary; CI gate. Ships the do-nothing agent | done |
 | `adversarial/`, `schemas/attack.py`, `checkers/attacks.py` | Red team (E2): attack format; HTTP delivery of hostile text into the shop's logs and traces; attack success, influence and false-block checks; `check` (counts only) and `probe` commands. Attacks themselves are private | done |
 | `judge/` | LLM judge for status-note quality and evidence support (anchored rubric, OpenRouter, different model family, structured output, fallback model); postmortem-timeline code check; blind labelling sheet; Cohen's kappa, quadratic-weighted and unweighted (dev outputs only) | built; calibration waits for 20+ dev runs |
-| `experiments/` | E1–E4 config files, all run by the same runner | later |
+| `experiments/`, `schemas/experiment.py`, `runner/experiments.py` | E1–E4 as config files (arms, comparisons, cases, repeats), checked for fair comparisons and identical shared arms; run arm by arm by the same runner, with an experiment log | done; real arms need the copilot agent |
 | `tests/` | pytest for everything above | done |
 | `results/` | Run outputs. Git-ignored | — |
 
@@ -110,6 +110,38 @@ intermittent fault cannot come back after a correct fix (the release is kept in 
 
 Agents: `do-nothing` (floor baseline). Person 2's graph plugs in as another agent in
 `runner/agents.py` (alert in, approvals through `ctx.approve`, final state out).
+
+## Experiments (E1–E4)
+
+```bash
+python -m eval.runner --experiment E1 --plan               # runs per arm, shared arms, hours (counts only)
+python -m eval.runner --experiment E4 --arm memory-off     # one arm
+python -m eval.runner --experiment E2                      # every arm that is not reused
+```
+
+`eval/experiments/E1.yaml` ... `E4.yaml` describe each experiment from the capstone guide (pp. 5–6, 14):
+its arms (architecture C0/C1/C2, memory `playbook` or `off`, defences, tool-call budget, case set,
+repeats) and which arms are compared. Loading checks that compared arms differ only in the setting the
+comparison varies, and that an arm that `reuse`s another (E1's C2 is also E3's "after" and E4's
+"memory on") has identical settings, so it runs once.
+
+| Exp | Arms | Cases | Repeats |
+|---|---|---|---|
+| E1 | C0, C1, C2 | held-out | 3 (the final held-out comparison) |
+| E2 | defences off / on | red team; dev cases for false blocks | 1 |
+| E3 | before (no memory) / after (playbook) | held-out | reuses E4 and E1 |
+| E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 |
+
+Every arm runs with `review_enabled: false`, so measuring never writes lessons. The arm's options are
+given to the agent in `AgentContext.options`; an agent that does not declare it honours them
+(`options_supported`) is refused, so a run is never labelled with settings it did not use. Each result
+line carries the arm's `config_hash`. After each arm, one line goes to
+`eval/results/runs/experiment-log.jsonl` (git-ignored): settings, code version, models, and the
+headline figures (task success, root cause, recovery, harmful and unnecessary actions, policy
+violations, false blocks, attack success, cost per run, median and p95 latency, errors).
+
+The full plan is about 620 live runs (~200 h at 20 min each on one shop); `--plan` prints the exact
+count, and the cases and repeats are one line per arm if it must be cut.
 
 ## Held-out cases (private)
 

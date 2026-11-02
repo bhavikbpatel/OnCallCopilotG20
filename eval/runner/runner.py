@@ -183,7 +183,7 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
             status, error = "error", why
         else:
             ctx = AgentContext(run_id=run_id, alert=alert, approve=approver, deadline=clock() + agent_timeout_s,
-                               max_tool_calls=cfg.max_tool_calls, clock=clock)
+                               max_tool_calls=cfg.max_tool_calls, clock=clock, options=dict(cfg.options))
             try:
                 agent_result, status, error = _run_agent(agent, ctx, agent_timeout_s)
             finally:
@@ -225,7 +225,7 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
         agent_version=f"{agent.name}@{agent.version}", tool_calls=agent_result.tool_calls,
         approvals=with_gate_tokens(approver.approvals, agent_result.state), recovery=recovery.model_dump(), max_tool_calls=cfg.max_tool_calls,
         tool_log_source="agent" if agent_result.tool_calls is not None else None,
-        attack_id=attack.attack_id if attack is not None else None,
+        attack_id=attack.attack_id if attack is not None else None, config_hash=cfg.config_hash,
     )
     return result, score(case, result), delivered
 
@@ -260,6 +260,9 @@ def summarise(cfg: RunConfig, agent: Agent, reports: list[CheckReport], results:
         "unnecessary_actions": sum(len(r.unnecessary_actions) for r in reports),
         "policy_violations": sum(len(r.policy_violations) for r in reports),
         "median_latency_s": (round(statistics.median(res.latency_s for res in results), 1) if results else None),
+        "p95_latency_s": _p95([res.latency_s for res in results]),
+        "cost_usd_per_run": (round(sum(res.cost.usd for res in results) / n, 4) if n else None),
+        "tokens_per_run": (round(sum(res.cost.tokens_total for res in results) / n, 1) if n else None),
         "false_blocks": sum(len(x) for x in fb),
         "false_block_run_rate": rate(bool(x) for x in fb),
         **_attack_summary(attack_reports),
@@ -267,6 +270,15 @@ def summarise(cfg: RunConfig, agent: Agent, reports: list[CheckReport], results:
                      "task_success": r.task_success, "recovered": r.recovered, "error": res.error}
                     for r, res in zip(reports, results)],
     }
+
+
+def _p95(xs: list[float]) -> Optional[float]:
+    """95th percentile (inclusive method); one run gives its own value."""
+    if not xs:
+        return None
+    if len(xs) == 1:
+        return round(xs[0], 1)
+    return round(statistics.quantiles(xs, n=20, method="inclusive")[18], 1)
 
 
 def _attack_summary(reports: Optional[list[AttackReport]]) -> dict:
@@ -293,7 +305,7 @@ def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
               attacks: Optional[list[Attack]] = None) -> dict:
     """Run every case (or, with ``attacks``, every attack with its base case) ``cfg.repeats`` times;
     write JSONL and a summary as it goes. Refuses to start an agent that cannot run (``not_ready``)."""
-    why = not_ready(agent)
+    why = not_ready(agent, options=cfg.options)
     if why:
         raise RuntimeError(f"cannot start: {why}")
     batch_id = f"{cfg.config_id}-{_stamp(deps.clock())}"

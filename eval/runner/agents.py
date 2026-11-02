@@ -27,6 +27,9 @@ class AgentContext:
     deadline: float                          # unix time; the runner stops waiting after this
     max_tool_calls: int
     clock: Callable[[], float]
+    # Experiment arm options the agent must honour, e.g. {"architecture": "C1", "memory": "off",
+    # "defences": "on", "review_enabled": False}. Empty outside experiments.
+    options: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
@@ -46,11 +49,22 @@ class Agent(Protocol):
     # Optional: True for an agent whose approvals go through Person 2's gate, which mints tokens with
     # APPROVAL_SECRET. Agents without the attribute need nothing.
     # needs_approval_secret: bool
+    # Optional: the experiment options (AgentContext.options keys) the agent honours. An arm that sets an
+    # option the agent does not declare is refused, so a C2 run is never reported as C0.
+    # options_supported: frozenset[str]
 
 
-def not_ready(agent: Agent, env: Optional[Mapping[str, str]] = None, env_file: Optional[Path] = None) -> Optional[str]:
-    """Why ``agent`` cannot run, or None. Without APPROVAL_SECRET the gate refuses every approval, so every
-    case would end quietly as an escalation; the runner stops before the first case instead."""
+def not_ready(agent: Agent, env: Optional[Mapping[str, str]] = None, env_file: Optional[Path] = None,
+              options: Optional[Mapping[str, Any]] = None) -> Optional[str]:
+    """Why ``agent`` cannot run, or None.
+
+    - The run's experiment options must all be ones the agent honours (``options_supported``).
+    - Without APPROVAL_SECRET the gate refuses every approval, so every case would end quietly as an
+      escalation; the runner stops before the first case instead."""
+    unsupported = sorted(set(options or {}) - set(getattr(agent, "options_supported", frozenset())))
+    if unsupported:
+        return (f"agent {agent.name} does not honour the experiment options {unsupported}; its runs would be "
+                f"labelled with settings it did not use")
     if not getattr(agent, "needs_approval_secret", False):
         return None
     env = os.environ if env is None else env
@@ -74,6 +88,8 @@ class DoNothingAgent:
 
     name = "do-nothing"
     version = "1"
+    # It does nothing under every option, so every arm can be rehearsed with it (runner checks, no shop writes).
+    options_supported = frozenset({"architecture", "memory", "defences", "review_enabled"})
 
     def run(self, ctx: AgentContext) -> AgentResult:
         return AgentResult(
