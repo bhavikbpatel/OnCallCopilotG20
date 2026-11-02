@@ -19,7 +19,7 @@ from typing import Any, Callable, Optional, Protocol
 class AgentContext:
     run_id: str
     alert: dict                              # Person 2's Alert fields
-    approve: Callable[[dict], dict]          # flat action -> ApprovalDecision (decision, token, ...)
+    approve: Callable[[dict], dict]          # flat action -> ApprovalDecision (decision, payload_hash; no token: the gate mints it)
     deadline: float                          # unix time; the runner stops waiting after this
     max_tool_calls: int
     clock: Callable[[], float]

@@ -214,6 +214,8 @@ class ApprovalDecision(BaseModel):
     decision: Literal["approve", "edit", "reject"]
     edited_action: dict[str, Any] | None = None
     token: str | None = None          # ignored when the gate can mint (APPROVAL_SECRET set); see mint_token
+    payload_hash: str | None = None   # the hash of the action the approver saw; an approval must carry it and it
+                                      # must equal the gate's (approval is bound to the exact payload)
     reason: str = ""
     decided_by: str = ""
 

@@ -79,7 +79,10 @@ calls**, in order:
 
 **`approvals`**: one entry per gate decision: `payload_hash`, `decision`
 (`approve`, `edit`, `reject`, as in Person 2's `ApprovalDecision`), `decided_by`
-(`auto` or a name) and `has_token`. The token itself is never stored.
+(`auto` or a name) and `has_token`. The token itself is never stored. Since #37 the approval gate
+mints the token and the approver only names the payload it approves (`payload_hash`, refused if it is not
+the proposal's), so the runner's records say `has_token: null` (not the approver's to know); `false` is
+flagged as an approval without a token.
 
 **Shop actions** use Person 2's action models (`copilot/state.py`):
 

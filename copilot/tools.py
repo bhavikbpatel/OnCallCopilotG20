@@ -125,6 +125,9 @@ class McpTelemetry:
         return _last_value(series[0]) if series else None
 
     async def recent_changes(self, since: datetime) -> list[dict[str, Any]]:
+        # "at" is when the telemetry server FIRST SAW the flag away from "off" (flagd keeps no history), so it is a
+        # lower bound on how long the flag has been on: after a server restart, a flag on for hours looks new.
+        # Evaluation is not affected (the injector sets flags fresh for each case); a live demo after a restart is.
         changes = await self.toolbox.call("telemetry.recent_changes", {"since": _iso(since)})
         out = []
         for c in changes.get("changes", []) if isinstance(changes, dict) else changes or []:
