@@ -119,6 +119,8 @@ class TimelineEvent(BaseModel):
 
 class TriageReport(BaseModel):
     severity: Severity
+    severity_rule: str | None = None      # Person 1's policy rule ID (S1.1, S2.1, S3.0, S3.1, S0.1)
+    severity_reason: str = ""
     is_noise: bool = False
     suspects: list[ServiceName]
     impact: str

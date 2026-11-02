@@ -125,7 +125,7 @@ def test_structured_retry_answers_the_tool_call():
         def with_structured_output(self, *a, **k):
             return self
 
-        async def ainvoke(self, messages):
+        async def ainvoke(self, messages, config=None):
             sent.append(list(messages))
             raw = AIMessage(content="", tool_calls=[{"id": "call_1", "name": "Out", "args": {"a": "x"}}])
             if len(sent) == 1:
