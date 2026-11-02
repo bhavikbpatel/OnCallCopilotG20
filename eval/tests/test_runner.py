@@ -417,3 +417,111 @@ def test_cli_refuses_bad_input(tmp_path):
     assert main(["--cases", str(DEV), "--config-id", "bad id"], deps=deps) == 2
     with pytest.raises(SystemExit):
         main(["--cases", str(DEV), "--only", "D-999", "--config-id", "X"], deps=deps)
+
+
+# ---------------------------------------------------------------- after #37: gate tokens, secret, timeouts
+
+class GateAgent(FixingAgent):
+    """Fixes like FixingAgent and returns the gate's approval record, as Person 2's final state does. TEST ONLY."""
+
+    name = "test-gate"
+    needs_approval_secret = True
+
+    def __init__(self, store, token):
+        super().__init__(store)
+        self.token = token
+
+    def run(self, ctx):
+        res = super().run(ctx)
+        h = payload_hash("set_flag", {"flag": "paymentFailure", "variant": "off"})
+        res.state["approval"] = {"payload_hash": h, "decision": "approve", "token": self.token,
+                                 "decided_by": "auto", "decided_at": "2026-11-02T00:00:00Z"}
+        return res
+
+
+def test_has_token_comes_from_the_gate_record(tmp_path):
+    store, deps = make(tmp_path)
+    result, report = run_case(load_case(DEV / "D-001.yaml"), GateAgent(store, "v1.minted"), cfg(), deps)
+    assert result.approvals[0].has_token is True and not report.policy_violations
+
+
+def test_write_on_an_approval_the_gate_gave_no_token_is_a_violation(tmp_path):
+    store, deps = make(tmp_path)
+    result, report = run_case(load_case(DEV / "D-001.yaml"), GateAgent(store, None), cfg(), deps)
+    assert result.approvals[0].has_token is False
+    assert any("no token" in v for v in report.policy_violations)
+
+
+def test_with_gate_tokens_fills_only_the_matching_latest_approval():
+    from eval.runner.approvals import with_gate_tokens
+    recs = [{"payload_hash": "a", "decision": "approve", "decided_by": "auto", "has_token": None},
+            {"payload_hash": "b", "decision": "approve", "decided_by": "auto", "has_token": None},
+            {"payload_hash": "b", "decision": "approve", "decided_by": "auto", "has_token": None}]
+    out = with_gate_tokens(recs, {"approval": {"payload_hash": "b", "decision": "approve", "token": "t"}})
+    assert [r["has_token"] for r in out] == [None, None, True]
+    assert recs[2]["has_token"] is None                                     # input left alone
+    assert [r["has_token"] for r in with_gate_tokens(recs, {})] == [None, None, None]
+    rej = {"approval": {"payload_hash": "b", "decision": "reject", "token": None}}
+    assert [r["has_token"] for r in with_gate_tokens(recs, rej)] == [None, None, None]
+
+
+def test_agent_needing_the_approval_secret_does_not_start_without_it(tmp_path):
+    from eval.runner.agents import not_ready
+    store, deps = make(tmp_path)
+    agent = GateAgent(store, "t")
+    missing = tmp_path / "no.env"
+    assert "APPROVAL_SECRET" in not_ready(agent, env={}, env_file=missing)
+    assert not_ready(agent, env={"APPROVAL_SECRET": "s"}, env_file=missing) is None
+    envf = tmp_path / ".env"
+    envf.write_text("APPROVAL_SECRET=from-file\n")
+    assert not_ready(agent, env={}, env_file=envf) is None
+    assert not_ready(DoNothingAgent(), env={}, env_file=missing) is None    # never reaches the gate
+
+
+def test_batch_and_cli_refuse_an_agent_without_the_secret(tmp_path, monkeypatch, capsys):
+    import eval.runner.agents as agents_mod
+    monkeypatch.delenv("APPROVAL_SECRET", raising=False)
+    monkeypatch.setattr(agents_mod, "ENV_FILE", tmp_path / "absent.env")
+    store, deps = make(tmp_path)
+    with pytest.raises(RuntimeError, match="APPROVAL_SECRET"):
+        run_batch([load_case(DEV / "D-001.yaml")], GateAgent(store, "t"), cfg(), deps)
+    assert not any(tmp_path.glob("TEST-*"))                                 # nothing written, nothing injected
+    assert all_at_rest(store)
+    monkeypatch.setitem(agents_mod.AGENTS, "do-nothing", lambda: GateAgent(store, "t"))
+    assert main(["--cases", str(DEV), "--only", "D-001", "--config-id", "X"], deps=deps) == 2
+    assert "APPROVAL_SECRET" in capsys.readouterr().err
+
+
+def test_default_agent_timeout_covers_the_graph_verify_windows():
+    from eval.runner.timeouts import APP_YAML, GraphTiming, agent_timeout_for
+    t = GraphTiming.load(APP_YAML)
+    assert t.verify_window_by_signal.get("memory_mb", 0) >= t.verify_window_s
+    for signal in ("error_rate", "error_count", "latency_p95_ms", "consumer_lag", "memory_mb"):
+        window = t.verify_window_by_signal.get(signal, t.verify_window_s)
+        verifies = 2 if signal in t.follow_up_signals else 1
+        timeout = agent_timeout_for(signal, t, 300)
+        assert timeout >= (1 + t.max_replans) * verifies * window > 600     # the old fixed 600 s was too short
+    toy = GraphTiming(verify_window_s=100, verify_window_by_signal={"memory_mb": 200}, verify_poll_s=10,
+                      follow_up_signals=("memory_mb",), max_replans=1)
+    assert agent_timeout_for("error_rate", toy, 50) == 2 * (50 + 110)
+    assert agent_timeout_for("memory_mb", toy, 50) == 2 * (50 + 2 * 210)
+    assert GraphTiming.load(Path("/nonexistent/app.yaml")) == GraphTiming()
+
+
+def test_runner_uses_the_worked_out_timeout_unless_one_is_given(tmp_path):
+    from eval.runner.timeouts import GraphTiming, agent_timeout_for
+
+    class TimedAgent(FixingAgent):
+        def run(self, ctx):
+            self.left = ctx.deadline - ctx.clock()          # time given, read when the agent starts
+            return super().run(ctx)
+
+    store, deps = make(tmp_path)
+    deps.timing = GraphTiming(verify_window_s=100, verify_poll_s=10, max_replans=0)
+    agent = TimedAgent(store)
+    run_case(load_case(DEV / "D-001.yaml"), agent, cfg(), deps)
+    assert agent.left == agent_timeout_for("error_rate", deps.timing, 300) == 410
+    store, deps = make(tmp_path)
+    agent = TimedAgent(store)
+    run_case(load_case(DEV / "D-001.yaml"), agent, cfg(agent_timeout_s=42), deps)
+    assert agent.left == 42
