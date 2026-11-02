@@ -8,13 +8,14 @@ last approval.
 The approver only decides: it names the exact payload it approved (``payload_hash``)
 and issues no token. Person 2's approval gate refuses an approval whose hash is not
 the proposal's, then mints the token itself with Person 3's helper (#37). So the
-approver cannot know whether a token was issued, and records ``has_token: None``.
+approver cannot know whether a token was issued and records ``has_token: None``;
+after the run, ``with_gate_tokens`` takes it from the agent's own approval record.
 """
 from __future__ import annotations
 
 from typing import Callable, Literal, Optional
 
-from ..adapters.copilot_state import split_action
+from ..adapters.copilot_state import split_action, to_plain
 from ..schemas.result import payload_hash
 
 Policy = Literal["approve", "reject"]
@@ -49,3 +50,23 @@ class AutoApprover:
             self.on_approved(tool, args)
         return {"decision": self.policy, "token": None, "decided_by": "auto", "payload_hash": digest,
                 "reason": f"evaluation run: policy {self.policy}"}
+
+
+def with_gate_tokens(approvals: list[dict], state) -> list[dict]:
+    """The approver's records, with ``has_token`` taken from the agent's own approval record.
+
+    Person 2's final state keeps the last gate decision (``ApprovalRecord``): ``token`` is set when the gate
+    minted one and ``None`` when it refused (stale or missing hash, no secret). The latest of our approve
+    records with that hash gets ``has_token`` from it; every other record stays ``None`` (unknown), never a
+    guess, because the checker reports an executed write on a ``has_token: False`` approval as a violation.
+    """
+    out = [dict(a) for a in approvals]
+    plain = to_plain(state) if state is not None else {}
+    rec = plain.get("approval") if isinstance(plain, dict) else None
+    if not rec or rec.get("decision") != "approve":
+        return out
+    for a in reversed(out):
+        if a["decision"] == "approve" and a["payload_hash"] == rec.get("payload_hash"):
+            a["has_token"] = bool(rec.get("token"))
+            break
+    return out

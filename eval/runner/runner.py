@@ -10,7 +10,7 @@ One case, one run (``run_case``):
 4. Wait for the synthetic alert to fire (eval/runner/alerts.py). If it never
    fires, the run is an infrastructure error, not an agent failure.
 5. Run the agent with the alert only, an automatic approver, a deadline and a
-   budget. A run that overruns its deadline is "timeout". When a fix for an
+   budget. The deadline covers the graph's verify waits (eval/runner/timeouts.py). A run that overruns its deadline is "timeout". When a fix for an
    injected flag is approved, the injector stops changing that flag, so an
    intermittent fault cannot come back after a correct fix.
 6. Judge recovery from Prometheus (eval/recovery), from the time of the fix, or
@@ -46,10 +46,11 @@ from ..schemas.attack import Attack
 from ..schemas.case import Case
 from ..schemas.result import RecoveryObservation, ResultLine
 from ..telemetry.prom import PromClient
-from .agents import Agent, AgentContext, AgentResult
-from .alerts import measure_alert_baseline, wait_for_alert
-from .approvals import AutoApprover
+from .agents import Agent, AgentContext, AgentResult, not_ready
+from .alerts import measure_alert_baseline, signal_for, wait_for_alert
+from .approvals import AutoApprover, with_gate_tokens
 from .config import RunConfig
+from .timeouts import GraphTiming, agent_timeout_for
 
 RUNS_DIR = Path(__file__).resolve().parents[1] / "results" / "runs"
 FLAG_WRITE_TOOLS = ("set_flag",)
@@ -64,6 +65,7 @@ class RunDeps:
     sleep: Callable[[float], None] = time.sleep
     force_clear: bool = False
     make_sender: Callable[[], HttpAttackSender] = HttpAttackSender   # red team: delivers HTTP-vector attacks
+    timing: GraphTiming = dataclasses.field(default_factory=GraphTiming.load)   # config/app.yaml: verify windows
 
 
 class _NotDeliverable(RuntimeError):
@@ -166,7 +168,9 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
         alert_base = measure_alert_baseline(deps.prom, case.alert, readings=cfg.baseline_readings,
                                             every_s=cfg.poll_s, clock=clock, sleep=sleep)
         rec_base = measure_baseline(deps.prom, rc) if rc is not None else None
-        horizon = cfg.alert_timeout_s + cfg.agent_timeout_s + (rc.within_s if rc else 0) + 120
+        agent_timeout_s = cfg.agent_timeout_s or agent_timeout_for(signal_for(case.alert.name), deps.timing,
+                                                                     cfg.step_allowance_s)
+        horizon = cfg.alert_timeout_s + agent_timeout_s + (rc.within_s if rc else 0) + 120
         injecting = True
         record = deps.injector.start(case, horizon, run_id)
         if attack is not None:
@@ -178,10 +182,10 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
         if alert is None:
             status, error = "error", why
         else:
-            ctx = AgentContext(run_id=run_id, alert=alert, approve=approver, deadline=clock() + cfg.agent_timeout_s,
+            ctx = AgentContext(run_id=run_id, alert=alert, approve=approver, deadline=clock() + agent_timeout_s,
                                max_tool_calls=cfg.max_tool_calls, clock=clock)
             try:
-                agent_result, status, error = _run_agent(agent, ctx, cfg.agent_timeout_s)
+                agent_result, status, error = _run_agent(agent, ctx, agent_timeout_s)
             finally:
                 approver.close()      # a timed-out agent thread can never get another approval
             if rc is not None and status != "error":
@@ -219,7 +223,7 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
         agent_result.state, case_id=case.case_id, config_id=cfg.config_id, run_id=run_id,
         started_at=_utc(started), ended_at=_utc(clock()), status=status, error=error, repeat=repeat,
         agent_version=f"{agent.name}@{agent.version}", tool_calls=agent_result.tool_calls,
-        approvals=approver.approvals, recovery=recovery.model_dump(), max_tool_calls=cfg.max_tool_calls,
+        approvals=with_gate_tokens(approver.approvals, agent_result.state), recovery=recovery.model_dump(), max_tool_calls=cfg.max_tool_calls,
         tool_log_source="agent" if agent_result.tool_calls is not None else None,
         attack_id=attack.attack_id if attack is not None else None,
     )
@@ -288,7 +292,10 @@ def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
               on_result: Optional[Callable[[ResultLine, CheckReport], None]] = None,
               attacks: Optional[list[Attack]] = None) -> dict:
     """Run every case (or, with ``attacks``, every attack with its base case) ``cfg.repeats`` times;
-    write JSONL and a summary as it goes."""
+    write JSONL and a summary as it goes. Refuses to start an agent that cannot run (``not_ready``)."""
+    why = not_ready(agent)
+    if why:
+        raise RuntimeError(f"cannot start: {why}")
     batch_id = f"{cfg.config_id}-{_stamp(deps.clock())}"
     out = deps.results_dir / batch_id
     out.mkdir(parents=True, exist_ok=True)

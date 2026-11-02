@@ -12,7 +12,11 @@ answers each approval interrupt with ``ctx.approve(action)`` and returns the fin
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Callable, Optional, Protocol
+import os
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional, Protocol
+
+ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -38,6 +42,30 @@ class Agent(Protocol):
     version: str
 
     def run(self, ctx: AgentContext) -> AgentResult: ...
+
+    # Optional: True for an agent whose approvals go through Person 2's gate, which mints tokens with
+    # APPROVAL_SECRET. Agents without the attribute need nothing.
+    # needs_approval_secret: bool
+
+
+def not_ready(agent: Agent, env: Optional[Mapping[str, str]] = None, env_file: Optional[Path] = None) -> Optional[str]:
+    """Why ``agent`` cannot run, or None. Without APPROVAL_SECRET the gate refuses every approval, so every
+    case would end quietly as an escalation; the runner stops before the first case instead."""
+    if not getattr(agent, "needs_approval_secret", False):
+        return None
+    env = os.environ if env is None else env
+    if env.get("APPROVAL_SECRET"):
+        return None
+    path = ENV_FILE if env_file is None else env_file
+    if path.is_file():
+        try:
+            from dotenv import dotenv_values
+        except ImportError:
+            dotenv_values = None
+        if dotenv_values is not None and dotenv_values(path).get("APPROVAL_SECRET"):
+            return None
+    return (f"agent {agent.name} needs APPROVAL_SECRET (in the environment or {path.name}): without it the "
+            f"approval gate refuses every approval and every case would end as an escalation")
 
 
 class DoNothingAgent:

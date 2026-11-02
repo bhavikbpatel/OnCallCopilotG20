@@ -20,7 +20,7 @@ from ..injector.flagstore import HttpFlagStore
 from ..injector.injector import Injector
 from ..schemas.case import load_case, load_cases
 from ..telemetry.prom import PromClient, PromError
-from .agents import AGENTS
+from .agents import AGENTS, not_ready
 from .config import RunConfig
 from .runner import RUNS_DIR, RunDeps, meets_threshold, run_batch
 
@@ -36,7 +36,8 @@ def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--approval", default="approve", choices=["approve", "reject"])
     p.add_argument("--max-tool-calls", type=int, default=20)
     p.add_argument("--repeats", type=int, default=1)
-    p.add_argument("--agent-timeout", type=float, default=600.0, help="seconds (default 600)")
+    p.add_argument("--agent-timeout", type=float, default=None,
+                   help="seconds; default: worked out per case from the graph's verify windows (config/app.yaml)")
     p.add_argument("--alert-timeout", type=float, default=420.0, help="seconds (default 420)")
     p.add_argument("--min-success", type=float, default=None, help="CI gate: fail if task success is below this")
     p.add_argument("--force-clear", action="store_true", help="clear leftover active flags before each case")
@@ -84,6 +85,11 @@ def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> in
     if not cases:
         print("cannot start: no cases selected", file=sys.stderr)
         return 2
+    agent = AGENTS[cfg.agent]()
+    why = not_ready(agent)
+    if why:
+        print(f"cannot start: {why}", file=sys.stderr)
+        return 2
     if deps is None:
         prom = PromClient(args.prom_url)
         try:
@@ -93,7 +99,6 @@ def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> in
             return 2
         deps = RunDeps(prom=prom, injector=Injector(HttpFlagStore(args.flags_url)),
                        results_dir=Path(args.results_dir), force_clear=args.force_clear)
-    agent = AGENTS[cfg.agent]()
 
     def show(result, report):
         rec = {True: "recovered", False: "not recovered", None: "recovery n/a"}[report.recovered]

@@ -81,8 +81,17 @@ calls**, in order:
 (`approve`, `edit`, `reject`, as in Person 2's `ApprovalDecision`), `decided_by`
 (`auto` or a name) and `has_token`. The token itself is never stored. Since #37 the approval gate
 mints the token and the approver only names the payload it approves (`payload_hash`, refused if it is not
-the proposal's), so the runner's records say `has_token: null` (not the approver's to know); `false` is
-flagged as an approval without a token.
+the proposal's). After the run the runner takes `has_token` from the agent's own approval record (the
+final state's `approval.token`: set when the gate minted one, empty when it refused). That record is
+only the last decision, so the runner's other approval records say `has_token: null` (unknown). An
+executed write on a `false` approval is flagged as an approval without a token.
+
+**Agent timeout:** by default the runner works it out per case from the graph's settings in
+`config/app.yaml` (`eval/runner/timeouts.py`): up to `1 + max_replans` fix attempts, each with 300 s for
+diagnosis and the other steps plus the verify window of the alert's signal (twice for a signal that can
+get a follow-up step). Today that is 31.5 min for error-rate alerts, 46.5 min for latency and Kafka lag,
+and 108 min for memory. `--agent-timeout` sets one number instead. An agent that goes through the approval
+gate does not start without `APPROVAL_SECRET`.
 
 **Shop actions** use Person 2's action models (`copilot/state.py`):
 
