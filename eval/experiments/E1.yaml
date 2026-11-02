@@ -1,0 +1,24 @@
+# E1: does the agent justify its cost? (capstone guide p. 6)
+# C0, C1 and C2 with the same model (config/app.yaml), tools, budget and memory. This is the final
+# held-out comparison, so it runs three times to show the spread of LLM outputs.
+experiment: E1
+question: Does the team of agents justify its cost compared with a fixed workflow and a single agent?
+guide: "capstone guide p. 6, E1; repeat the final held-out comparison three times"
+cases: heldout
+repeats: 3
+arms:
+  - id: C0
+    description: Fixed workflow, no agent decisions (fixed_workflow role in config/permissions.yaml)
+    options: {architecture: C0}
+  - id: C1
+    description: One agent with all the tools (single_agent role)
+    options: {architecture: C1}
+  - id: C2
+    description: Our team of agents (commander, triage, diagnosis, runbook, remediation, comms)
+    options: {architecture: C2}
+compare:
+  - {arms: [C0, C1, C2], varies: [architecture]}
+notes: >
+  C2 with the frozen playbook and budget 20 is also E3's "after" and E4's baseline (they reuse it).
+  Report task success, policy violations, false blocks, cost per case, median and p95 latency and
+  errors for every arm, failed and timed-out runs included.

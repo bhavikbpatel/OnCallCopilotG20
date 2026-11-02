@@ -4,6 +4,8 @@
     python -m eval.runner --cases eval/cases/dev --only D-001,D-015 --config-id TRY
     python -m eval.runner --cases eval/cases/dev --config-id CI --min-success 0.6   # CI gate
     python -m eval.runner --cases eval/cases/dev --attacks "$EVAL_PRIVATE_DIR/redteam" --config-id E2-ON
+    python -m eval.runner --experiment E4 --plan              # experiments: eval/experiments/E1-E4.yaml
+    python -m eval.runner --experiment E4 --arm memory-off    # one arm (default: every arm not reused)
 
 Writes eval/results/runs/<config_id>-<time>/{results,scores}.jsonl and summary.json.
 Exit code: 0 ok, 1 below --min-success (or interrupted), 2 cannot start.
@@ -19,6 +21,7 @@ from typing import Optional
 from ..injector.flagstore import HttpFlagStore
 from ..injector.injector import Injector
 from ..schemas.case import load_case, load_cases
+from ..schemas.experiment import EXPERIMENTS_DIR
 from ..telemetry.prom import PromClient, PromError
 from .agents import AGENTS, not_ready
 from .config import RunConfig
@@ -28,14 +31,20 @@ from .runner import RUNS_DIR, RunDeps, meets_threshold, run_batch
 def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="python -m eval.runner", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--cases", required=True, help="folder of case .yaml files, or one .yaml file")
+    p.add_argument("--cases", help="folder of case .yaml files, or one .yaml file")
     p.add_argument("--only", help="comma-separated case IDs to run (with --attacks: attack IDs)")
     p.add_argument("--attacks", help="private red-team folder: run each attack with its base case from --cases")
-    p.add_argument("--config-id", required=True, help="name for this run configuration, e.g. E1-C2")
+    p.add_argument("--config-id", help="name for this run configuration, e.g. E1-C2")
+    p.add_argument("--experiment", help="run an experiment from eval/experiments (E1-E4): cases, repeats, budget "
+                                        "and agent options come from its file")
+    p.add_argument("--arm", help="with --experiment: comma-separated arm IDs (default: every arm not reused)")
+    p.add_argument("--plan", action="store_true", help="with --experiment: print runs per arm and hours; run nothing")
+    p.add_argument("--minutes-per-run", type=float, default=20.0, help="with --plan (default 20)")
+    p.add_argument("--experiments-dir", default=str(EXPERIMENTS_DIR))
     p.add_argument("--agent", default="do-nothing", choices=sorted(AGENTS))
     p.add_argument("--approval", default="approve", choices=["approve", "reject"])
-    p.add_argument("--max-tool-calls", type=int, default=20)
-    p.add_argument("--repeats", type=int, default=1)
+    p.add_argument("--max-tool-calls", type=int, default=None, help="default 20")
+    p.add_argument("--repeats", type=int, default=None, help="default 1")
     p.add_argument("--agent-timeout", type=float, default=None,
                    help="seconds; default: worked out per case from the graph's verify windows (config/app.yaml)")
     p.add_argument("--alert-timeout", type=float, default=420.0, help="seconds (default 420)")
@@ -44,7 +53,20 @@ def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--prom-url", default=None)
     p.add_argument("--flags-url", default=None)
     p.add_argument("--results-dir", default=str(RUNS_DIR))
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    if args.experiment:
+        clash = [f for f, v in (("--cases", args.cases), ("--attacks", args.attacks), ("--config-id", args.config_id),
+                                ("--max-tool-calls", args.max_tool_calls), ("--repeats", args.repeats)) if v is not None]
+        if clash:
+            p.error(f"{', '.join(clash)} come from the experiment file; do not combine with --experiment")
+    else:
+        if args.cases is None or args.config_id is None:
+            p.error("--cases and --config-id are required (or use --experiment)")
+        if args.arm or args.plan:
+            p.error("--arm and --plan need --experiment")
+        args.max_tool_calls = 20 if args.max_tool_calls is None else args.max_tool_calls
+        args.repeats = 1 if args.repeats is None else args.repeats
+    return args
 
 
 def select_cases(path: str, only: Optional[str]):
@@ -60,8 +82,71 @@ def select_cases(path: str, only: Optional[str]):
     return cases
 
 
+def _split(s: Optional[str]) -> list[str]:
+    return [x.strip() for x in (s or "").split(",") if x.strip()]
+
+
+def _live_deps(args) -> Optional[RunDeps]:
+    prom = PromClient(args.prom_url)
+    try:
+        prom.build_info()
+    except PromError as exc:
+        print(f"cannot start: {exc}", file=sys.stderr)
+        return None
+    return RunDeps(prom=prom, injector=Injector(HttpFlagStore(args.flags_url)),
+                   results_dir=Path(args.results_dir), force_clear=args.force_clear)
+
+
+def show(result, report):
+    rec = {True: "recovered", False: "not recovered", None: "recovery n/a"}[report.recovered]
+    who = f"{result.attack_id} on {result.case_id}" if result.attack_id else result.case_id
+    print(f"{who} r{result.repeat}: {result.status:<16} success={report.task_success!s:<5} {rec}"
+          + (f"  ({result.error})" if result.error else ""), flush=True)
+
+
+def experiment_main(args, deps: Optional[RunDeps]) -> int:
+    from ..schemas.experiment import resolve
+    from .experiments import arm_config, format_plan, plan, run_experiment
+    try:
+        exp = resolve(args.experiment, Path(args.experiments_dir))
+        if args.plan:
+            print(format_plan(plan(exp, minutes_per_run=args.minutes_per_run)))
+            return 0
+        agent = AGENTS[args.agent]()
+        arm_ids = _split(args.arm)
+        arms = [exp.arm(i) for i in arm_ids] if arm_ids else [a for a in exp.arms if a.reuse is None]
+        for arm in arms:
+            why = None if arm.reuse else not_ready(agent, options=arm_config(exp, arm).options)
+            if why:
+                raise ValueError(f"{exp.experiment}/{arm.id}: {why}")
+    except (ValueError, KeyError, OSError) as exc:
+        print(f"cannot start: {exc}", file=sys.stderr)
+        return 2
+    if deps is None:
+        deps = _live_deps(args)
+        if deps is None:
+            return 2
+    try:
+        entries = run_experiment(exp, arm_ids, agent, deps, run_batch=run_batch, only=_split(args.only),
+                                 on_result=show, agent=args.agent, approval=args.approval,
+                                 agent_timeout_s=args.agent_timeout, alert_timeout_s=args.alert_timeout)
+    except KeyboardInterrupt:
+        print("\ninterrupted: flags cleared; partial results, summary and experiment-log line written",
+              file=sys.stderr)
+        return 1
+    except (ValueError, RuntimeError, OSError) as exc:
+        print(f"cannot start: {exc}", file=sys.stderr)
+        return 2
+    for e in entries:
+        print(f"{e['config_id']}: task success {e['task_success_rate']}  status {e['status_counts']}"
+              + ("  (partial)" if e["partial"] else "") + f"  -> {e['directory']}")
+    return 0
+
+
 def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> int:
     args = parse(argv)
+    if args.experiment:
+        return experiment_main(args, deps)
     try:
         cfg = RunConfig(config_id=args.config_id, agent=args.agent, approval=args.approval,
                         max_tool_calls=args.max_tool_calls, agent_timeout_s=args.agent_timeout,
@@ -91,20 +176,9 @@ def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> in
         print(f"cannot start: {why}", file=sys.stderr)
         return 2
     if deps is None:
-        prom = PromClient(args.prom_url)
-        try:
-            prom.build_info()
-        except PromError as exc:
-            print(f"cannot start: {exc}", file=sys.stderr)
+        deps = _live_deps(args)
+        if deps is None:
             return 2
-        deps = RunDeps(prom=prom, injector=Injector(HttpFlagStore(args.flags_url)),
-                       results_dir=Path(args.results_dir), force_clear=args.force_clear)
-
-    def show(result, report):
-        rec = {True: "recovered", False: "not recovered", None: "recovery n/a"}[report.recovered]
-        who = f"{result.attack_id} on {result.case_id}" if result.attack_id else result.case_id
-        print(f"{who} r{result.repeat}: {result.status:<16} success={report.task_success!s:<5} {rec}"
-              + (f"  ({result.error})" if result.error else ""), flush=True)
 
     what = f"{len(attacks)} attack(s)" if attacks else f"{len(cases)} case(s)"
     print(f"{what} x {cfg.repeats} repeat(s), agent {agent.name}, config {cfg.config_id}", flush=True)

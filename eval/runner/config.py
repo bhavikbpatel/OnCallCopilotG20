@@ -1,7 +1,7 @@
 """Run configuration: everything that differs between experiment arms lives here, not in code."""
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,3 +20,9 @@ class RunConfig(BaseModel):
     baseline_readings: int = Field(3, ge=1)
     poll_s: float = Field(30, gt=0)
     repeats: int = Field(1, ge=1)
+    # Experiment arm (eval/experiments/*.yaml): the agent options it must honour (architecture, memory,
+    # defences, review_enabled), which arm this is, and the hash of the arm's settings for the result lines.
+    options: dict[str, Any] = Field(default_factory=dict)
+    experiment: Optional[str] = None
+    arm: Optional[str] = None
+    config_hash: Optional[str] = None
