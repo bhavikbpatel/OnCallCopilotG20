@@ -43,7 +43,9 @@ async def _check(p: Precondition, telemetry: TelemetryClient, now: datetime) -> 
             target_key = "flag" if "flag" in p.args else "service"
             target = p.args[target_key]
             changes = await telemetry.recent_changes(since)
-            hit = [c for c in changes if c.get(target_key) == target]
+            # The telemetry server lists every flag that is currently on, whatever `since` is, so the window is applied here.
+            hit = [c for c in changes if c.get(target_key) == target
+                   and not (isinstance(c.get("at"), datetime) and c["at"] < since)]
             if hit:
                 return result(True, f"{target_key} {target} changed at {hit[-1].get('at')}")
             return result(False, f"no change to {target_key} {target} within {p.args['within']}")

@@ -97,7 +97,7 @@ def make_approval_gate(deps: CopilotDeps):
             "payload_hash": digest,
         })
         decision = ApprovalDecision.model_validate(raw)
-        record = ApprovalRecord(payload_hash=digest, decision=decision.decision, token=decision.token,
+        record = ApprovalRecord(payload_hash=digest, decision=decision.decision, token=None,
                                 reason=decision.reason, decided_by=decision.decided_by, decided_at=now())
         update: dict[str, Any] = {"approval": record}
         text = f"{decision.decision} by {decision.decided_by or 'engineer'}" + (f": {decision.reason}" if decision.reason else "")
@@ -118,10 +118,31 @@ def make_approval_gate(deps: CopilotDeps):
                 update["proposed_action"] = None            # after_approval → roll back the fix still in place
             else:
                 update |= {"replan_reason": f"engineer rejected action: {decision.reason}", "proposed_action": None}
-        elif not decision.token:
-            update["escalation_reason"] = "approved without a token"
+        else:
+            token, why = mint_token(action, digest, decision.decided_by or "engineer")
+            if token is None and decision.token and why.startswith("approval_not_configured"):
+                token, why = decision.token, ""          # no APPROVAL_SECRET here: the approver's token; the server checks it
+                text += " (token from the approver)"
+            if token is None:
+                update["escalation_reason"] = f"approval token not issued: {why}"
+            update["approval"] = record.model_copy(update={"token": token})
         return update | {"timeline": [event("approval_gate", "approval", text)]}
     return approval_gate
+
+
+def mint_token(action: Action, digest: str, decided_by: str) -> tuple[str | None, str]:
+    """The gate mints the token for this exact action with Person 3's helper (APPROVAL_SECRET); an approver
+    only decides. Returns (token, "") or (None, reason)."""
+    from mcp_servers.common.decision import propose, resolve
+
+    try:
+        proposal = propose(action.model_dump(mode="json"))
+    except ValueError as exc:
+        return None, f"refused by the ops allow-list: {exc}"
+    if proposal["payload_hash"] != digest:
+        return None, "payload hash differs between the graph and the ops server"
+    out = resolve(proposal, {"decision": "approve", "decided_by": decided_by, "payload_hash": digest})
+    return out["token"], "" if out["token"] else str(out.get("reason"))
 
 
 def make_execute(deps: CopilotDeps):

@@ -213,7 +213,7 @@ class ApprovalDecision(BaseModel):
     """Resume payload for the approval gate: Command(resume=ApprovalDecision(...).model_dump())."""
     decision: Literal["approve", "edit", "reject"]
     edited_action: dict[str, Any] | None = None
-    token: str | None = None          # issued by the approval API for payload_hash
+    token: str | None = None          # ignored when the gate can mint (APPROVAL_SECRET set); see mint_token
     reason: str = ""
     decided_by: str = ""
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -24,12 +25,13 @@ from dotenv import load_dotenv  # noqa: E402
 from langchain_core.tools import tool  # noqa: E402
 from langgraph.types import Command  # noqa: E402
 
-from copilot.clients import RecoveryCount, ServiceHealth  # noqa: E402
+from copilot.clients import RecoveryCount, ServiceHealth, ToolError  # noqa: E402
 from copilot.config import ROOT, load_settings  # noqa: E402
 from copilot.deps import CopilotDeps  # noqa: E402
 from copilot.graph import build_graph  # noqa: E402
 from copilot.memory import make_checkpointer, make_store  # noqa: E402
-from copilot.state import Alert, DryRunResult, SetFlag  # noqa: E402
+from copilot.state import Alert, DryRunResult, SetFlag, payload_hash  # noqa: E402
+from mcp_servers.common.approval import check_token  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
 SCENARIOS = {
@@ -140,12 +142,15 @@ class StubOps:
                             current_state={"flags": dict(self.flags)}, rollback_action=undo)
 
     async def execute(self, action, token):
+        code = check_token(payload_hash(action), token)        # the same check as the real ops_actions server
+        if code:
+            raise ToolError(code, "approval token refused")
         if action.tool == "set_flag":
             self.flags[action.flag] = action.variant
             self.telemetry.flag_off = self.flags.get(SC["flag"]) == "off"
         elif action.tool == "restart_service":
             self.telemetry.restarted = self.telemetry.flag_off   # restarting with the leak still on does not help
-        print(f"   [shop] executed {action.model_dump_json()} with token {token}")
+        print(f"   [shop] executed {action.model_dump_json()} (token verified)")
         return {"ok": True}
 
 
@@ -165,14 +170,14 @@ def ask_approval(payload: dict, auto: bool) -> dict:
     print(f"   payload hash:    {payload['payload_hash'][:16]}…")
     if auto:
         print("   → auto-approve")
-        return {"decision": "approve", "token": f"tok-{uuid.uuid4().hex[:8]}", "decided_by": "demo"}
+        return {"decision": "approve", "decided_by": "demo"}
     choice = input("   [a]pprove / [e]dit / [r]eject? ").strip().lower()[:1]
     if choice == "e":
         edited = json.loads(input('   new action JSON, e.g. {"tool": "restart_service", "service": "cart"}: '))
         return {"decision": "edit", "edited_action": edited, "decided_by": "demo"}
     if choice == "r":
         return {"decision": "reject", "reason": input("   reason: "), "decided_by": "demo"}
-    return {"decision": "approve", "token": f"tok-{uuid.uuid4().hex[:8]}", "decided_by": "demo"}
+    return {"decision": "approve", "decided_by": "demo"}       # the gate mints the token
 
 
 def ask_review(payload: dict, auto: bool) -> dict:
@@ -197,6 +202,8 @@ async def main(args: argparse.Namespace) -> None:
     global SC
     SC = SCENARIOS[args.scenario]
     load_dotenv(ROOT / ".env")
+    if not os.getenv("APPROVAL_SECRET"):
+        os.environ["APPROVAL_DEV_MODE"] = "1"                 # stub shop only: the public dev secret
     settings = load_settings().model_copy(update={"verify_poll_s": 1, "verify_window_s": 3, "verify_window_by_signal": {},
                                                   "verify_initial_delay_s": 0, "verify_settle_s": 0})
     telemetry = StubTelemetry(recovers=not args.no_recovery)
