@@ -40,6 +40,7 @@ frontend, frontend-proxy and load-generator never start.
 | Load generator | http://localhost:8080/loadgen/ |
 | Grafana | http://localhost:8080/grafana/ |
 | Jaeger | http://localhost:8080/jaeger/ui/ |
+| OpenSearch (logs; this machine only) | http://localhost:9200 |
 
 ## Before any evaluation run
 
