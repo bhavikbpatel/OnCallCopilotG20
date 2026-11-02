@@ -326,9 +326,58 @@ def test_http_write_that_never_lands_raises():
 
 
 def test_http_unreachable_raises_clear_error():
-    store = HttpFlagStore("http://127.0.0.1:9/feature", timeout_s=0.5)
-    with pytest.raises(FlagStoreError, match="not reachable"):
+    waits = []
+    store = HttpFlagStore("http://127.0.0.1:9/feature", timeout_s=0.5, sleep=waits.append)
+    with pytest.raises(FlagStoreError, match="not reachable.*after 4 attempts"):
         store.read()
+    assert waits == [1.0, 2.0, 4.0]                      # retried with growing waits, then gave up
+
+
+def test_http_brief_unavailability_is_retried():
+    """Seen live right after a shop restart: one 503 from the flag UI ended the injection and voided the run."""
+    with FakeFlagUI(fail_next=[503, 502]) as ui:
+        waits = []
+        store = HttpFlagStore(ui.url, sleep=waits.append)
+        assert set(store.read()) == set(FLAG_VARIANTS)
+        assert waits == [1.0, 2.0] and ui.requests == 3
+
+
+def test_http_write_is_retried_and_still_confirmed():
+    with FakeFlagUI(fail_next=[504]) as ui:
+        store = HttpFlagStore(ui.url, poll_s=0.01, sleep=lambda s: None)
+        apply(store, {"paymentFailure": "75%"})            # read 504 -> retried; write; confirmed by read
+        assert get_variant(ui.config["flags"]["paymentFailure"]) == "75%"
+
+
+def test_http_unavailable_for_too_long_still_fails():
+    with FakeFlagUI(fail_next=[503] * 4) as ui:
+        store = HttpFlagStore(ui.url, sleep=lambda s: None)
+        with pytest.raises(FlagStoreError, match="503.*after 4 attempts"):
+            store.read()
+        assert ui.requests == 4
+
+
+@pytest.mark.parametrize("code", [400, 404, 500])
+def test_http_other_errors_are_not_retried(code):
+    with FakeFlagUI(fail_next=[code]) as ui:
+        waits = []
+        store = HttpFlagStore(ui.url, sleep=waits.append)
+        with pytest.raises(FlagStoreError, match=str(code)):
+            store.read()
+        assert waits == [] and ui.requests == 1
+
+
+def test_injection_survives_a_brief_outage_during_the_run():
+    with FakeFlagUI(apply_delay_s=0.02) as ui:
+        store = HttpFlagStore(ui.url, poll_s=0.02, backoff_s=0.01)
+        inj = Injector(store, check_every_s=0.05)
+        with inj.run(case(), horizon_s=2, run_id="t"):
+            time.sleep(0.3)
+            with ui.lock:
+                ui.fail_next = [503, 503]                    # the drift check meets a short outage
+            time.sleep(0.3)
+            assert get_variant(ui.config["flags"]["paymentFailure"]) == "50%"
+        assert inj.record.ok and not inj.record.errors
 
 
 def test_end_to_end_over_http_with_real_threads():
@@ -365,6 +414,8 @@ def test_cli_inject_dev_case_and_clear(tmp_path, monkeypatch, capsys):
     assert rec["applied"][0]["changes"] == {"cartFailure": "25%"} and rec["ok"]
 
 
-def test_cli_reports_errors_without_traceback(capsys):
+def test_cli_reports_errors_without_traceback(capsys, monkeypatch):
+    import functools
+    monkeypatch.setattr(cli, "HttpFlagStore", functools.partial(cli.HttpFlagStore, sleep=lambda s: None))
     assert cli.main(["--url", "http://127.0.0.1:9/feature", "status"]) == 2
     assert "not reachable" in capsys.readouterr().err

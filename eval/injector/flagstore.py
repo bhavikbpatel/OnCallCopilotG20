@@ -4,6 +4,11 @@ The flag UI (flagd-ui) owns the flag file: it loads it once at start-up and writ
 its whole in-memory copy back on every change. So all changes go through its API,
 never through the file. ``/api/write`` replaces the whole configuration and is
 asynchronous, so writes are confirmed by reading back.
+
+The flag UI sometimes answers 502/503/504 or drops a connection for a moment (seen
+right after a shop restart). Every request is retried a few times with a growing wait
+before it counts as a failure: a read is harmless to repeat, and a write sends the
+whole configuration and is confirmed by reading back, so repeating it is safe too.
 """
 from __future__ import annotations
 
@@ -24,6 +29,9 @@ REST_VARIANT = "off"  # every flag in 3.1.0 rests at "off"
 
 class FlagStoreError(RuntimeError):
     pass
+
+
+TRANSIENT_HTTP = frozenset({502, 503, 504})   # proxy or flag UI briefly unavailable
 
 
 # ---------------------------------------------------------------- variant helpers
@@ -109,6 +117,8 @@ class HttpFlagStore:
         poll_s: float = 0.2,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
+        retries: int = 3,
+        backoff_s: float = 1.0,
     ):
         self.base_url = (base_url or os.environ.get("FLAG_UI_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.timeout_s = timeout_s
@@ -116,6 +126,8 @@ class HttpFlagStore:
         self.poll_s = poll_s
         self._sleep = sleep
         self._clock = clock
+        self.retries = max(0, retries)        # extra attempts after the first; waits backoff_s, 2x, 4x...
+        self.backoff_s = backoff_s
 
     def _request(self, path: str, body: dict | None = None) -> dict:
         data = None if body is None else json.dumps(body).encode()
@@ -125,11 +137,22 @@ class HttpFlagStore:
             method="GET" if body is None else "POST",
             headers={"Content-Type": "application/json", "Accept": "application/json"},
         )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
-                raw = resp.read()
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-            raise FlagStoreError(f"flag UI not reachable at {self.base_url}: {exc}") from exc
+        attempt = 0
+        while True:
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+                    raw = resp.read()
+                break
+            except urllib.error.HTTPError as exc:        # an answer: retry only "briefly unavailable"
+                if exc.code not in TRANSIENT_HTTP or attempt >= self.retries:
+                    raise FlagStoreError(f"flag UI not reachable at {self.base_url}: {exc}"
+                                         + (f" (after {attempt + 1} attempts)" if attempt else "")) from exc
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:   # no answer at all
+                if attempt >= self.retries:
+                    raise FlagStoreError(f"flag UI not reachable at {self.base_url}: {exc}"
+                                         + (f" (after {attempt + 1} attempts)" if attempt else "")) from exc
+            self._sleep(self.backoff_s * (2 ** attempt))
+            attempt += 1
         try:
             return json.loads(raw or b"{}")
         except json.JSONDecodeError as exc:

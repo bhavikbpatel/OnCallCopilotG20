@@ -22,13 +22,16 @@ class FakeFlagUI:
     - POST /feature/api/write -> {} immediately; applies {"data": {...}} after
       ``apply_delay_s`` (the real one is an asynchronous GenServer cast).
     - ``drop_writes`` simulates a write that never lands.
+    - ``fail_next``: HTTP status codes to answer the next requests with (e.g. [503, 503]).
     """
 
-    def __init__(self, apply_delay_s: float = 0.0, drop_writes: bool = False):
+    def __init__(self, apply_delay_s: float = 0.0, drop_writes: bool = False, fail_next: list | None = None):
         self.config = {"$schema": "https://flagd.dev/schema/v0/flags.json", "flags": real_flags()}
         self.apply_delay_s = apply_delay_s
         self.drop_writes = drop_writes
         self.write_bodies: list[dict] = []
+        self.fail_next = list(fail_next or [])
+        self.requests = 0
         self.lock = threading.Lock()
         fake = self
 
@@ -44,7 +47,17 @@ class FakeFlagUI:
                 self.end_headers()
                 self.wfile.write(body)
 
+            def _failed(self):
+                with fake.lock:
+                    fake.requests += 1
+                    code = fake.fail_next.pop(0) if fake.fail_next else None
+                if code is not None:
+                    self._send(code, {"error": "unavailable"})
+                return code is not None
+
             def do_GET(self):
+                if self._failed():
+                    return
                 if self.path in ("/feature/api/read", "/feature/api/read-file"):
                     with fake.lock:
                         self._send(200, {"flags": copy.deepcopy(fake.config["flags"])})
@@ -52,9 +65,12 @@ class FakeFlagUI:
                     self._send(404, {"error": "not found"})
 
             def do_POST(self):
+                raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))   # always drain the body
+                if self._failed():
+                    return
                 if self.path not in ("/feature/api/write", "/feature/api/write-to-file"):
                     return self._send(404, {"error": "not found"})
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                body = json.loads(raw)
                 fake.write_bodies.append(body)
                 if not fake.drop_writes:
                     def land(data=body["data"]):
