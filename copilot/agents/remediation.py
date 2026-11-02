@@ -118,8 +118,14 @@ def make_approval_gate(deps: CopilotDeps):
                 update["proposed_action"] = None            # after_approval → roll back the fix still in place
             else:
                 update |= {"replan_reason": f"engineer rejected action: {decision.reason}", "proposed_action": None}
+        elif decision.payload_hash != digest:
+            # Approval is bound to the exact payload the approver saw: a missing or different hash is refused.
+            why = ("approval_without_payload_hash" if not decision.payload_hash else
+                   f"stale_approval: approved {decision.payload_hash[:12]}..., proposal is {digest[:12]}...")
+            update["escalation_reason"] = f"approval refused: {why}"
+            text += f" (refused: {why})"
         else:
-            token, why = mint_token(action, digest, decision.decided_by or "engineer")
+            token, why = mint_token(action, digest, decision.decided_by or "engineer", decision.payload_hash)
             if token is None and decision.token and why.startswith("approval_not_configured"):
                 token, why = decision.token, ""          # no APPROVAL_SECRET here: the approver's token; the server checks it
                 text += " (token from the approver)"
@@ -130,9 +136,10 @@ def make_approval_gate(deps: CopilotDeps):
     return approval_gate
 
 
-def mint_token(action: Action, digest: str, decided_by: str) -> tuple[str | None, str]:
+def mint_token(action: Action, digest: str, decided_by: str, shown_hash: str) -> tuple[str | None, str]:
     """The gate mints the token for this exact action with Person 3's helper (APPROVAL_SECRET); an approver
-    only decides. Returns (token, "") or (None, reason)."""
+    only decides. ``shown_hash`` is the hash the approver approved; resolve() refuses it as stale_approval if it
+    is not the proposal's. Returns (token, "") or (None, reason)."""
     from mcp_servers.common.decision import propose, resolve
 
     try:
@@ -141,7 +148,7 @@ def mint_token(action: Action, digest: str, decided_by: str) -> tuple[str | None
         return None, f"refused by the ops allow-list: {exc}"
     if proposal["payload_hash"] != digest:
         return None, "payload hash differs between the graph and the ops server"
-    out = resolve(proposal, {"decision": "approve", "decided_by": decided_by, "payload_hash": digest})
+    out = resolve(proposal, {"decision": "approve", "decided_by": decided_by, "payload_hash": shown_hash})
     return out["token"], "" if out["token"] else str(out.get("reason"))
 
 

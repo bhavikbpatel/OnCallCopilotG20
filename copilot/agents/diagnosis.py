@@ -37,8 +37,10 @@ def tool_strings(messages: list) -> list[str]:
 
 
 def grounded(evidence_id: str, seen: list[str]) -> bool:
+    """An evidence id counts only if a tool returned exactly that value. A substring match would accept short
+    ids like "payment" or "error_rate", which appear inside almost any tool output."""
     eid = evidence_id.strip()
-    return bool(eid) and any(eid in s for s in seen)
+    return bool(eid) and eid in {s.strip() for s in seen}
 
 
 def make_diagnosis(deps: CopilotDeps):

@@ -170,14 +170,15 @@ def ask_approval(payload: dict, auto: bool) -> dict:
     print(f"   payload hash:    {payload['payload_hash'][:16]}…")
     if auto:
         print("   → auto-approve")
-        return {"decision": "approve", "decided_by": "demo"}
+        return {"decision": "approve", "decided_by": "demo", "payload_hash": payload["payload_hash"]}
     choice = input("   [a]pprove / [e]dit / [r]eject? ").strip().lower()[:1]
     if choice == "e":
         edited = json.loads(input('   new action JSON, e.g. {"tool": "restart_service", "service": "cart"}: '))
         return {"decision": "edit", "edited_action": edited, "decided_by": "demo"}
     if choice == "r":
         return {"decision": "reject", "reason": input("   reason: "), "decided_by": "demo"}
-    return {"decision": "approve", "decided_by": "demo"}       # the gate mints the token
+    # The approval names the exact payload shown above; the gate refuses it otherwise, then mints the token.
+    return {"decision": "approve", "decided_by": "demo", "payload_hash": payload["payload_hash"]}
 
 
 def ask_review(payload: dict, auto: bool) -> dict:

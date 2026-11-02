@@ -226,13 +226,14 @@ def test_one_spike_does_not_fire_the_alert():
 
 # ---------------------------------------------------------------- approvals
 
-def test_auto_approver_records_hash_and_never_stores_the_token():
+def test_auto_approver_names_the_payload_and_issues_no_token():
+    """#37: Person 2's gate mints the token and refuses an approval whose hash is not the proposal's."""
     a = AutoApprover("approve")
     d = a({"tool": "set_flag", "flag": "paymentFailure", "variant": "off"})
-    assert d["decision"] == "approve" and d["token"].startswith("auto-")
-    assert a.approvals == [{"payload_hash": payload_hash("set_flag", {"flag": "paymentFailure", "variant": "off"}),
-                            "decision": "approve", "decided_by": "auto", "has_token": True}]
-    assert d["token"] not in json.dumps(a.approvals)
+    digest = payload_hash("set_flag", {"flag": "paymentFailure", "variant": "off"})
+    assert d["decision"] == "approve" and d["payload_hash"] == digest and d["token"] is None
+    assert a.approvals == [{"payload_hash": digest, "decision": "approve", "decided_by": "auto",
+                            "has_token": None}]                     # unknown to the approver, never "False"
     r = AutoApprover("reject")
     assert r({"tool": "restart_service", "service": "email"})["token"] is None
     with pytest.raises(ValueError):
@@ -260,7 +261,7 @@ def test_perfect_run_scores_as_success(tmp_path):
     assert result.status == "completed", result.error
     assert report.task_success, report
     assert result.recovery.recovered is True and not report.policy_violations
-    assert result.approvals[0].decision == "approve" and result.approvals[0].has_token
+    assert result.approvals[0].decision == "approve" and result.approvals[0].has_token is None
     assert all_at_rest(store)
 
 
