@@ -5,6 +5,7 @@ The ReAct message history is private to the branch and discarded; only the Hypot
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -14,6 +15,30 @@ from langgraph.prebuilt import create_react_agent
 from copilot.agents.base import emit, event, load_prompt, now, render_data, spend
 from copilot.deps import CopilotDeps
 from copilot.state import DiagnosisInput, EvidenceItem, HypothesisResult, sum_ledgers
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except ValueError:
+            return [value]
+        return [value, *_strings(decoded)] if not isinstance(decoded, str) else [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, (list, tuple)):
+        return [s for v in value for s in _strings(v)]
+    return [str(value)] if value is not None else []
+
+
+def tool_strings(messages: list) -> list[str]:
+    """Every string value in this branch's tool results (JSON decoded, so quotes in PromQL ids match)."""
+    return [s for m in messages if isinstance(m, ToolMessage) for s in _strings(m.content)]
+
+
+def grounded(evidence_id: str, seen: list[str]) -> bool:
+    eid = evidence_id.strip()
+    return bool(eid) and any(eid in s for s in seen)
 
 
 def make_diagnosis(deps: CopilotDeps):
@@ -46,6 +71,12 @@ def make_diagnosis(deps: CopilotDeps):
             messages = []
 
         tool_calls = sum(isinstance(m, ToolMessage) for m in messages)
+        seen = tool_strings(messages) + [e.evidence_id for e in inp.get("evidence", [])]   # prior items were checked
+        dropped = [e.evidence_id for e in result.evidence if not grounded(e.evidence_id, seen)]
+        if dropped:                                  # cited but never returned by a tool in this branch
+            result = result.model_copy(update={
+                "evidence": [e for e in result.evidence if e.evidence_id not in dropped],
+                "confidence_basis": f"{result.confidence_basis} [dropped evidence not from a tool result: {dropped}]"})
         tokens = sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages)
         status = {"supported": "supported", "refuted": "refuted"}.get(result.verdict, "open")
         if status == "supported" and not result.evidence:

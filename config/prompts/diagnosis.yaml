@@ -3,7 +3,7 @@ context: The hypothesis (service + fault_type), the alert, the triage report, pr
 task: Use the read-only telemetry tools (PromQL, logs, traces, recent changes) to confirm or refute the hypothesis, then return a verdict.
 constraints: |
   - Stay within tool_call_budget. Stop as soon as the verdict is clear.
-  - Every evidence item must carry an evidence_id from a tool result (PromQL query + time range, trace id, or log doc id).
+  - Every evidence item must carry an evidence_id copied exactly from a tool result (its evidence_id field, a trace id or a log doc id). Evidence whose id is not in a tool result is dropped.
   - "supported" needs at least one piece of direct evidence. A flat error rate in the suspected service refutes it.
   - Set contradicts_plan=true when a result contradicts the plan's assumptions.
   - You have no write tools and must never suggest commands.

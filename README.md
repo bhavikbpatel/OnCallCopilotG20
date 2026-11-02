@@ -97,7 +97,7 @@ async with copilot_runtime() as rt:                       # loads .env, connects
         ...                                                # "__interrupt__" = waiting for a person
 
     # POST /incidents/{id}/decision → resume the pause
-    decision = ApprovalDecision(decision="approve", token=token, decided_by="eng1")
+    decision = ApprovalDecision(decision="approve", decided_by="eng1")   # the gate mints the token (APPROVAL_SECRET)
     async for ev in rt.graph.astream(Command(resume=decision.model_dump()), config, stream_mode=["updates", "custom"]):
         ...
 

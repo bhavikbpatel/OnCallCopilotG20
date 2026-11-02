@@ -27,7 +27,7 @@ def make_triage(deps: CopilotDeps):
         health = await deps.telemetry.service_health("5m")
         changes = await deps.telemetry.recent_changes(now() - CHANGE_LOOKBACK)
         current = await deps.telemetry.query_scalar(alert.query)
-        tool_spend = spend("triage", tool_calls=3)
+        tool_spend = spend("triage", tool_calls=4)          # service_health is two PromQL queries
 
         draft, llm_spend = await structured_call(deps, "triage", "triage", TriageDraft, {
             "alert": alert.model_dump(mode="json"),
