@@ -120,7 +120,15 @@ docker compose -f compose.lite.yaml up -d   # 8 GB laptops: no Kafka, no browser
 ```
 
 On Windows, give WSL 2 enough memory first: `%UserProfile%\.wslconfig` with `[wsl2]`, `memory=6GB`,
-`swap=4GB`, then `wsl --shutdown`.
+`swap=4GB`, then `wsl --shutdown`. That needs 16 GB of RAM; on an 8 GB laptop Windows freezes, so use a codespace.
+
+**No big laptop? GitHub Codespaces.** On GitHub: **Code → Codespaces → Create codespace on `<branch>`**.
+`.devcontainer/` asks for a 4-core / 16 GB machine with Docker inside, fetches the submodule, installs
+the package and writes `.env` with a new `APPROVAL_SECRET`. Add your OpenRouter key once as a Codespaces
+secret named `OPENAI_API_KEY` (GitHub → Settings → Codespaces → Secrets, repository OnCallCopilotG20).
+Then run `docker compose -f compose.lite.yaml up -d` in the codespace terminal and open port 8080 from
+the **Ports** tab. Stop the codespace when you finish: the free quota is 120 core-hours a month,
+about 30 hours on this machine.
 
 | What | URL |
 | :-- | :-- |
