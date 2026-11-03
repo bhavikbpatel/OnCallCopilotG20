@@ -14,7 +14,7 @@ import hashlib
 import json
 import os
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import yaml
 from eval.schemas import payload_hash
@@ -135,7 +135,8 @@ class Hooks:
             return payload_hash(tool, args)
         return None
 
-    def _pre(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any]) -> Optional[str]:
+    def _pre(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any],
+             driver: Optional[str] = None) -> Optional[str]:
         key = "%s.%s" % (server, tool)
         if role not in AGENT_ROLES:
             return "unknown_role"
@@ -146,7 +147,9 @@ class Hooks:
                                self._clock() if self._clock else None)
             if code:
                 return code
-        executed = [e for e in self.log if not e["blocked"]]
+        if driver == "code":     # the graph's own calls (verify polling): neither budgeted nor loop-checked
+            return None
+        executed = [e for e in self.log if not e["blocked"] and e.get("driver") != "code"]
         if len(executed) >= self.max_tool_calls:
             return "budget_exceeded"
         if self.max_tokens is not None and self.tokens_used >= self.max_tokens:
@@ -164,32 +167,59 @@ class Hooks:
     # ------------------------------------------------------------- the call
 
     def call(self, agent: str, role: str, server: str, tool: str, args: Optional[Dict[str, Any]],
-             invoke: Callable[[Dict[str, Any]], Dict[str, Any]], purpose: Optional[str] = None) -> Dict[str, Any]:
+             invoke: Callable[[Dict[str, Any]], Dict[str, Any]], purpose: Optional[str] = None,
+             driver: Optional[str] = None) -> Dict[str, Any]:
         """Run one tool call through the hooks. `invoke(args)` performs the real call."""
-        args = dict(args or {})
-        reason = self._pre(agent, role, server, tool, args)
-        if reason:
-            self._append(agent, role, server, tool, args, ok=False, blocked=True, reason=reason,
-                         result=None, purpose=purpose, flags=[])
-            return err("blocked", "call blocked by hook: %s" % reason, block_reason=reason)
+        args, blocked = self._before(agent, role, server, tool, args, purpose, driver)
+        if blocked is not None:
+            return blocked
         started = time.monotonic()
         try:
             result = invoke(args)
         except Exception as exc:  # a tool must never crash the run
             result = err("tool_exception", "%s: %s" % (type(exc).__name__, exc))
-        self._latency_ms = int((time.monotonic() - started) * 1000)
+        return self._after(agent, role, server, tool, args, result, started, purpose, driver)
+
+    async def acall(self, agent: str, role: str, server: str, tool: str, args: Optional[Dict[str, Any]],
+                    invoke: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]], purpose: Optional[str] = None,
+                    driver: Optional[str] = None) -> Dict[str, Any]:
+        """call() for an async tool (the graph's MCP clients): `await invoke(args)` performs the real call.
+        `driver` is "model" (the agent chose the call) or "code" (the graph made it, e.g. verify polling)."""
+        args, blocked = self._before(agent, role, server, tool, args, purpose, driver)
+        if blocked is not None:
+            return blocked
+        started = time.monotonic()
+        try:
+            result = await invoke(args)
+        except Exception as exc:  # a tool must never crash the run
+            result = err("tool_exception", "%s: %s" % (type(exc).__name__, exc))
+        return self._after(agent, role, server, tool, args, result, started, purpose, driver)
+
+    def _before(self, agent, role, server, tool, args, purpose, driver):
+        args = dict(args or {})
+        reason = self._pre(agent, role, server, tool, args, driver)
+        if not reason:
+            return args, None
+        self._append(agent, role, server, tool, args, ok=False, blocked=True, reason=reason,
+                     result=None, purpose=purpose, flags=[], driver=driver)
+        return args, err("blocked", "call blocked by hook: %s" % reason, block_reason=reason)
+
+    def _after(self, agent, role, server, tool, args, result, started, purpose, driver):
+        latency_ms = int((time.monotonic() - started) * 1000)
         flags: List[str] = []
         if isinstance(result, dict):
             result, flags = sanitize_obj(result, self.config)
-        self._size = len(json.dumps(result, default=str)) if result is not None else 0
+        size = len(json.dumps(result, default=str)) if result is not None else 0
         self._append(agent, role, server, tool, args, ok=bool(isinstance(result, dict) and result.get("ok")),
-                     blocked=False, reason=None, result=result, purpose=purpose, flags=flags)
+                     blocked=False, reason=None, result=result, purpose=purpose, flags=flags, driver=driver,
+                     latency_ms=latency_ms, size=size)
         if flags and isinstance(result, dict):
             result = dict(result, injection_flags=sorted(set(flags)))
         return result
 
     def _append(self, agent: str, role: str, server: str, tool: str, args: Dict[str, Any], ok: bool,
-                blocked: bool, reason: Optional[str], result: Any, purpose: Optional[str], flags: List[str]) -> None:
+                blocked: bool, reason: Optional[str], result: Any, purpose: Optional[str], flags: List[str],
+                driver: Optional[str] = None, latency_ms: int = 0, size: int = 0) -> None:
         logged_args = {k: v for k, v in args.items() if k != "approval_token"}
         entry = {
             "seq": len(self.log), "agent": agent, "agent_role": role, "server": server, "tool": tool,
@@ -197,11 +227,11 @@ class Hooks:
             "args": logged_args, "payload_hash": self._hash_for(server, tool, args),
             "ok": ok, "blocked": blocked, "block_reason": reason,
             "action_id": result.get("action_id") if isinstance(result, dict) else None,
-            "purpose": purpose,
+            "purpose": purpose, "driver": driver,
         }
         entry["args_hash"] = hashlib.sha256(json.dumps(logged_args, sort_keys=True, default=str).encode()).hexdigest()[:16]
-        entry["latency_ms"] = 0 if blocked else getattr(self, "_latency_ms", 0)
-        entry["result_size"] = 0 if blocked else getattr(self, "_size", 0)
+        entry["latency_ms"] = 0 if blocked else latency_ms
+        entry["result_size"] = 0 if blocked else size
         if flags:
             entry["injection_flags"] = sorted(set(flags))
         self.log.append(entry)

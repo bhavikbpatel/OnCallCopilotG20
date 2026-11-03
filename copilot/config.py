@@ -26,6 +26,7 @@ class AppSettings(BaseModel):
         "runbook": ModelConfig(model="openai/gpt-5-mini"),
         "remediation": ModelConfig(model="openai/gpt-5-mini"),
         "comms": ModelConfig(model="openai/gpt-5-mini"),
+        "single_agent": ModelConfig(model="openai/gpt-5-mini"),
     })
     llm_base_url: str = "https://openrouter.ai/api/v1"   # OpenRouter; env OPENAI_BASE_URL overrides
     prompts_dir: Path = ROOT / "config" / "prompts"
@@ -43,6 +44,7 @@ class AppSettings(BaseModel):
     verify_settle_s: int = 90           # errors before this point after the fix are ignored (eval settle_s)
     follow_up_signals: list[str] = Field(default_factory=list)   # signals that can need a 2nd step (memory)
     verify_min_requests: int = 5        # fewer requests since the fix → too little traffic to judge
+    architecture: str = "C2"            # E1: C0 fixed workflow | C1 single agent | C2 team (copilot/graph.py)
     review_enabled: bool = True         # False on held-out runs: nothing is written to long-term memory
     memory_read_only: bool = False      # True after the playbook is frozen (E3)
     config_hash: str = ""

@@ -107,6 +107,21 @@ async with copilot_runtime() as rt:                       # loads .env, connects
 
 Resume payloads: `ApprovalDecision` at the approval gate and `ReviewDecision` at the review gate (both in `copilot/state.py`).
 
+### Option C — Evaluation runs (`run_incident`)
+
+```python
+from copilot.run import run_incident, CopilotAgent        # CopilotAgent: eval/runner's Agent protocol
+result = await run_incident(alert, approve, run_id="E1-C2-D-001-r1", limits=BudgetLimits(tool_calls=20),
+                            options={"architecture": "C2", "memory": "off", "defences": "on", "review_enabled": False})
+result.final_state, result.tool_calls, result.fixed_at, result.budget_exhausted
+```
+
+- `approve(flat_action) -> {"decision", "decided_by", "payload_hash"}`; the gate mints the token (needs `APPROVAL_SECRET`).
+- Every tool call, code-driven or model-driven, goes through one `Hooks` per incident, so `tool_calls` is the full
+  hooks log (`driver: code` for verify polling, outside the budget).
+- `architecture`: `C0` fixed workflow (runbook by alert name → its typed fix), `C1` one agent with all read tools,
+  `C2` the team. Also selectable with `architecture:` in `config/app.yaml`.
+
 ---
 
 ## 3. Configuration

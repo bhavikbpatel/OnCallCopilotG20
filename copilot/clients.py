@@ -30,6 +30,8 @@ class Passage(BaseModel):
     doc_id: str
     text: str
     score: float
+    kind: str | None = None     # runbook | postmortem
+    fix: dict[str, Any] | None = None   # the runbook's typed action {tool, args}; None = not actionable (RB-014)
 
 
 class RecoveryCount(BaseModel):

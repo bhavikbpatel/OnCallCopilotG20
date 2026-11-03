@@ -8,6 +8,7 @@ Tool results follow the server contract: `{ok: false, error: {code, message}}` o
 """
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -15,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from copilot import toolctx
 from copilot.clients import Passage, RecoveryCount, ServiceHealth, ToolError
 from copilot.state import Action, Alert, DryRunResult, Postmortem, Severity
 from eval.telemetry import signals
@@ -40,8 +42,8 @@ def load_permissions(path: Path) -> dict[str, set[str]]:
     return {agent: set(tools or []) for agent, tools in data.items()}
 
 
-def _parse(raw: Any) -> Any:
-    """MCP adapter output (str | content blocks | (content, artifact)) → JSON value."""
+def _envelope(raw: Any) -> dict[str, Any]:
+    """MCP adapter output (str | content blocks | (content, artifact)) → the server's {ok, result | error} dict."""
     if isinstance(raw, tuple):
         raw = raw[0]
     if isinstance(raw, list):
@@ -50,16 +52,25 @@ def _parse(raw: Any) -> Any:
         try:
             raw = json.loads(raw)
         except json.JSONDecodeError:
-            return raw
-    if isinstance(raw, dict) and raw.get("ok") is False:
-        err = raw.get("error") or {}
+            pass
+    if isinstance(raw, dict) and "ok" in raw:
+        return raw
+    return {"ok": True, "result": raw}
+
+
+def _parse(raw: Any) -> Any:
+    """MCP output or an envelope → the result value; {ok: false} → ToolError."""
+    env = _envelope(raw)
+    if env.get("ok") is False:
+        err = env.get("error") or {}
         raise ToolError(err.get("code", "tool_error"), err.get("message", "unknown error"))
-    if isinstance(raw, dict) and "result" in raw:
-        return raw["result"]
-    return raw
+    return env.get("result", {k: v for k, v in env.items() if k != "ok"})
 
 
 class McpToolbox:
+    """Every call, code-driven or model-driven, goes through the incident's Hooks when one is set
+    (copilot.toolctx; run_incident sets it): permission, approval, budget and loop checks, redaction, the log."""
+
     def __init__(self, tools: dict[str, BaseTool], permissions: dict[str, set[str]]):
         self.tools = tools                    # qualified name "server.tool" → tool
         self.permissions = permissions
@@ -75,14 +86,40 @@ class McpToolbox:
         return cls(tools, load_permissions(permissions_path))
 
     def for_agent(self, agent: str) -> list[BaseTool]:
+        """The tools permissions.yaml grants the agent ("server.*" patterns allowed), each wrapped so the model's
+        calls go through the hooks too. Only read tools (dry_run counts as one) are handed to a model: writes happen
+        in code, after the approval gate."""
+        from mcp_servers.common import READ, TOOL_KINDS
+
         allowed = self.permissions.get(agent.split(":")[0], set())
-        return [t for name, t in self.tools.items() if name in allowed]
+        return [self._model_tool(name, t) for name, t in self.tools.items()
+                if any(fnmatch.fnmatchcase(name, p) for p in allowed) and TOOL_KINDS.get(name) == READ]
 
     async def call(self, qualified: str, args: dict[str, Any]) -> Any:
+        return _parse(await self.envelope(qualified, args))
+
+    async def envelope(self, qualified: str, args: dict[str, Any]) -> dict[str, Any]:
         tool = self.tools.get(qualified)
         if tool is None:
             raise ToolError("tool_not_found", qualified)
-        return _parse(await tool.ainvoke(args))
+
+        async def invoke(a: dict[str, Any]) -> dict[str, Any]:
+            return _envelope(await tool.ainvoke(a))
+
+        ctx = toolctx.current()
+        if ctx.hooks is None:
+            return await invoke(args)
+        server, name = qualified.split(".", 1)
+        return await ctx.hooks.acall(ctx.agent, ctx.role, server, name, args, invoke,
+                                     purpose=ctx.purpose, driver=ctx.driver)
+
+    def _model_tool(self, qualified: str, tool: BaseTool) -> BaseTool:
+        async def run(**kwargs: Any) -> str:
+            with toolctx.scope(driver=toolctx.MODEL):
+                return json.dumps(await self.envelope(qualified, kwargs), default=str)
+
+        return StructuredTool(name=tool.name, description=tool.description or qualified,
+                              args_schema=tool.args_schema, coroutine=run)
 
 
 def _iso(dt: datetime) -> str:

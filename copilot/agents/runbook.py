@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from copilot import toolctx
 from copilot.agents.base import emit, event, guarded, spend, structured_call
 from copilot.deps import CopilotDeps
 from copilot.memory.views import runbook_view
@@ -25,10 +26,11 @@ def make_runbook(deps: CopilotDeps):
             for p in await deps.runbooks.search(q, service=svc, symptom=alert.signal, k=5):
                 passages.setdefault(p.passage_id, p)
 
-        memory_context = await deps.memory(state.get("run_id")).build_memory_context(
-            symptom=alert.summary, suspects=services, fault_families=families,
-            telemetry=deps.telemetry, engineer_id=state.get("engineer_id"),
-        )
+        with toolctx.scope(driver=toolctx.CODE):        # lesson preconditions: code checks, not budgeted
+            memory_context = await deps.memory(state.get("run_id")).build_memory_context(
+                symptom=alert.summary, suspects=services, fault_families=families,
+                telemetry=deps.telemetry, engineer_id=state.get("engineer_id"),
+            )
         prefs = (state.get("memory_context") or memory_context).engineer_prefs
         memory_context.engineer_prefs = prefs
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from copilot import toolctx
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
 from copilot.deps import CopilotDeps
 from copilot.policy import SEVERITY_WINDOW_MIN, classify_severity, is_noise
@@ -28,7 +29,8 @@ def make_triage(deps: CopilotDeps):
         changes = await deps.telemetry.recent_changes(now() - CHANGE_LOOKBACK)
         current = await deps.telemetry.query_scalar(alert.query)
         try:                                                # the policy's 10-minute request sample (2 queries)
-            sample = await deps.telemetry.errors_since(alert.service, now() - timedelta(minutes=SEVERITY_WINDOW_MIN))
+            with toolctx.scope(driver=toolctx.CODE):
+                sample = await deps.telemetry.errors_since(alert.service, now() - timedelta(minutes=SEVERITY_WINDOW_MIN))
         except Exception:                                   # no sample: the classifier treats it as unknown
             sample = None
         # service_health is two PromQL queries; the severity sample is code-driven (outside the agent's budget)
