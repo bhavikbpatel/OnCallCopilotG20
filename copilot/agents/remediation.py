@@ -75,7 +75,7 @@ def make_dry_run(deps: CopilotDeps):
     async def dry_run(state: IncidentState) -> dict[str, Any]:
         action = state["proposed_action"]
         result = await deps.ops.dry_run(action)
-        return {"dry_run": result, "budget": spend("remediation", tool_calls=1),
+        return {"dry_run": result, "budget": spend("remediation", code_calls=1),      # code-driven: not budgeted
                 "timeline": [event("dry_run", "action", f"Dry run: {result.would_do}")]}
     return dry_run
 
@@ -160,10 +160,10 @@ def make_execute(deps: CopilotDeps):
             result = await deps.ops.execute(action, approval.token)
         except ToolError as exc:
             reason = f"execute failed: {exc}"
-            return {"escalation_reason": reason, "budget": spend("remediation", tool_calls=1),
+            return {"escalation_reason": reason, "budget": spend("remediation", code_calls=1),
                     "timeline": [event("execute", "escalate", reason)]}
 
-        update: dict[str, Any] = {"budget": spend("remediation", tool_calls=1)}
+        update: dict[str, Any] = {"budget": spend("remediation", code_calls=1)}   # the approved write: code, not budgeted
         if purpose == "rollback":
             # Our fix did not help and is now undone → refute the hypothesis it was based on, then replan.
             prev = state["outcome"]

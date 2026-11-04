@@ -68,6 +68,8 @@ def apply_options(settings: AppSettings, limits: BudgetLimits, options: Mapping[
         update["architecture"] = options["architecture"]
     if "review_enabled" in options:
         update["review_enabled"] = _switch(options["review_enabled"], "review_enabled", ())
+    if memory_mode(options.get("memory")) == "playbook":
+        update["memory_read_only"] = True        # E3/E4: the frozen playbook is read, never written to
     return settings.model_copy(update=update)
 
 
@@ -77,8 +79,26 @@ def guard_config(defences: Any) -> GuardConfig:
     return GuardConfig() if _switch(defences, "defences", ()) else GuardConfig.all_off()
 
 
+def memory_mode(memory: Any) -> str:
+    """"off" | "on" | "playbook" (the frozen playbook: read-only, and it must persist in Postgres)."""
+    if memory is None:
+        return "on"
+    if str(memory).strip().lower() == "playbook":
+        return "playbook"
+    return "on" if _switch(memory, "memory", ()) else "off"
+
+
 def memory_on(memory: Any) -> bool:
-    return True if memory is None else _switch(memory, "memory", ("playbook",))
+    return memory_mode(memory) != "off"
+
+
+def options_problem(options: Mapping[str, Any] | None, env: Mapping[str, str] | None = None) -> str | None:
+    """Why these arm options cannot run here, or None. The runner asks before the first case (CopilotAgent)."""
+    env = os.environ if env is None else env
+    if memory_mode((options or {}).get("memory")) == "playbook" and not env.get("POSTGRES_DSN"):
+        return ("memory: playbook needs POSTGRES_DSN (the frozen playbook); without it the store would be a new, "
+                "empty in-memory one and the run would be labelled 'playbook' while using no memory")
+    return None
 
 
 def fixed_at(state: Mapping[str, Any]) -> float | None:
@@ -126,6 +146,9 @@ async def run_incident(alert: Alert | Mapping[str, Any], approve: Approve, *, ru
     settings = settings or load_settings()
     limits = BudgetLimits.model_validate(limits) if isinstance(limits, Mapping) else (limits or settings.limits)
     settings = apply_options(settings, limits, options)
+    problem = options_problem(options)
+    if problem:
+        raise ValueError(problem)
     alert = alert if isinstance(alert, Alert) else Alert.model_validate(dict(alert))
     hooks = Hooks(permissions=load_permissions(str(settings.permissions_path)), max_tool_calls=limits.tool_calls,
                   config=guard_config(options.get("defences")))
@@ -166,6 +189,13 @@ class CopilotAgent:
     def __init__(self, settings: AppSettings | None = None):
         self.settings = settings or load_settings()
         self.version = self.settings.config_hash or "dev"
+
+    def options_problem(self, options: Mapping[str, Any] | None) -> str | None:
+        """For the runner's pre-flight (eval.runner.agents.not_ready): checked once, before the first case."""
+        from dotenv import dotenv_values
+
+        env = {k: v for k, v in dotenv_values(ROOT / ".env").items() if v} | dict(os.environ)
+        return options_problem(options, env)
 
     def run(self, ctx: Any) -> Any:
         from eval.runner.agents import AgentResult

@@ -48,7 +48,7 @@ def test_real_servers_through_toolbox_and_hooks(tmp_path, monkeypatch):
     assert got["ok"] and got["result"]["runbook_id"] == passages[0].doc_id
     log = hooks.tool_calls()
     assert [(e["agent_role"], e["tool"], e["driver"]) for e in log] == \
-        [("triage", "create_incident", "model"), ("runbook", "search", "model"), ("runbook", "get", "model")]
+        [("triage", "create_incident", "code"), ("runbook", "search", "code"), ("runbook", "get", "model")]
     assert all(e["ok"] and not e["blocked"] for e in log)
     for e in log:
         ToolCall.model_validate(e)

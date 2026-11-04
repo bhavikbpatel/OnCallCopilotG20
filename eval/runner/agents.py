@@ -52,19 +52,27 @@ class Agent(Protocol):
     # Optional: the experiment options (AgentContext.options keys) the agent honours. An arm that sets an
     # option the agent does not declare is refused, so a C2 run is never reported as C0.
     # options_supported: frozenset[str]
+    # Optional: why these arm options cannot run on this machine, or None (e.g. the copilot's frozen playbook
+    # needs POSTGRES_DSN). Asked once before the first case.
+    # def options_problem(self, options: Mapping[str, Any]) -> Optional[str]: ...
 
 
 def not_ready(agent: Agent, env: Optional[Mapping[str, str]] = None, env_file: Optional[Path] = None,
               options: Optional[Mapping[str, Any]] = None) -> Optional[str]:
     """Why ``agent`` cannot run, or None.
 
-    - The run's experiment options must all be ones the agent honours (``options_supported``).
+    - The run's experiment options must all be ones the agent honours (``options_supported``), and the
+      agent must be able to run them here (its ``options_problem``, if it has one).
     - Without APPROVAL_SECRET the gate refuses every approval, so every case would end quietly as an
       escalation; the runner stops before the first case instead."""
     unsupported = sorted(set(options or {}) - set(getattr(agent, "options_supported", frozenset())))
     if unsupported:
         return (f"agent {agent.name} does not honour the experiment options {unsupported}; its runs would be "
                 f"labelled with settings it did not use")
+    check = getattr(agent, "options_problem", None)
+    problem = check(dict(options or {})) if callable(check) else None
+    if problem:
+        return f"agent {agent.name} cannot run these options here: {problem}"
     if not getattr(agent, "needs_approval_secret", False):
         return None
     env = os.environ if env is None else env
@@ -100,4 +108,12 @@ class DoNothingAgent:
         )
 
 
-AGENTS: dict[str, Callable[[], Agent]] = {"do-nothing": DoNothingAgent}
+def copilot_agent() -> Agent:
+    """Person 2's incident graph (copilot.run.CopilotAgent). Imported only when chosen, so the harness still
+    runs on a machine without LangGraph or the copilot's dependencies."""
+    from copilot.run import CopilotAgent
+
+    return CopilotAgent()
+
+
+AGENTS: dict[str, Callable[[], Agent]] = {"do-nothing": DoNothingAgent, "copilot": copilot_agent}

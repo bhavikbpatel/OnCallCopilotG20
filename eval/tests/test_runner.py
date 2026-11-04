@@ -525,3 +525,21 @@ def test_runner_uses_the_worked_out_timeout_unless_one_is_given(tmp_path):
     agent = TimedAgent(store)
     run_case(load_case(DEV / "D-001.yaml"), agent, cfg(agent_timeout_s=42), deps)
     assert agent.left == 42
+
+
+def test_preflight_asks_the_agent_whether_it_can_run_the_options():
+    from eval.runner.agents import AGENTS, not_ready as preflight
+
+    class NeedsDb:
+        name, version = "needs-db", "1"
+        options_supported = frozenset({"memory"})
+
+        def options_problem(self, options):
+            return "no database" if options.get("memory") == "playbook" else None
+
+        def run(self, ctx):  # pragma: no cover - never run
+            raise AssertionError
+
+    assert "no database" in preflight(NeedsDb(), options={"memory": "playbook"})
+    assert preflight(NeedsDb(), options={"memory": "off"}) is None
+    assert callable(AGENTS["copilot"])          # registered, imported only when chosen (no LangGraph needed here)
