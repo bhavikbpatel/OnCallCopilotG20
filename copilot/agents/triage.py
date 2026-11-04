@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from copilot import toolctx
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
 from copilot.deps import CopilotDeps
 from copilot.hooked_toolbox import with_role
@@ -30,11 +31,13 @@ def make_triage(deps: CopilotDeps):
         changes = await deps.telemetry.recent_changes(now() - CHANGE_LOOKBACK)
         current = await deps.telemetry.query_scalar(alert.query)
         try:                                                # the policy's 10-minute request sample (2 queries)
-            sample = await deps.telemetry.errors_since(alert.service, now() - timedelta(minutes=SEVERITY_WINDOW_MIN))
+            with toolctx.scope(driver=toolctx.CODE):
+                sample = await deps.telemetry.errors_since(alert.service, now() - timedelta(minutes=SEVERITY_WINDOW_MIN))
         except Exception:                                   # no sample: the classifier treats it as unknown
             sample = None
-        # service_health is two PromQL queries; the severity sample is code-driven (outside the agent's budget)
-        tool_spend = spend("triage", tool_calls=4, code_calls=2)
+        # Triage's queries are fixed, not chosen by a model: code-driven, outside the agents' tool-call budget.
+        # service_health is two PromQL queries, plus recent_changes, the alert query and the 2-query severity sample.
+        tool_spend = spend("triage", code_calls=6)
 
         draft, llm_spend = await structured_call(deps, "triage", "triage", TriageDraft, {
             "alert": alert.model_dump(mode="json"),
