@@ -701,3 +701,21 @@ def test_rubric_v4_evidence_anchors_no_longer_ask_for_recovery_evidence():
     anchors = J.rubric()["dimensions"]["evidence_support"]["anchors"]
     assert all("recovery" not in a for a in anchors.values())
     assert all("diagnostic claim" in anchors[k] for k in (5, 3, 2, 1))
+
+
+
+def test_facts_list_shop_actions_not_ticket_bookkeeping():
+    """Since every call is logged by the hooks (#45), the log also has the copilot's ticket writes; on the live
+    D-001 run the labelling sheet's 'actions executed' opened with create_incident before the actual fix."""
+    def call(seq, server, tool, args, ok=True, blocked=False):
+        return {"seq": seq, "agent": "x", "agent_role": "remediation", "server": server, "tool": tool,
+                "kind": "write", "args": args, "ok": ok, "blocked": blocked}
+    calls = [call(0, "tickets", "create_incident", {"incident_id": "INC-1"}),
+             call(1, "ops_actions", "dry_run", {"tool": "set_flag", "flag": "paymentFailure", "variant": "off"}),
+             call(2, "ops_actions", "set_flag", {"flag": "paymentFailure", "variant": "off"}),
+             call(3, "ops_actions", "restart_service", {"service": "cart"}, ok=False, blocked=True),
+             call(4, "tickets", "publish_status", {"incident_id": "INC-1"}),
+             call(5, "tickets", "append_timeline", {"incident_id": "INC-1"}),
+             call(6, "tickets", "save_postmortem", {"incident_id": "INC-1"})]
+    acts = J.build_item(result(tool_calls=calls, tool_log_source="agent")).facts["actions_executed"]
+    assert [a["tool"] for a in acts] == ["set_flag", "publish_status"]
