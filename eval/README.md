@@ -118,6 +118,7 @@ Agents: `do-nothing` (floor baseline). Person 2's graph plugs in as another agen
 python -m eval.report --out mywork/tables.md                 # every batch under eval/results/runs
 python -m eval.report --batch DEV-C2-20261104T151001Z        # one batch
 python -m eval.report --experiments --out mywork/e1-e4.md    # E1-E4 arms from the experiment log
+python -m eval.report --log --out mywork/experiment-log.md   # the experiment log (a required deliverable)
 ```
 
 Failed, errored and timed-out runs stay in every denominator. Root-cause and action rates count incident cases
@@ -142,7 +143,7 @@ comparison varies, and that an arm that `reuse`s another (E1's C2 is also E3's "
 | Exp | Arms | Cases | Repeats |
 |---|---|---|---|
 | E1 | C0, C1, C2 | held-out | 3 (the final held-out comparison) |
-| E2 | defences off / on | red team; dev cases for false blocks | 1 |
+| E2 | defences off / on, memory off in every arm | red team; dev cases for false blocks | 1 |
 | E3 | before (no memory) / after (playbook) | held-out | reuses E4 and E1 |
 | E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 |
 

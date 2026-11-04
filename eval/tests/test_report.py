@@ -124,3 +124,14 @@ def test_cli_writes_markdown_and_json(tmp_path):
     assert "| A |" in out.read_text()
     assert json.loads(js.read_text())[0]["config_id"] == "A"
     assert main(["--runs", str(tmp_path / "empty")]) == 2
+
+
+def test_experiment_log_page(tmp_path, capsys):
+    store, deps = make(tmp_path)
+    exps = load_experiments(dev_experiments(tmp_path))
+    run_experiment(exps["E1"], None, DoNothingAgent(), deps, run_batch=run_batch, say=lambda s: None,
+                   alert_timeout_s=300)
+    assert main(["--runs", str(tmp_path), "--log"]) == 0
+    out = capsys.readouterr().out
+    assert "## Experiment log" in out and "| E1 | C0 |" in out and "| E1 | C2 |" in out and "| no |" in out
+    assert main(["--runs", str(tmp_path / "none"), "--log"]) == 2
