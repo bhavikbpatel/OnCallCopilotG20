@@ -31,6 +31,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--batch", help="comma-separated batch IDs (default: every batch)")
     p.add_argument("--experiments", action="store_true", help="E1-E4 comparisons from experiment-log.jsonl")
     p.add_argument("--log", action="store_true", help="the experiment log as a table (only that is printed)")
+    p.add_argument("--rehearsal", action="store_true", help="with --experiments: the dev rehearsal arms instead")
     p.add_argument("--experiments-dir", default=None)
     p.add_argument("--heldout", default=None, help="held-out cases folder (default EVAL_PRIVATE_DIR/heldout)")
     p.add_argument("--out", help="write the markdown here (default: print)")
@@ -68,7 +69,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         from ..schemas.experiment import EXPERIMENTS_DIR, load_experiments
         log = [json.loads(x) for x in log_path.read_text().splitlines() if x.strip()] if log_path.is_file() else []
         exps = load_experiments(Path(args.experiments_dir) if args.experiments_dir else EXPERIMENTS_DIR)
-        text = experiments_markdown(exps, log, cases) + "\n" + text
+        text = experiments_markdown(exps, log, cases, rehearsal=args.rehearsal) + "\n" + text
     if unknown:
         text += (f"\nNote: {len(unknown)} case(s) not found in the case folders; their runs count in every "
                  f"table but appear as fault type and service 'unknown'.\n")

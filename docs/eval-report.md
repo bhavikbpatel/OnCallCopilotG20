@@ -150,7 +150,9 @@ memory (`review_enabled: false`).
 | E3 | no playbook / frozen playbook | held-out | 1 (reuses E4 and E1) | Did the lessons help, and did any make results worse? |
 | E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 | Does memory help without applying wrong lessons; how does diagnosis change with the budget? |
 
-Held-out cases are run only after the playbook is frozen. Any change made after seeing held-out results turns
+Before the held-out week every arm runs once on five dev cases (D-001, D-005, D-007, D-009, D-015; `--rehearse`)
+to show that it runs; those batches are marked as rehearsal and are not reported as results. Held-out cases are
+run only after the playbook is frozen. Any change made after seeing held-out results turns
 those cases into development cases, and this report would say so.
 
 `[RESULT: eval.report --experiments, one table per experiment]`
