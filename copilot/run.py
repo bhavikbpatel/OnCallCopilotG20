@@ -14,8 +14,10 @@ permission, approval, budget and loop checks run and the log is complete. Arm op
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import inspect
 import os
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping
 
@@ -189,6 +191,27 @@ class CopilotAgent:
     def __init__(self, settings: AppSettings | None = None):
         self.settings = settings or load_settings()
         self.version = self.settings.config_hash or "dev"
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._lock = threading.Lock()
+
+    def _event_loop(self) -> asyncio.AbstractEventLoop:
+        """One event loop for the agent's whole life, on its own thread, shared by every case.
+
+        A new loop per case (asyncio.run) breaks the second case of a batch: langchain-openai keeps one shared
+        async HTTP client, bound to the loop of the first call, and once that loop is closed every later model
+        call fails with "RuntimeError: Event loop is closed"."""
+        with self._lock:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                threading.Thread(target=self._loop.run_forever, daemon=True, name="copilot-loop").start()
+            return self._loop
+
+    def close(self) -> None:
+        """Stop the agent's event loop (optional; it is a daemon thread)."""
+        with self._lock:
+            if self._loop is not None and not self._loop.is_closed():
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            self._loop = None
 
     def options_problem(self, options: Mapping[str, Any] | None) -> str | None:
         """For the runner's pre-flight (eval.runner.agents.not_ready): checked once, before the first case."""
@@ -201,7 +224,15 @@ class CopilotAgent:
         from eval.runner.agents import AgentResult
 
         limits = self.settings.limits.model_copy(update={"tool_calls": ctx.max_tool_calls})
-        result = asyncio.run(run_incident(ctx.alert, ctx.approve, run_id=ctx.run_id, limits=limits,
-                                          settings=self.settings, options=ctx.options))
+        future = asyncio.run_coroutine_threadsafe(
+            run_incident(ctx.alert, ctx.approve, run_id=ctx.run_id, limits=limits, settings=self.settings,
+                         options=ctx.options),
+            self._event_loop())
+        left = ctx.deadline - ctx.clock() if getattr(ctx, "deadline", None) else None
+        try:
+            result = future.result(timeout=None if left is None else max(1.0, left))
+        except concurrent.futures.TimeoutError:
+            future.cancel()                       # a case past its deadline must not keep running into the next one
+            raise TimeoutError(f"copilot did not finish {ctx.run_id} before its deadline") from None
         return AgentResult(state=result.final_state, tool_calls=result.tool_calls, fixed_at=result.fixed_at,
                            budget_exhausted=result.budget_exhausted)
