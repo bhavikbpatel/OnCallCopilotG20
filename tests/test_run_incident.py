@@ -264,3 +264,60 @@ def test_fixed_at_is_the_last_executed_fix_not_the_rollback():
 def test_escalation_reason_for_a_workflow_that_does_not_replan():
     st = {"limits": BudgetLimits(), "replan_reason": "fix did not recover the metric; rolled back"}
     assert escalation_cause(st, max_replans=2).endswith("this workflow does not replan")
+
+
+# ---------- one event loop for a whole batch ----------
+
+def _loop_bound_incident():
+    """Stands in for run_incident with a client bound to the first event loop that used it, like
+    langchain-openai's shared async HTTP client: on any other loop it fails as the live batch did."""
+    seen = {}
+
+    async def fake(alert, approve, *, run_id, **kw):
+        loop = asyncio.get_running_loop()
+        first = seen.setdefault("loop", loop)
+        if first is not loop:
+            raise RuntimeError("Event loop is closed")
+        await asyncio.sleep(0)
+        return run_mod.IncidentResult(final_state={"run_id": run_id, "final_status": "recovered"}, tool_calls=[],
+                                      budget={}, fixed_at=None, budget_exhausted=False)
+    return fake
+
+
+def _ctx(run_id, deadline=None):
+    import time
+    a = alert()
+    return AgentContext(run_id=run_id, alert=a if isinstance(a, dict) else a.model_dump(mode="json"), approve=lambda a: {},
+                        deadline=deadline or time.time() + 60, max_tool_calls=20, clock=time.time)
+
+
+def test_copilot_agent_runs_many_cases_on_one_event_loop(monkeypatch):
+    """Live dev batch, 4 Nov: D-001 passed, then D-002 'agent raised RuntimeError: Event loop is closed'."""
+    monkeypatch.setattr(run_mod, "run_incident", _loop_bound_incident())
+    agent = CopilotAgent(settings())
+    try:
+        for i in range(3):
+            assert agent.run(_ctx(f"r{i}")).state["final_status"] == "recovered"
+    finally:
+        agent.close()
+
+
+def test_copilot_agent_stops_a_case_at_its_deadline(monkeypatch):
+    import time
+    started = {}
+
+    async def slow(alert, approve, *, run_id, **kw):
+        started[run_id] = True
+        await asyncio.Event().wait()         # never set (asyncio.sleep is patched to return at once here)
+
+    monkeypatch.setattr(run_mod, "run_incident", slow)
+    agent = CopilotAgent(settings())
+    try:
+        t = time.time()
+        with pytest.raises(TimeoutError, match="deadline"):
+            agent.run(_ctx("late", deadline=time.time() + 1))
+        assert time.time() - t < 5 and started["late"]
+        monkeypatch.setattr(run_mod, "run_incident", _loop_bound_incident())
+        assert agent.run(_ctx("next")).state["final_status"] == "recovered"     # the loop is still usable
+    finally:
+        agent.close()
