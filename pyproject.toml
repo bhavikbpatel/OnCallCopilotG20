@@ -6,6 +6,10 @@ dependencies = [
     "langchain>=0.3",
     "langchain-openai>=0.3",
     "langchain-mcp-adapters>=0.1",
+    # fastmcp 4 pulls mcp 2.x, which langchain-mcp-adapters 0.3 cannot import; keep both pins until the client
+    # moves off langchain-mcp-adapters (integration note, seam 6). Exact pin for fastmcp, as its docs advise.
+    "fastmcp==2.14.7",
+    "mcp>=1.27,<2",
     "langgraph>=0.4",
     "langgraph-checkpoint-postgres>=2.0",
     "psycopg[binary,pool]>=3.2",
@@ -26,4 +30,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["copilot*", "eval*"]
+include = ["copilot*", "eval*", "mcp_servers*"]

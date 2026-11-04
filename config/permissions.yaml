@@ -12,6 +12,7 @@ single_agent: ["telemetry.*", "runbooks_kb.*", "tickets.*", "ops_actions.*"]
 _code_driven:
   commander: []                                   # no tools of its own; it reads graph state
   triage: [tickets.create_incident, tickets.get_incident, tickets.append_timeline]
+  runbook: [telemetry.recent_changes, telemetry.query_promql]       # lesson precondition checks (copilot/memory)
   remediation: [ops_actions.dry_run, ops_actions.set_flag, ops_actions.restart_service,
                 ops_actions.scale_service, ops_actions.rollback, telemetry.query_promql]
   comms: [tickets.get_incident, tickets.append_timeline, tickets.draft_status,
