@@ -259,12 +259,13 @@ def by_config(batches: list[Batch]) -> dict[str, list[Run]]:
 
 # ---------------------------------------------------------------- experiments (E1-E4)
 
-def experiment_runs(exp, log: list[dict], cases: dict[str, Case]) -> dict[str, Optional[list[Run]]]:
+def experiment_runs(exp, log: list[dict], cases: dict[str, Case],
+                    rehearsal: bool = False) -> dict[str, Optional[list[Run]]]:
     """Runs for every arm of ``exp``: the latest complete (not partial) batch logged for it, or for the arm it
     reuses; a reusing arm takes only its own number of repeats. None when the arm has not run."""
     latest: dict[tuple[str, str], dict] = {}
     for e in log:
-        if not e.get("partial") and e.get("directory"):
+        if not e.get("partial") and e.get("directory") and bool(e.get("rehearsal")) == rehearsal:
             latest[(e["experiment"], e["arm"])] = e
     out: dict[str, Optional[list[Run]]] = {}
     for arm in exp.arms:
@@ -342,10 +343,10 @@ def configs_markdown(reports: list[dict]) -> str:
     return "\n".join(parts) + "\n"
 
 
-def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case]) -> str:
-    parts = ["## Experiments", ""]
+def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case], rehearsal: bool = False) -> str:
+    parts = ["## Experiments" + (" (dev rehearsal: shows the arms run; not results)" if rehearsal else ""), ""]
     for name, exp in sorted(exps.items()):
-        arm_runs = experiment_runs(exp, log, cases)
+        arm_runs = experiment_runs(exp, log, cases, rehearsal)
         parts += [f"### {name}: {exp.question}", ""]
         rows = []
         for arm in exp.arms:
@@ -371,7 +372,7 @@ def experiment_log_markdown(log: list[dict]) -> str:
         rows.append([(e.get("started_at") or "")[:16].replace("T", " "), e.get("experiment"), e.get("arm"),
                      e.get("batch_id"), e.get("agent"), e.get("code"), e.get("config_hash"),
                      e.get("runs"), e.get("task_success_rate"), e.get("status_counts"), e.get("cost_usd_per_run"),
-                     "yes" if e.get("partial") else "no"])
+                     ("rehearsal, " if e.get("rehearsal") else "") + ("yes" if e.get("partial") else "no")])
     models = sorted({f"{k}: {v.get('model')}" for e in log for k, v in (e.get("models") or {}).items()
                      if isinstance(v, dict)})
     parts = ["## Experiment log", "",

@@ -132,6 +132,7 @@ runs need `EVAL_PRIVATE_DIR` for their fault types; only aggregates are printed.
 python -m eval.runner --experiment E1 --plan               # runs per arm, shared arms, hours (counts only)
 python -m eval.runner --experiment E4 --arm memory-off     # one arm
 python -m eval.runner --experiment E2                      # every arm that is not reused
+python -m eval.runner --experiment E1 --rehearse           # dev rehearsal: every arm once on 5 dev cases
 ```
 
 `eval/experiments/E1.yaml` ... `E4.yaml` describe each experiment from the capstone guide (pp. 5–6, 14):
