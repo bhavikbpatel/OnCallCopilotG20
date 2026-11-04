@@ -361,3 +361,22 @@ def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case]) ->
             parts.append(f"Compared: {', '.join(c.arms)} (varies {', '.join(c.varies)}).")
         parts.append("")
     return "\n".join(parts)
+
+
+def experiment_log_markdown(log: list[dict]) -> str:
+    """The experiment log (a required deliverable, guide p. 6): every arm that ran, in order, with what it ran on
+    and its headline figures. Partial runs (narrowed with --only, or interrupted) are marked."""
+    rows = []
+    for e in log:
+        rows.append([(e.get("started_at") or "")[:16].replace("T", " "), e.get("experiment"), e.get("arm"),
+                     e.get("batch_id"), e.get("agent"), e.get("code"), e.get("config_hash"),
+                     e.get("runs"), e.get("task_success_rate"), e.get("status_counts"), e.get("cost_usd_per_run"),
+                     "yes" if e.get("partial") else "no"])
+    models = sorted({f"{k}: {v.get('model')}" for e in log for k, v in (e.get("models") or {}).items()
+                     if isinstance(v, dict)})
+    parts = ["## Experiment log", "",
+             _table(["Started (UTC)", "Exp", "Arm", "Batch", "Agent", "Code", "Config hash", "Runs",
+                     "Task success", "Status", "Cost/run ($)", "Partial"], rows)]
+    if models:
+        parts += ["", "Models (config/app.yaml): " + "; ".join(models) + "."]
+    return "\n".join(parts) + "\n"

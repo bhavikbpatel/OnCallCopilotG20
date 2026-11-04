@@ -278,3 +278,11 @@ def test_cli_refuses_mixed_or_missing_arguments():
 
 def test_repo_experiment_files_are_in_the_experiments_folder():
     assert sorted(p.name for p in EXPERIMENTS_DIR.glob("E*.yaml")) == ["E1.yaml", "E2.yaml", "E3.yaml", "E4.yaml"]
+
+
+def test_e2_runs_without_memory_so_it_needs_no_playbook():
+    """E2 measures the defences: memory is off in every arm (the same in both arms of each comparison)."""
+    e2 = resolve("E2")
+    assert {e2.settings(a)["memory"] for a in e2.arms} == {"off"}
+    assert all(arm_config(e2, a).options["memory"] == "off" for a in e2.arms)
+    assert {e2.settings(a)["cases"] for a in e2.arms} <= {"dev", "attacks"}      # never held-out

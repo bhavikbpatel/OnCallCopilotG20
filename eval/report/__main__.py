@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import (RUNS_DIR, by_config, case_index, config_report, configs_markdown, experiments_markdown,
-               find_batches, load_batch)
+from . import (RUNS_DIR, by_config, case_index, config_report, configs_markdown, experiment_log_markdown,
+               experiments_markdown, find_batches, load_batch)
 
 DEV_DIR = Path(__file__).resolve().parents[1] / "cases" / "dev"
 
@@ -30,12 +30,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--runs", default=str(RUNS_DIR), help="folder of batches (default eval/results/runs)")
     p.add_argument("--batch", help="comma-separated batch IDs (default: every batch)")
     p.add_argument("--experiments", action="store_true", help="E1-E4 comparisons from experiment-log.jsonl")
+    p.add_argument("--log", action="store_true", help="the experiment log as a table (only that is printed)")
     p.add_argument("--experiments-dir", default=None)
     p.add_argument("--heldout", default=None, help="held-out cases folder (default EVAL_PRIVATE_DIR/heldout)")
     p.add_argument("--out", help="write the markdown here (default: print)")
     p.add_argument("--json", help="also write every figure as JSON here")
     args = p.parse_args(argv)
 
+    log_path = Path(args.runs) / "experiment-log.jsonl"
+    if args.log:
+        if not log_path.is_file():
+            print(f"cannot start: no experiment log at {log_path}", file=sys.stderr)
+            return 2
+        text = experiment_log_markdown([json.loads(x) for x in log_path.read_text().splitlines() if x.strip()])
+        if args.out:
+            Path(args.out).write_text(text)
+            print(f"wrote {args.out}")
+        else:
+            print(text)
+        return 0
     heldout = Path(args.heldout) if args.heldout else _private_heldout()
     cases = case_index([DEV_DIR, heldout])
     try:
@@ -53,7 +66,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     text = configs_markdown(reports)
     if args.experiments:
         from ..schemas.experiment import EXPERIMENTS_DIR, load_experiments
-        log_path = Path(args.runs) / "experiment-log.jsonl"
         log = [json.loads(x) for x in log_path.read_text().splitlines() if x.strip()] if log_path.is_file() else []
         exps = load_experiments(Path(args.experiments_dir) if args.experiments_dir else EXPERIMENTS_DIR)
         text = experiments_markdown(exps, log, cases) + "\n" + text
