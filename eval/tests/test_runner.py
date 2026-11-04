@@ -543,3 +543,29 @@ def test_preflight_asks_the_agent_whether_it_can_run_the_options():
     assert "no database" in preflight(NeedsDb(), options={"memory": "playbook"})
     assert preflight(NeedsDb(), options={"memory": "off"}) is None
     assert callable(AGENTS["copilot"])          # registered, imported only when chosen (no LangGraph needed here)
+
+
+def test_every_registered_agent_can_be_configured():
+    """#45 registered "copilot" but RunConfig still allowed only "do-nothing", so the CLI refused it."""
+    from eval.runner.agents import AGENTS
+    for name in AGENTS:
+        assert RunConfig(config_id="X", agent=name).agent == name
+    with pytest.raises(ValueError, match="unknown agent"):
+        RunConfig(config_id="X", agent="nobody")
+
+
+def test_cli_and_experiments_accept_the_copilot_agent(tmp_path, monkeypatch, capsys):
+    from eval.runner import agents as agents_mod
+
+    class StandIn(DoNothingAgent):           # stands in for the copilot: no LangGraph or shop needed here
+        name = "copilot-stand-in"
+
+    monkeypatch.setitem(agents_mod.AGENTS, "copilot", StandIn)
+    store, deps = make(tmp_path)
+    argv = ["--cases", str(DEV), "--only", "D-001", "--config-id", "C", "--agent", "copilot", "--alert-timeout", "300"]
+    assert main(argv, deps=deps) == 0
+    assert "agent copilot-stand-in" in capsys.readouterr().out
+    from eval.runner.experiments import arm_config
+    from eval.schemas.experiment import resolve
+    e1 = resolve("E1")
+    assert arm_config(e1, e1.arm("C2"), agent="copilot").agent == "copilot"
