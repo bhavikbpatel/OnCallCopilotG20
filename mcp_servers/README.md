@@ -116,6 +116,16 @@ Run each with `MCP_TRANSPORT=http MCP_HOST=0.0.0.0`. All of them need `APPROVAL_
 
 Failures are `{ok: false, error: {code, message}}`, which her `_parse` turns into `ToolError`.
 
+## Hooks on the graph's tool calls
+`copilot/hooked_toolbox.py` wraps an `McpToolbox` so every code-driven call (`McpTelemetry`, `McpOps`, `McpTickets`, `McpRunbooks`) goes through the hooks (`Hooks.acall`): role permission, approval token, budget and loop checks before, injection filter / redaction / logging after. The wrapper has the same `call()`, so the clients take it unchanged:
+
+`copilot/runtime.py` turns it on with `COPILOT_HOOKS=1` (off by default). Nodes that call tools carry `@with_role(...)`: triage, runbook, dry_run/execute/verify (remediation) and comms. There is one `Hooks` per process, so use it for one incident per process (CLI, demo, eval case); `HOOKS_MAX_TOOL_CALLS` (default 200) is a runaway guard, separate from the graph's own `limits.tool_calls`. A per-incident reset and a live run are still to do.
+
+The calling role is not in the call, so each node sets it: `@with_role("comms")` on the node function, or `with use_role("comms"):` around calls. A call with no role is blocked (`blocked:unknown_role`), never run unchecked. A blocked call raises `ToolError` with the code `blocked:<reason>` (`permission_denied`, `approval_required`, `budget_exceeded`, `loop_detected`, ...). Model-driven tools from `for_agent()` are not wrapped yet.
+
+## Runbook pins
+`config/runbook_hashes.yaml` holds the sha256 of every reviewed runbook/postmortem passage; a passage that differs or is not listed is withheld (`pin_check: on`). A test fails if the runbooks change without new pins. After a person reviews the change: `py -m mcp_servers.runbooks_kb.server --write-pins`, then commit the file.
+
 ## Failing loudly
 Tools refuse bad input with a named error instead of guessing (no placeholder alert names, no silently replaced timestamps). The one deliberate exception is alert data from outside (an unknown service): the incident still opens and the result carries a warning. Log-sink failures are counted in `Hooks.costs()["sink_errors"]`. Severity is stored in the eval form (`SEV-2`); the graph's `SEV2` is accepted and normalised.
 
