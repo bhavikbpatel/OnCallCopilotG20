@@ -9,7 +9,9 @@ from copilot import run as run_mod
 from copilot.agents import comms, remediation, triage
 from copilot.agents.escalate import escalation_cause
 from copilot.config import load_settings
-from copilot.run import CopilotAgent, apply_options, fixed_at, guard_config, memory_on, run_incident
+from copilot.run import (
+    CopilotAgent, apply_options, fixed_at, guard_config, memory_mode, memory_on, options_problem, run_incident,
+)
 from copilot.state import BudgetLimits, TimelineEvent
 from eval.adapters.copilot_state import to_result_line
 from eval.runner.agents import AgentContext, not_ready
@@ -140,6 +142,40 @@ def test_c2_team_runs_every_role_through_the_hooks(monkeypatch):
     assert not any(c["blocked"] for c in result.tool_calls)               # permissions.yaml covers every role
 
 
+def test_c2_still_fixes_with_e4s_smallest_budget(monkeypatch):
+    """E4 budget 5: only calls a model chose count. Triage's queries, runbook search, tickets, the dry run and the
+    approved write are code-driven, so they neither use up the agents' budget nor get blocked by it."""
+    from copilot.agents import commander, runbook
+    from copilot.state import EvidenceRef, HypothesisResult
+    for mod in (commander, runbook, remediation):
+        monkeypatch.setattr(mod, "structured_call", fake_structured_call)
+    llm = ScriptedChat(
+        script=[AIMessage(content="", tool_calls=[{"name": "query_promql", "args": {"query": "payment_errors"},
+                                                    "id": "d1"}])],
+        structured=HypothesisResult(hypothesis_id="h", verdict="supported", confidence_basis="errors follow the flag",
+                                    evidence=[EvidenceRef(evidence_id="promql:payment_errors", summary="up")]))
+    shop = Shop()
+    result, _ = run(shop, {"architecture": "C2", "memory": "off", "review_enabled": False}, llm=llm,
+                    limits=BudgetLimits(tool_calls=5))
+    assert result.final_state["final_status"] == "recovered"
+    assert shop.writes == [("set_flag", {"flag": "paymentFailure", "variant": "off"})]
+    assert not any(c["blocked"] for c in result.tool_calls) and not result.budget_exhausted
+    model = calls(result, driver="model")
+    assert model and all(c["agent_role"] == "diagnosis" for c in model)  # only the diagnosis agent's own calls …
+    assert result.budget["tool_calls"] == len(model)                    # … are what the budget counts
+    assert calls(result, "set_flag", driver="code") and calls(result, "dry_run", driver="code")
+    ledger = result.final_state["budget"].total
+    assert ledger.tool_calls == len(model) and ledger.code_calls > 0      # the graph's own ledger agrees
+
+
+def test_c0_makes_no_model_calls_so_uses_no_budget():
+    shop = Shop()
+    result, _ = run(shop, {"architecture": "C0", "memory": "off", "review_enabled": False},
+                    limits=BudgetLimits(tool_calls=1))
+    assert result.final_state["final_status"] == "recovered" and not result.budget_exhausted
+    assert result.budget["tool_calls"] == 0 and not any(c["blocked"] for c in result.tool_calls)
+
+
 # ---------- runner integration ----------
 
 def test_copilot_agent_runs_under_the_runner_and_its_result_line_scores(monkeypatch):
@@ -174,6 +210,48 @@ def test_arm_options_are_validated():
     assert guard_config("off").permissions is False and guard_config("on").injection_filter is True
     with pytest.raises(ValueError):
         memory_on("sometimes")
+
+
+def test_playbook_is_read_only_and_needs_postgres():
+    s, limits = load_settings(), BudgetLimits(tool_calls=20)
+    assert [memory_mode(m) for m in (None, "on", "off", "playbook", "PLAYBOOK")] == ["on", "on", "off", "playbook", "playbook"]
+    assert apply_options(s, limits, {"memory": "playbook"}).memory_read_only is True      # frozen: never written to
+    assert apply_options(s, limits, {"memory": "on"}).memory_read_only is s.memory_read_only
+    assert "POSTGRES_DSN" in options_problem({"memory": "playbook"}, env={})
+    assert options_problem({"memory": "playbook"}, env={"POSTGRES_DSN": "postgresql://x"}) is None
+    assert options_problem({"memory": "off"}, env={}) is None and options_problem(None, env={}) is None
+
+
+def test_playbook_without_postgres_refuses_to_run_rather_than_run_with_empty_memory():
+    shop = Shop()
+    with pytest.raises(ValueError, match="POSTGRES_DSN"):
+        run(shop, {"architecture": "C2", "memory": "playbook", "review_enabled": False})
+    assert shop.writes == []
+
+
+def test_runner_preflight_stops_a_playbook_arm_without_postgres(monkeypatch):
+    agent = CopilotAgent(settings())
+    monkeypatch.setattr(run_mod, "ROOT", run_mod.ROOT / "no-such-dir")     # no .env with a DSN either
+    why = not_ready(agent, options={"architecture": "C2", "memory": "playbook"})
+    assert why and "POSTGRES_DSN" in why
+    monkeypatch.setenv("POSTGRES_DSN", "postgresql://x")
+    assert not_ready(agent, options={"architecture": "C2", "memory": "playbook"}) is None
+
+
+def test_agent_version_changes_with_prompts_and_permissions(tmp_path):
+    from copilot.config import config_hash
+    prompts = tmp_path / "prompts"
+    prompts.mkdir()
+    (prompts / "triage.yaml").write_text("role: a\n")
+    perms = tmp_path / "permissions.yaml"
+    perms.write_text("triage: []\n")
+    s = load_settings().model_copy(update={"prompts_dir": prompts, "permissions_path": perms})
+    first = config_hash(b"app", s)
+    assert config_hash(b"app", s) == first                               # stable
+    (prompts / "triage.yaml").write_text("role: b\n")
+    second = config_hash(b"app", s)
+    perms.write_text("triage: [telemetry.query_promql]\n")
+    assert len({first, second, config_hash(b"app", s), config_hash(b"app2", s)}) == 4
 
 
 def test_fixed_at_is_the_last_executed_fix_not_the_rollback():

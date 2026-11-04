@@ -47,7 +47,7 @@ def make_runbook(deps: CopilotDeps):
         return {
             "runbook_advice": advice,
             "memory_context": memory_context,
-            "budget": sum_ledgers(spend("runbook", tool_calls=len(queries)), cost),
+            "budget": sum_ledgers(spend("runbook", code_calls=len(queries)), cost),   # code's searches: not budgeted
             "timeline": [event("runbook", "verdict", text)],
         }
     return runbook

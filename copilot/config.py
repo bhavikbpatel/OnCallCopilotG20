@@ -56,4 +56,17 @@ def load_settings(path: Path | str = DEFAULT_CONFIG) -> AppSettings:
         return AppSettings()
     raw = path.read_bytes()
     data = yaml.safe_load(raw) or {}
-    return AppSettings(**data, config_hash=hashlib.sha256(raw).hexdigest()[:12])
+    settings = AppSettings(**data)
+    return settings.model_copy(update={"config_hash": config_hash(raw, settings)})
+
+
+def config_hash(app_yaml: bytes, settings: AppSettings) -> str:
+    """The agent's version for result lines: app.yaml plus every prompt and the permissions, so a prompt or
+    permission change gives a new version (E3: the agent is tagged before held-out runs). The frozen playbook
+    lives in Postgres and is tagged separately when it is frozen."""
+    h = hashlib.sha256(app_yaml)
+    files = sorted(Path(settings.prompts_dir).glob("*.yaml")) + [Path(settings.permissions_path)]
+    for f in files:
+        if f.is_file():
+            h.update(f.name.encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:12]

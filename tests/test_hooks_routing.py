@@ -111,7 +111,7 @@ def test_without_hooks_calls_go_straight_to_the_tool():
 
 @pytest.mark.parametrize("node,role,state,expect", [
     ("verify", "remediation", {}, {"driver": "code", "agent": "remediation"}),
-    ("execute", "remediation", {"action_purpose": "rollback"}, {"purpose": "rollback", "driver": "model"}),
+    ("execute", "remediation", {"action_purpose": "rollback"}, {"purpose": "rollback", "driver": "code"}),
     ("dry_run", "remediation", {}, {"purpose": "fix"}),
     ("triage", "fixed_workflow", {}, {"role": "fixed_workflow", "purpose": None}),
 ])

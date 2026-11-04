@@ -51,7 +51,7 @@ def make_fixed_runbook(deps: CopilotDeps):
         alert = state["alert"]
         passages = await deps.runbooks.search(f"{alert.alert_name} {alert.summary}", service=alert.service,
                                               symptom=alert.signal, k=5)
-        cost = spend("fixed_workflow", tool_calls=1)
+        cost = spend("fixed_workflow", code_calls=1)          # a fixed search, not a model's choice: not budgeted
         book, action = runbook_action(passages)
         if action is None:
             return _escalate("fixed_runbook", f"no runbook with a typed fix for {alert.alert_name}", budget=cost)

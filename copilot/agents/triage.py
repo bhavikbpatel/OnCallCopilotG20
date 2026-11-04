@@ -33,8 +33,9 @@ def make_triage(deps: CopilotDeps):
                 sample = await deps.telemetry.errors_since(alert.service, now() - timedelta(minutes=SEVERITY_WINDOW_MIN))
         except Exception:                                   # no sample: the classifier treats it as unknown
             sample = None
-        # service_health is two PromQL queries; the severity sample is code-driven (outside the agent's budget)
-        tool_spend = spend("triage", tool_calls=4, code_calls=2)
+        # Triage's queries are fixed, not chosen by a model: code-driven, outside the agents' tool-call budget.
+        # service_health is two PromQL queries, plus recent_changes, the alert query and the 2-query severity sample.
+        tool_spend = spend("triage", code_calls=6)
 
         draft, llm_spend = await structured_call(deps, "triage", "triage", TriageDraft, {
             "alert": alert.model_dump(mode="json"),
