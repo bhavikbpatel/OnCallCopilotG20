@@ -10,20 +10,20 @@ Both only choose the action. Everything after it (dry run, approval gate, execut
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Optional, Union
 
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.errors import GraphRecursionError
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel, Field, TypeAdapter
 
-from copilot.agents.base import emit, event, guarded, load_prompt, now, render_data, spend
+from copilot.agents.base import UsageMeter, emit, event, guarded, load_prompt, now, render_data, spend
 from copilot.agents.diagnosis import grounded, tool_strings
 from copilot.deps import CopilotDeps
 from copilot.policy import is_allowed
 from copilot.state import (
-    Action, EvidenceItem, EvidenceRef, FaultType, Hypothesis, IncidentState, RunbookAdvice, ServiceName, SetFlag,
-    payload_hash, sum_ledgers,
+    Action, EvidenceItem, EvidenceRef, FaultType, Hypothesis, IncidentState, RestartService, Rollback, RunbookAdvice,
+    ScaleService, ServiceName, SetFlag, payload_hash, sum_ledgers,
 )
 from eval.schemas import catalogue
 
@@ -76,11 +76,18 @@ def make_fixed_runbook(deps: CopilotDeps):
     return fixed_runbook
 
 
+# The structured response goes to OpenAI as a JSON schema, which refuses "oneOf" (live E1 rehearsal, 5 Nov: every C1
+# run failed with "Invalid schema for response_format 'SingleAgentResult' ... 'oneOf' is not permitted"). `Action` is a
+# discriminated union and becomes oneOf; a plain union becomes anyOf, which is accepted. Each action model has its own
+# `tool` literal, so pydantic still picks the right one.
+ResponseAction = Union[SetFlag, RestartService, ScaleService, Rollback]
+
+
 class SingleAgentResult(BaseModel):
     service: ServiceName | None = None
     fault_type: FaultType | None = None
     evidence: list[EvidenceRef] = Field(default_factory=list)
-    action: Action | None = None
+    action: Optional[ResponseAction] = None
     expected_effect: str = ""
     rationale: str = ""
 
@@ -105,20 +112,21 @@ def make_single_agent(deps: CopilotDeps):
         agent = create_react_agent(deps.llm("single_agent"), tools=deps.tools("single_agent"),
                                    prompt=load_prompt(deps.settings.prompts_dir, "single_agent"),
                                    response_format=SingleAgentResult)
+        meter = UsageMeter()                        # every model reply's tokens and USD (E1 compares cost)
         try:
             out = await agent.ainvoke({"messages": [HumanMessage(render_data(payload))]},
-                                      {"recursion_limit": 2 * budget + 3})
+                                      {"recursion_limit": 2 * budget + 3, "callbacks": [meter]})
             result: SingleAgentResult = out["structured_response"]
             messages = out["messages"]
         except GraphRecursionError:
             result, messages = SingleAgentResult(rationale="tool-call budget exhausted"), []
 
         calls = sum(isinstance(m, ToolMessage) for m in messages)
-        tokens = sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages)
+        tokens = max(meter.tokens, sum((getattr(m, "usage_metadata", None) or {}).get("total_tokens", 0) for m in messages))
         seen = tool_strings(messages) + [e.evidence_id for e in state.get("evidence", [])]
         evidence = [e for e in result.evidence if grounded(e.evidence_id, seen)]
         update: dict[str, Any] = {"budget": sum_ledgers(spend("single_agent", tool_calls=calls),
-                                                        spend("single_agent", tokens=tokens)),
+                                                        spend("single_agent", tokens=tokens, usd=meter.usd)),
                                   "replan_reason": None}
         if state.get("replan_reason"):
             update["replans"] = state.get("replans", 0) + 1
