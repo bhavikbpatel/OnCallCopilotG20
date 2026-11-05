@@ -18,10 +18,12 @@ import concurrent.futures
 import inspect
 import os
 import threading
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Mapping
+from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 from dotenv import load_dotenv
+from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
 from copilot import toolctx
@@ -138,17 +140,28 @@ async def _answer(fn: Callable[[Any], Any], arg: Any) -> Any:
     return await out if inspect.isawaitable(out) else out
 
 
+@asynccontextmanager
+async def _store(given: BaseStore | None, dsn: str | None) -> AsyncIterator[BaseStore]:
+    if given is not None:
+        yield given
+        return
+    async with make_store(dsn) as store:
+        yield store
+
+
 async def run_incident(alert: Alert | Mapping[str, Any], approve: Approve, *, run_id: str,
                        limits: BudgetLimits | Mapping[str, Any] | None = None, settings: AppSettings | None = None,
                        options: Mapping[str, Any] | None = None, toolbox: McpToolbox | None = None,
                        review: Callable[[dict[str, Any]], Any] | None = None,
-                       llm_factory: Callable[[str], Any] | None = None) -> IncidentResult:
+                       llm_factory: Callable[[str], Any] | None = None,
+                       store: BaseStore | None = None) -> IncidentResult:
+    """`store`: an open long-term store to use instead of make_store(POSTGRES_DSN) (tests, a caller's own pool)."""
     load_dotenv(ROOT / ".env")
     options = dict(options or {})
     settings = settings or load_settings()
     limits = BudgetLimits.model_validate(limits) if isinstance(limits, Mapping) else (limits or settings.limits)
     settings = apply_options(settings, limits, options)
-    problem = options_problem(options)
+    problem = None if store is not None else options_problem(options)
     if problem:
         raise ValueError(problem)
     alert = alert if isinstance(alert, Alert) else Alert.model_validate(dict(alert))
@@ -157,7 +170,7 @@ async def run_incident(alert: Alert | Mapping[str, Any], approve: Approve, *, ru
     toolbox = toolbox or await McpToolbox.connect(settings.mcp_servers_path, settings.permissions_path)
     dsn = os.getenv("POSTGRES_DSN") or None
 
-    async with make_checkpointer(dsn) as saver, make_store(dsn) as store:
+    async with make_checkpointer(dsn) as saver, _store(store, dsn) as store:
         deps = CopilotDeps(settings=settings, telemetry=McpTelemetry(toolbox), runbooks=McpRunbooks(toolbox),
                            ops=McpOps(toolbox), tickets=McpTickets(toolbox),
                            store=store if memory_on(options.get("memory")) else None, tools_factory=toolbox.for_agent,

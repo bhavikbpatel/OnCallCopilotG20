@@ -84,7 +84,16 @@ def runbook_view(state: IncidentState) -> dict[str, Any]:
 
 
 def remediation_view(state: IncidentState) -> dict[str, Any]:
+    supported = [h for h in state.get("hypotheses", []) if h.status == "supported"]
+    ids = {h.id for h in supported}
     return {
+        # What the action must fix and the evidence for it; without these the model saw only the runbook advice
+        # and escalated "no telemetry in the proposal" when the advice had no candidate action.
+        "alert": _dump(state.get("alert")),
+        "supported_hypotheses": _dump(supported),
+        "evidence": [{"evidence_id": e.evidence_id, "summary": e.summary}
+                     for e in state.get("evidence", []) if e.hypothesis_id in ids],
+        "evidence_summary": state.get("evidence_summary", ""),
         "runbook_advice": _dump(state.get("runbook_advice")),
         "proposed_action": _dump(state.get("proposed_action")),
         "approval": _dump(state.get("approval")),

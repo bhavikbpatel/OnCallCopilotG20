@@ -47,9 +47,11 @@ def make_routes(settings: AppSettings):
                     tool_call_budget=per_branch))
                 for h in open_hyps]
 
-    def after_assess(state: IncidentState) -> Literal["runbook", "commander_hypothesize", "escalate"]:
+    def after_assess(state: IncidentState) -> Literal["runbook", "commander_hypothesize", "comms", "escalate"]:
         if _escalating(state):
             return "escalate"
+        if state.get("final_status") == "noise":          # only "noise" was supported: close with no action
+            return "comms"
         return _replan_or_escalate(state, settings) if state.get("replan_reason") else "runbook"
 
     def after_propose(state: IncidentState) -> Literal["dry_run", "rollback", "escalate"]:

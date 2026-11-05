@@ -1,14 +1,45 @@
 """3.7 Runbook — runbook passages + similar incidents + lessons (preconditions checked by code)."""
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from copilot import toolctx
-from copilot.agents.base import emit, event, guarded, spend, structured_call
+from copilot.agents.base import emit, event, guarded, now, spend, structured_call
+from copilot.clients import Passage
 from copilot.deps import CopilotDeps
 from copilot.hooked_toolbox import with_role
 from copilot.memory.views import runbook_view
 from copilot.state import IncidentState, RunbookAdvice, sum_ledgers
+
+
+POSTMORTEM_LOOKBACK = timedelta(minutes=30)
+
+
+def postmortem_applies(passage: Passage, active_flags: set[str], services: set[str]) -> bool:
+    """A past incident's fix is a lesson too: it applies only when its target is in play now (code, not the model).
+    set_flag → that flag is currently on; restart / scale / rollback → that service is a supported suspect."""
+    fix = passage.fix or {}
+    args = fix.get("args") or {}
+    if fix.get("tool") == "set_flag":
+        return args.get("flag") in active_flags
+    return bool(args.get("service")) and args["service"] in services
+
+
+async def gate_postmortems(passages: dict[str, Passage], deps: CopilotDeps,
+                           services: list[str]) -> tuple[dict[str, Passage], list[str]]:
+    """Runbooks pass through. Postmortems need long-term memory on (E4 'memory off' sees none) and must apply now;
+    the rest are dropped and their ids returned as rejected."""
+    pms = {k: p for k, p in passages.items() if p.kind == "postmortem"}
+    if not pms:
+        return passages, []
+    if deps.store is None:
+        return {k: p for k, p in passages.items() if k not in pms}, []
+    changes = await deps.telemetry.recent_changes(now() - POSTMORTEM_LOOKBACK)
+    active = {c.get("flag") for c in changes if c.get("flag") and c.get("variant", "on") != "off"}
+    keep = {k: p for k, p in pms.items() if postmortem_applies(p, active, set(services))}
+    rejected = sorted({p.doc_id for k, p in pms.items() if k not in keep})
+    return {k: p for k, p in passages.items() if k not in pms or k in keep}, rejected
 
 
 def make_runbook(deps: CopilotDeps):
@@ -33,6 +64,7 @@ def make_runbook(deps: CopilotDeps):
                 symptom=alert.summary, suspects=services, fault_families=families,
                 telemetry=deps.telemetry, engineer_id=state.get("engineer_id"),
             )
+            passages, rejected_pm = await gate_postmortems(passages, deps, services)
         prefs = (state.get("memory_context") or memory_context).engineer_prefs
         memory_context.engineer_prefs = prefs
 
@@ -41,7 +73,7 @@ def make_runbook(deps: CopilotDeps):
         }
         advice, cost = await structured_call(deps, "runbook", "runbook", RunbookAdvice, view)
         # Code owns the lesson verdicts; never trust the model's copy.
-        advice.rejected_lessons = [r.lesson.lesson_id for r in memory_context.rejected_lessons]
+        advice.rejected_lessons = [r.lesson.lesson_id for r in memory_context.rejected_lessons] + rejected_pm
 
         text = (f"runbook {advice.runbook_id or 'none'}; lessons applicable "
                 f"{[l.lesson_id for l in memory_context.applicable_lessons]}, rejected {advice.rejected_lessons}")

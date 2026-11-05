@@ -1,6 +1,7 @@
 """Long-term memory over a LangGraph store. See agent_graph_design.md §4.2–4.3.
 
-Namespaces (optionally prefixed by run_id for eval isolation):
+Namespaces (writes prefixed by run_id for eval isolation; a read-only store is the shared frozen playbook,
+so its reads are never prefixed):
     ("incidents",)                         key incident_id
     ("lessons", service, fault_family)     key lesson_id
     ("engineer_prefs", engineer_id)        key pref_id
@@ -44,6 +45,10 @@ class LongTermMemory:
     def _ns(self, *parts: str) -> tuple[str, ...]:
         return ((self.run_id,) if self.run_id else ()) + parts
 
+    def _read_ns(self, *parts: str) -> tuple[str, ...]:
+        """Frozen playbook (read_only): every run reads the shared lessons the freeze step saved, unprefixed."""
+        return parts if self.read_only else self._ns(*parts)
+
     def _writable(self) -> bool:
         if self.read_only:
             raise MemoryReadOnlyError("long-term memory is frozen for this run")
@@ -58,7 +63,7 @@ class LongTermMemory:
         if self.store is None:
             return []
         filt = {"fault_family": fault_family} if fault_family else None
-        items = await self.store.asearch(self._ns("incidents"), query=symptom or None, filter=filt, limit=_SEARCH_LIMIT)
+        items = await self.store.asearch(self._read_ns("incidents"), query=symptom or None, filter=filt, limit=_SEARCH_LIMIT)
         records = [IncidentRecord.model_validate(i.value) for i in items]
         if services:
             wanted = set(services)
@@ -68,7 +73,7 @@ class LongTermMemory:
     async def get_incident(self, incident_id: str) -> IncidentRecord | None:
         if self.store is None:
             return None
-        item = await self.store.aget(self._ns("incidents"), incident_id)
+        item = await self.store.aget(self._read_ns("incidents"), incident_id)
         return IncidentRecord.model_validate(item.value) if item else None
 
     async def save_incident(self, record: IncidentRecord) -> None:
@@ -87,7 +92,7 @@ class LongTermMemory:
                            include_withdrawn: bool = False) -> list[Lesson]:
         if self.store is None:
             return []
-        prefix = self._ns("lessons", *(p for p in (service, fault_family) if p)) if service else self._ns("lessons")
+        prefix = self._read_ns("lessons", *(p for p in (service, fault_family) if p)) if service else self._read_ns("lessons")
         filt = None if include_withdrawn else {"status": "active"}
         items = await self.store.asearch(prefix, filter=filt, limit=_SEARCH_LIMIT)
         lessons = [Lesson.model_validate(i.value) for i in items]
@@ -118,7 +123,7 @@ class LongTermMemory:
     async def list_prefs(self, engineer_id: str | None) -> list[EngineerPref]:
         if self.store is None or not engineer_id:
             return []
-        items = await self.store.asearch(self._ns("engineer_prefs", engineer_id), limit=_SEARCH_LIMIT)
+        items = await self.store.asearch(self._read_ns("engineer_prefs", engineer_id), limit=_SEARCH_LIMIT)
         return sorted((EngineerPref.model_validate(i.value) for i in items), key=lambda p: p.created_at)
 
     async def add_pref(self, engineer_id: str, text: str) -> EngineerPref | None:

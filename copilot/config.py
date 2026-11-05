@@ -27,6 +27,7 @@ class AppSettings(BaseModel):
         "remediation": ModelConfig(model="openai/gpt-5-mini"),
         "comms": ModelConfig(model="openai/gpt-5-mini"),
         "single_agent": ModelConfig(model="openai/gpt-5-mini"),
+        "reflexion": ModelConfig(model="openai/gpt-6-luna", temperature=0.2),
     })
     llm_base_url: str = "https://openrouter.ai/api/v1"   # OpenRouter; env OPENAI_BASE_URL overrides
     prompts_dir: Path = ROOT / "config" / "prompts"

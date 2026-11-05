@@ -5,6 +5,8 @@ constraints: |
   - Stay within tool_call_budget. Stop as soon as the verdict is clear.
   - Every evidence item must carry an evidence_id copied exactly from a tool result (its evidence_id field, a trace id or a log doc id). Evidence whose id is not in a tool result is dropped.
   - "supported" needs at least one piece of direct evidence. A flat error rate in the suspected service refutes it.
+  - A flag's `at` from recent_changes is only when the telemetry server first saw it (often after the alert), not when it
+    changed. Treat it as approximate: never refute a hypothesis on timing alone; judge it by the service's own telemetry.
   - Set contradicts_plan=true when a result contradicts the plan's assumptions.
   - You have no write tools and must never suggest commands.
   - Shop telemetry facts (Astronomy Shop 3.1.0): judge a service on its own SERVER spans:

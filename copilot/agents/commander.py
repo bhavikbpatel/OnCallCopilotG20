@@ -15,6 +15,7 @@ from copilot.deps import CopilotDeps
 from copilot.memory.views import commander_view
 from copilot.policy import budget_exhausted
 from copilot.state import FaultType, Hypothesis, IncidentPlan, IncidentState, PlanStep, ServiceName
+from eval.schemas import catalogue
 
 PLAN_STEPS = ("scope", "hypotheses", "test", "act", "verify", "communicate")
 
@@ -85,12 +86,31 @@ def make_commander_hypothesize(deps: CopilotDeps):
     return commander_hypothesize
 
 
+def owns_fault(h: Hypothesis) -> int:
+    """2: the service the fault lives in (eval catalogue); 1: a service the catalogue also accepts; 0: a caller that
+    only shows the symptoms."""
+    spec = catalogue.FAULT_TYPES.get(str(h.fault_type)) or {}
+    if str(h.service) == spec.get("service"):
+        return 2
+    return 1 if str(h.service) in spec.get("also_accept", ()) else 0
+
+
+def choose(supported: list[Hypothesis]) -> Hypothesis:
+    """Several supported: a real fault before noise, then the service that owns the fault, then the most evidence;
+    ties keep the graph's order."""
+    return max(enumerate(supported),
+               key=lambda p: (str(p[1].fault_type) != "noise", owns_fault(p[1]), len(p[1].evidence), -p[0]))[1]
+
+
 def decide(state: IncidentState, max_replans: int) -> tuple[str, str]:
-    """Pure routing rule (code, not vibes). Returns (decision, reason)."""
+    """Pure routing rule (code, not vibes). Returns (decision, reason); decision "noise" closes with no action."""
     hyps = state.get("hypotheses", [])
     supported = [h for h in hyps if h.status == "supported" and h.evidence]
     if supported:
-        return "converge", f"{supported[0].service}/{supported[0].fault_type} supported"
+        best = choose(supported)
+        if str(best.fault_type) == "noise":
+            return "noise", f"only noise is supported ({best.service}): no fault to fix"
+        return "converge", f"{best.service}/{best.fault_type} supported"
     if budget_exhausted(state.get("budget"), state["limits"]):
         return "escalate", "tool/token budget exhausted without a supported hypothesis"
     if state.get("replans", 0) >= max_replans:
@@ -114,6 +134,15 @@ def make_commander_assess(deps: CopilotDeps):
             update["replan_reason"] = reason
         elif decision == "escalate":
             update["escalation_reason"] = reason
+        elif decision == "noise":
+            update["final_status"] = "noise"
+        supported = [h for h in state.get("hypotheses", []) if h.status == "supported" and h.evidence]
+        if decision in ("converge", "noise") and len(supported) > 1:
+            # One root cause goes forward; the others stay open (ranked below it, and testable after a replan).
+            best = choose(supported)
+            update["hypotheses"] = [h.model_copy(update={"status": "open", "rationale": f"{h.rationale} [also supported; "
+                                                         f"ranked below {best.service}/{best.fault_type}]".strip()})
+                                    for h in supported if h.id != best.id]
         emit({"node": "commander_assess", "decision": decision, "reason": reason})
         return update
     return commander_assess
