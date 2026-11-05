@@ -202,6 +202,9 @@ def test_run_incident_with_memory_playbook_reads_the_frozen_lessons(monkeypatch)
     for mod in (triage, comms, commander, runbook, remediation):
         monkeypatch.setattr(mod, "structured_call", fake_structured_call)
     monkeypatch.setenv("APPROVAL_SECRET", "test-secret-0123456789abcdef")
+    from copilot import run as run_mod
+    monkeypatch.setattr(run_mod, "load_dotenv", lambda *a, **k: None)      # never the developer's .env
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
 
     helps = Lesson(lesson_id="L-D-001-001", text=GOOD["text"], service="payment", fault_family="paymentFailure",
                    preconditions=[Precondition(check="recent_change", args={"flag": "paymentFailure", "within": "15m"})],

@@ -122,6 +122,9 @@ def test_noise_alert_closes_without_any_action(monkeypatch):
     for mod in (triage, comms, commander, runbook, remediation):
         monkeypatch.setattr(mod, "structured_call", noise_calls)
     monkeypatch.setenv("APPROVAL_SECRET", "test-secret-0123456789abcdef")
+    from copilot import run as run_mod
+    monkeypatch.setattr(run_mod, "load_dotenv", lambda *a, **k: None)      # never the developer's .env
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
     llm = ScriptedChat(
         script=[AIMessage(content="", tool_calls=[{"name": "query_promql", "args": {"query": "frontend_errors"}, "id": "n"}])],
         structured=HypothesisResult(hypothesis_id="h", verdict="supported", confidence_basis="errors flat, traffic up",

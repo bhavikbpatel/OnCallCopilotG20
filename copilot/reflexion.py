@@ -27,6 +27,7 @@ from typing import Any, Iterable
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from copilot.config import ROOT, AppSettings, load_settings
+from copilot.memory.backends import loop_factory
 from copilot.memory.long_term import LongTermMemory, playbook_hash
 from copilot.memory.preconditions import parse_duration
 from copilot.memory.schemas import Lesson, Precondition
@@ -389,13 +390,13 @@ def main(argv: list[str] | None = None) -> None:
     elif a.cmd == "review":
         review_cli(a.candidates, a.reviewer)
     elif a.cmd == "freeze":
-        lessons, digest = asyncio.run(freeze(a.candidates, a.out, dsn=dsn))
+        lessons, digest = asyncio.run(freeze(a.candidates, a.out, dsn=dsn), loop_factory=loop_factory(dsn))
         print(f"froze {len(lessons)} lesson(s); playbook hash {digest}")
     else:
         lessons, digest = read_playbook(a.playbook)
         if not dsn:
             raise SystemExit("POSTGRES_DSN is not set")
-        asyncio.run(_into_store(lessons, digest, None, dsn))
+        asyncio.run(_into_store(lessons, digest, None, dsn), loop_factory=loop_factory(dsn))
         print(f"loaded {len(lessons)} lesson(s); playbook hash {digest}")
 
 

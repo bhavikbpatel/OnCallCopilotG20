@@ -8,9 +8,12 @@ dsn=None → in-memory backends (dev / unit tests).
 """
 from __future__ import annotations
 
+import asyncio
 import enum
 import importlib
 import inspect
+import selectors
+import sys
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Callable
 
@@ -23,6 +26,20 @@ from pydantic import BaseModel
 
 INCIDENT_INDEX_FIELDS = ["symptom_text"]
 _STATE_MODULES = ("copilot.state", "copilot.memory.schemas")
+
+
+def loop_factory(dsn: str | None) -> Callable[[], asyncio.AbstractEventLoop] | None:
+    """psycopg's async mode cannot run on Windows' default ProactorEventLoop, so with Postgres on Windows use a
+    selector loop (asyncio.run(..., loop_factory=...)). Without a DSN keep the default: stdio MCP servers need
+    Proactor's subprocess support on Windows."""
+    if dsn and sys.platform == "win32":
+        return lambda: asyncio.SelectorEventLoop(selectors.SelectSelector())
+    return None
+
+
+def new_event_loop(dsn: str | None) -> asyncio.AbstractEventLoop:
+    factory = loop_factory(dsn)
+    return factory() if factory else asyncio.new_event_loop()
 
 
 def make_serde() -> JsonPlusSerializer:

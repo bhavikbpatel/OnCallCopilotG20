@@ -33,6 +33,7 @@ from copilot.graph import ARCHITECTURES, build_graph
 from copilot.guardrails import GuardConfig
 from copilot.hooks import Hooks, load_permissions
 from copilot.memory import make_checkpointer, make_store
+from copilot.memory.backends import new_event_loop
 from copilot.policy import budget_exhausted
 from copilot.state import Alert, BudgetLimits
 from copilot.tools import McpOps, McpRunbooks, McpTelemetry, McpTickets, McpToolbox
@@ -215,7 +216,7 @@ class CopilotAgent:
         call fails with "RuntimeError: Event loop is closed"."""
         with self._lock:
             if self._loop is None or self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
+                self._loop = new_event_loop(os.getenv("POSTGRES_DSN"))     # Postgres on Windows: selector loop
                 threading.Thread(target=self._loop.run_forever, daemon=True, name="copilot-loop").start()
             return self._loop
 

@@ -15,7 +15,8 @@ On-Call Copilot takes a firing alert, works out from live telemetry which servic
 
 - Python **3.11+** (tested on 3.14)
 - An **OpenRouter** API key (https://openrouter.ai/keys) with these models allowed in your workspace guardrails: `openai/gpt-6-luna`, `openai/gpt-5-mini`
-- Optional: Postgres, for a persistent checkpointer and memory store (in-memory is used if not set)
+- Postgres 16, for a persistent checkpointer and memory store: needed for the frozen playbook (`memory: playbook`)
+  and `python -m copilot.reflexion freeze` / `load`; in-memory is used if `POSTGRES_DSN` is not set. See below.
 
 ### Install
 
@@ -31,6 +32,23 @@ source .venv/bin/activate
 
 pip install -e ".[dev]"
 ```
+
+### Postgres (long-term memory, frozen playbook)
+
+Either way, put the DSN in `.env` and check it with `python scripts/check_postgres.py` (creates the tables, then a
+write / read / delete).
+
+- **Docker:** `docker compose -f compose.postgres.yaml up -d` with `POSTGRES_PASSWORD` in `.env`, then
+  `POSTGRES_DSN=postgresql://oncall:<password>@localhost:5432/oncall`.
+- **Windows without Docker or admin rights** (portable binaries):
+  1. Download `postgresql-16.x-1-windows-x64-binaries.zip` from https://www.enterprisedb.com/download-postgresql-binaries
+     and unzip it to `%USERPROFILE%` (gives `%USERPROFILE%\pgsql`).
+  2. `%USERPROFILE%\pgsql\bin\initdb -D %USERPROFILE%\pgsql-data -U postgres -W -A scram-sha-256 -E UTF8`
+  3. `powershell -File scripts\postgres.ps1 start` (also `stop`, `status`; run `start` again after a reboot).
+  4. `psql -h localhost -U postgres -c "CREATE ROLE oncall LOGIN PASSWORD '<password>'" -c "CREATE DATABASE oncall OWNER oncall"`
+
+On Windows the code uses a selector event loop whenever `POSTGRES_DSN` is set (psycopg cannot use the default
+Proactor loop). A test against a real Postgres is opt-in: `COPILOT_PG_TESTS=1 pytest tests/test_postgres_playbook.py`.
 
 ### Configure secrets
 
