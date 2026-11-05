@@ -102,6 +102,16 @@ def test_misleading_postmortem_is_dropped_and_reported():
     assert set(kept) == {"RB-009#action", "PM-001#fix"} and rejected == ["PM-007"]
 
 
+def test_a_failed_flag_reading_drops_postmortems_but_never_stops_the_incident():
+    from copilot.clients import ToolError
+
+    async def broken(since):
+        raise ToolError("flag_store_error", "flagd unreachable")
+    deps = SimpleNamespace(store=object(), telemetry=SimpleNamespace(recent_changes=broken))
+    kept, rejected = asyncio.run(gate_postmortems({p.passage_id: p for p in (RB, PM_FLAG, PM_RESTART)}, deps, ["email"]))
+    assert set(kept) == {"RB-009#action", "PM-007#fix"} and rejected == ["PM-001"]   # flag PMs unproven; service ones still checked
+
+
 def test_memory_off_sees_no_postmortems():
     kept, rejected = gate(None, ["paymentFailure"], ["payment"])         # E4 "without postmortem memory"
     assert list(kept) == ["RB-009#action"] and rejected == []

@@ -6,7 +6,7 @@ from typing import Any
 
 from copilot import toolctx
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
-from copilot.clients import Passage
+from copilot.clients import Passage, ToolError
 from copilot.deps import CopilotDeps
 from copilot.hooked_toolbox import with_role
 from copilot.memory.views import runbook_view
@@ -35,7 +35,10 @@ async def gate_postmortems(passages: dict[str, Passage], deps: CopilotDeps,
         return passages, []
     if deps.store is None:
         return {k: p for k, p in passages.items() if k not in pms}, []
-    changes = await deps.telemetry.recent_changes(now() - POSTMORTEM_LOOKBACK)
+    try:
+        changes = await deps.telemetry.recent_changes(now() - POSTMORTEM_LOOKBACK)
+    except ToolError:                # no flag reading: no postmortem can be shown to apply; the incident goes on
+        changes = []
     active = {c.get("flag") for c in changes if c.get("flag") and c.get("variant", "on") != "off"}
     keep = {k: p for k, p in pms.items() if postmortem_applies(p, active, set(services))}
     rejected = sorted({p.doc_id for k, p in pms.items() if k not in keep})
