@@ -34,6 +34,7 @@ MAX_RANGE_S = 3600          # a query may look back at most 1 hour
 MAX_SERIES = 50
 MAX_POINTS = 120
 MAX_LOG_LIMIT = 50
+SERVICE_FIELD = os.environ.get("LOG_SERVICE_FIELD", "resource.service.name")   # OpenSearch field holding the emitting service
 MAX_TRACE_LIMIT = 20
 MAX_TEXT = 400
 
@@ -227,15 +228,18 @@ class Telemetry:
             return err("bad_argument", str(exc))
         if t_end <= t_start or t_end - t_start > MAX_RANGE_S:
             return err("bad_argument", "time range must be positive and at most 1 hour")
-        terms = [_phrase(service)]
+        terms = []
         for extra in (level, text):
             phrase = _phrase(extra)
             if phrase:
                 terms.append(phrase)
-        body = {"size": int(limit), "sort": [{"@timestamp": "desc"}],
-                "query": {"bool": {"filter": [{"range": {"@timestamp": {
-                    "gte": int(t_start * 1000), "lte": int(t_end * 1000), "format": "epoch_millis"}}}],
-                    "must": [{"query_string": {"query": " AND ".join(terms)}}]}}}
+        filters = [{"range": {"@timestamp": {"gte": int(t_start * 1000), "lte": int(t_end * 1000),
+                                             "format": "epoch_millis"}}},
+                   {"match_phrase": {SERVICE_FIELD: service}}]      # the service is matched on its own field
+        query: Dict[str, Any] = {"bool": {"filter": filters}}
+        if terms:
+            query["bool"]["must"] = [{"query_string": {"query": " AND ".join(terms)}}]
+        body = {"size": int(limit), "sort": [{"@timestamp": "desc"}], "query": query}
         try:
             resp = self._http("POST", "%s/%s/_search" % (self.opensearch_url, self.log_index), body)
         except UpstreamError as exc:
