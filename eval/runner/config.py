@@ -16,7 +16,12 @@ class RunConfig(BaseModel):
     # None: worked out per case from the graph's verify windows (eval/runner/timeouts.py); a number fixes it.
     agent_timeout_s: Optional[float] = Field(None, gt=0)
     step_allowance_s: float = Field(300, gt=0)    # per attempt, besides waiting for recovery
-    alert_timeout_s: float = Field(420, gt=0)     # kafka lag needs ~5 min to build
+    alert_timeout_s: float = Field(420, gt=0)     # kafka lag needs ~5 min to build; counted from the fault's start
+    # Before measuring a case's baselines, wait this long after the previous case's flags were cleared, so its
+    # effect has left Prometheus's 2-minute windows (a fault the agent did not fix otherwise inflates the next
+    # case's "normal" level, and its alert can never fire: "error_rate ... never reached 1.05").
+    settle_s: float = Field(180, ge=0)
+    baseline_retries: int = Field(2, ge=0)        # re-measure (after settle_s) a baseline the alert could never pass
     baseline_readings: int = Field(3, ge=1)
     poll_s: float = Field(30, gt=0)
     repeats: int = Field(1, ge=1)

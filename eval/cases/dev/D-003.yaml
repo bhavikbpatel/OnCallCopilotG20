@@ -1,12 +1,12 @@
 case_id: D-003
-title: Cart failures at 25%
+title: Cart failures at 50%
 scenario_group: cart-A
 split: dev
 written_on: '2026-10-31'
 written_by: Person 4
 faults:
 - flag: cartFailure
-  variant: 25%
+  variant: 50%
   start_after_s: 0
 load:
   profile: normal
@@ -44,6 +44,7 @@ expected:
     level: SEV2
     rule: S2.1
     provisional: true
-notes: 'Low intensity: only some EmptyCart calls fail, so the signal is weak.'
+notes: 'Medium intensity: only EmptyCart calls fail, so the signal is a small error count. Was 25% until 5 Nov:
+  in the first dev batch its alert never fired (cart error count stayed below 2).'
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist

@@ -59,12 +59,15 @@ A case whose fault cannot be observed would score the agent on luck.
 One runner drives every configuration (`python -m eval.runner`; experiments from config files only):
 
 1. **Preflight:** every flag must be at rest; otherwise the run is refused (no one else's fault is cleared).
+   The runner then waits until 3 minutes have passed since the previous case's flags were cleared, so an
+   earlier fault's errors have left Prometheus's 2-minute windows; a baseline that still shows more than 5%
+   errors is measured again, and if it stays high the run is an error (shop not at rest), never a silent miss.
 2. **Baselines:** the alert's healthy level and, where the recovery check needs it, the recovery signal's
    level are measured before injecting.
 3. **Inject** the case's faults through the flag UI's API, with every change confirmed by reading back;
    transient flag-UI outages are retried (1, 2, 4 s).
 4. **Alert:** the run starts only when the alert's signal crosses its threshold in two distinct Prometheus
-   points (the movement rule from the fault probes). An alert that never fires is an infrastructure error, not
+   points (the movement rule from the fault probes), within 7 minutes of the fault's own start. An alert that never fires is an infrastructure error, not
    an agent failure.
 5. **Agent:** the copilot gets the alert and nothing else — never the case, the flags or the expected answer.
    Approvals are answered by an automatic approver that names the exact payload hash it approves; the

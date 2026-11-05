@@ -47,7 +47,7 @@ from ..schemas.case import Case
 from ..schemas.result import RecoveryObservation, ResultLine
 from ..telemetry.prom import PromClient
 from .agents import Agent, AgentContext, AgentResult, not_ready
-from .alerts import measure_alert_baseline, signal_for, wait_for_alert
+from .alerts import measure_alert_baseline, signal_for, threshold_for, wait_for_alert
 from .approvals import AutoApprover, with_gate_tokens
 from .config import RunConfig
 from .timeouts import GraphTiming, agent_timeout_for
@@ -66,6 +66,49 @@ class RunDeps:
     force_clear: bool = False
     make_sender: Callable[[], HttpAttackSender] = HttpAttackSender   # red team: delivers HTTP-vector attacks
     timing: GraphTiming = dataclasses.field(default_factory=GraphTiming.load)   # config/app.yaml: verify windows
+
+
+CLEARED_MARKER = ".last_cleared"      # in the results folder: when the last case's flags were cleared (any process)
+RATIO_SIGNALS = ("error_rate",)       # a limit of 1 or more can never be reached
+AT_REST_RATIO_MAX = 0.05              # more than 5% errors before injection: an earlier fault is still in the window
+
+
+def _last_cleared(results_dir: Path) -> Optional[float]:
+    try:
+        return float((Path(results_dir) / CLEARED_MARKER).read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _mark_cleared(results_dir: Path, t: float) -> None:
+    try:
+        Path(results_dir).mkdir(parents=True, exist_ok=True)
+        (Path(results_dir) / CLEARED_MARKER).write_text(f"{t}\n")
+    except OSError:
+        pass
+
+
+def latest_start(case: Case) -> float:
+    """Seconds after injection when the case's last fault (or its load flood) starts; the alert can only fire
+    after that, so the alert wait counts from there (D-008 and D-020 start their faults 120 s late)."""
+    starts = [f.start_after_s for f in case.faults]
+    if case.load.profile == "flood":
+        starts.append(case.load.flood_start_after_s)
+    return float(max(starts, default=0))
+
+
+def unfireable(alert_base: dict) -> Optional[str]:
+    """Why an alert with this baseline could never fire (the shop is not at rest), or None."""
+    signal, base = alert_base["signal"], alert_base["value"]
+    if signal not in RATIO_SIGNALS or base is None:
+        return None
+    limit, _ = threshold_for(signal, base, alert_base["rps"])
+    if limit is not None and limit >= 1.0:
+        return f"{signal} is {base:g} before injection, so the alert limit {limit:g} can never be reached"
+    if base > AT_REST_RATIO_MAX:
+        return (f"{signal} is {base:g} before injection (above {AT_REST_RATIO_MAX:g}: an earlier fault's errors are "
+                f"still in the window)")
+    return None
 
 
 class _NotDeliverable(RuntimeError):
@@ -165,19 +208,31 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
             raise _NotDeliverable(f"attack {attack.attack_id}: vector {attack.vector} cannot be delivered by "
                                   f"the harness yet (needs a way in from its owner)")
         deps.injector.preflight(force_clear=deps.force_clear)
-        alert_base = measure_alert_baseline(deps.prom, case.alert, readings=cfg.baseline_readings,
-                                            every_s=cfg.poll_s, clock=clock, sleep=sleep)
+        last = _last_cleared(deps.results_dir)
+        if last is not None and cfg.settle_s and clock() - last < cfg.settle_s:
+            sleep(cfg.settle_s - (clock() - last))      # let the previous case's effect leave the windows
+        for attempt in range(cfg.baseline_retries + 1):
+            alert_base = measure_alert_baseline(deps.prom, case.alert, readings=cfg.baseline_readings,
+                                                every_s=cfg.poll_s, clock=clock, sleep=sleep)
+            not_at_rest = unfireable(alert_base)
+            if not_at_rest is None:
+                break
+            if attempt < cfg.baseline_retries:
+                sleep(cfg.settle_s or cfg.poll_s)
+        if not_at_rest is not None:
+            raise PreflightError(f"shop not at rest: {not_at_rest}")
         rec_base = measure_baseline(deps.prom, rc) if rc is not None else None
         agent_timeout_s = cfg.agent_timeout_s or agent_timeout_for(signal_for(case.alert.name), deps.timing,
                                                                      cfg.step_allowance_s)
-        horizon = cfg.alert_timeout_s + agent_timeout_s + (rc.within_s if rc else 0) + 120
+        horizon = cfg.alert_timeout_s + latest_start(case) + agent_timeout_s + (rc.within_s if rc else 0) + 120
         injecting = True
         record = deps.injector.start(case, horizon, run_id)
         if attack is not None:
             sender = deps.make_sender()
             sender.start(attack)          # hostile text is in the logs and traces while the agent works
         alert, why = wait_for_alert(deps.prom, case.alert, alert_base, run_id=run_id,
-                                    deadline=clock() + cfg.alert_timeout_s, clock=clock, sleep=sleep,
+                                    deadline=clock() + cfg.alert_timeout_s + latest_start(case),
+                                    clock=clock, sleep=sleep,
                                     poll_s=cfg.poll_s)
         if alert is None:
             status, error = "error", why
@@ -206,6 +261,7 @@ def _run(case: Case, agent: Agent, cfg: RunConfig, deps: RunDeps, *, repeat: int
         if injecting and deps.injector.record is not None:
             record = deps.injector.stop()
             record.save(deps.results_dir / "ground_truth")
+            _mark_cleared(deps.results_dir, clock())
 
     if record is not None:
         problems = []

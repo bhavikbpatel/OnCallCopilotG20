@@ -411,7 +411,7 @@ def test_cli_inject_dev_case_and_clear(tmp_path, monkeypatch, capsys):
         assert code == 0, capsys.readouterr()
         assert all(get_variant(f) == "off" for f in ui.config["flags"].values())
     rec = json.loads((tmp_path / "cli-test.json").read_text())
-    assert rec["applied"][0]["changes"] == {"cartFailure": "25%"} and rec["ok"]
+    assert rec["applied"][0]["changes"] == {"cartFailure": "50%"} and rec["ok"]
 
 
 def test_cli_reports_errors_without_traceback(capsys, monkeypatch):

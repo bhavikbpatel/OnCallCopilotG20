@@ -53,10 +53,10 @@ def test_live_targeting_flag_round_trip(injector):
 
 
 def test_live_short_injection_of_a_dev_case(injector):
-    case = load_case(DEV_DIR / "D-003.yaml")  # cartFailure 25%, starts immediately
+    case = load_case(DEV_DIR / "D-003.yaml")  # cartFailure 50%, starts immediately
     with injector.run(case, horizon_s=5, run_id="live-test-D-003"):
         time.sleep(2)
-        assert injector.status()["cartFailure"] == "25%"
+        assert injector.status()["cartFailure"] == "50%"
     rec = injector.record
     assert rec.cleared and not rec.errors, rec.errors
     assert not rec.contaminated, f"something else changed flags (scheduler?): {rec.drift}"
