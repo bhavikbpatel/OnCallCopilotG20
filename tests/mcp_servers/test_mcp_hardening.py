@@ -148,21 +148,35 @@ def test_allow_list_gaps_found_in_review_are_closed(query, code):
     assert check_query(query)[0] == code
 
 
-def test_log_text_is_one_literal_phrase_and_cannot_widen_the_search():
+def _log_search(**kwargs):
     seen = {}
 
     def http(method, url, body=None):
-        seen["q"] = body["query"]["bool"]["must"][0]["query_string"]["query"]
+        seen["body"] = body
         return {"hits": {"hits": []}}
 
     t = Telemetry(prom=None, flag_store=InMemoryFlagStore({}), http=http, clock=lambda: 1_800_000_000.0)
+    assert t.search_logs("payment", **kwargs)["ok"]
+    bool_query = seen["body"]["query"]["bool"]
+    must = bool_query.get("must")
+    return bool_query, (must[0]["query_string"]["query"] if must else None)
+
+
+def test_log_text_is_one_literal_phrase_and_cannot_widen_the_search():
     attack = 'x) OR (service:"cart" AND *'
-    assert t.search_logs("payment", level="error", text=attack, limit=5)["ok"]
-    assert seen["q"] == '"payment" AND "error" AND "x) OR (service:\\"cart\\" AND *"'
-    t.search_logs("payment", text="a\\b\nc")
-    assert seen["q"] == '"payment" AND "a\\\\b c"'       # backslash escaped, newline flattened
-    t.search_logs("payment", text="   ")
-    assert seen["q"] == '"payment"'
+    _, q = _log_search(level="error", text=attack, limit=5)
+    assert q == '"error" AND "x) OR (service:\\"cart\\" AND *"'
+    assert _log_search(text="a\\b\nc")[1] == '"a\\\\b c"'          # backslash escaped, newline flattened
+    assert _log_search(text="   ")[1] is None                       # nothing to search for: no text clause at all
+
+
+def test_the_service_is_matched_on_its_own_field_not_anywhere_in_the_record():
+    bool_query, q = _log_search(text="boom")
+    assert {"match_phrase": {"resource.service.name": "payment"}} in bool_query["filter"]
+    assert "payment" not in q                                        # a line that only mentions payment does not count
+    assert any("range" in f for f in bool_query["filter"])
+    bool_query, q = _log_search(text="payment\" OR service:cart")      # the text cannot change which service is searched
+    assert {"match_phrase": {"resource.service.name": "payment"}} in bool_query["filter"]
 
 
 # ---------------------------------------------------------------- guardrails: false positive and config
