@@ -2,7 +2,7 @@
 doc_id: RB-015
 title: Multiple independent service faults in one incident
 kind: runbook
-service: [accounting, ad, astronomy-db, cart, checkout, currency, email, flagd, fraud-detection, frontend, frontend-proxy, image-provider, kafka, load-generator, payment, product-catalog, quote, recommendation, shipping, valkey-cart]
+service: [ad, astronomy-db, cart, checkout, email, fraud-detection, frontend-proxy, image-provider, kafka, payment, product-catalog, valkey-cart]
 symptom: [multiple service errors, independent fault signals, partial recovery]
 fault_family: concurrent_faults
 fix: null

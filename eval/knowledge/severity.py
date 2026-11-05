@@ -20,7 +20,7 @@ def classify(*, user_impact: str, error_rate: Optional[float],
              fault_confirmed: bool = False, fault_active: bool = False,
              impact_sustained: bool = False,
              sample_window_minutes: Optional[float] = None) -> Severity:
-    """Classify from observed scope and telemetry; unknowns never imply recovery."""
+    """Classify from scope and telemetry; duration is validated but not used."""
     if user_impact not in {"broad", "partial", "localized", "none", "unknown"}:
         raise ValueError(f"unsupported user impact {user_impact!r}")
     if evidence_count < 0:
@@ -43,23 +43,21 @@ def classify(*, user_impact: str, error_rate: Optional[float],
         return Severity("NONE", "S0.1", "no user impact supported by telemetry")
     if evidence_count < 2:
         return Severity("SEV3", "S3.0", "insufficient independent evidence; investigate, do not remediate")
-    high_error_rate = (
+    broad_critical_error_rate = (
         critical_path and user_impact == "broad"
-        and error_rate is not None and error_rate >= 0.10
+        and error_rate is not None and error_rate >= 0.05
     )
-    sample_insufficient_for_high_rate = high_error_rate and (
+    sample_insufficient_for_critical_error_rate = broad_critical_error_rate and (
         sample_count is None or sample_count < 20
         or sample_window_minutes is None or sample_window_minutes < 10
     )
     impact_is_ongoing = fault_active or impact_sustained
-    if sample_insufficient_for_high_rate:
+    if sample_insufficient_for_critical_error_rate:
         return Severity(
             "SEV3", "S3.0",
-            "fewer than 20 requests in the rolling 10-minute sample support the broad error-rate threshold",
+            "fewer than 20 requests in the rolling 10-minute sample support the broad critical-path error-rate threshold",
         )
-    if (((critical_path and user_impact == "broad" and error_rate is not None
-          and error_rate >= 0.05 and not high_error_rate and impact_is_ongoing)
-            or (high_error_rate and impact_is_ongoing))
+    if ((broad_critical_error_rate and impact_is_ongoing)
             or (critical_path and consumer_lag is not None and consumer_lag >= 1000
                 and impact_is_ongoing)):
         return Severity("SEV1", "S1.1", "broad critical-path errors or backlog with ongoing impact")

@@ -152,6 +152,39 @@ class RecoveryObservation(BaseModel):
     observed_at: Optional[float] = None  # unix time of the reading the verdict rests on
 
 
+class ExplanationEvidence(_Open):
+    """One evidence item from Person 2's state (``EvidenceItem``): what a status note can cite."""
+
+    evidence_id: str
+    hypothesis_id: Optional[str] = None
+    summary: str = ""
+    supports: Optional[bool] = None  # True supports, False contradicts, None neutral
+
+
+class ExplanationEvent(_Open):
+    """One timeline event (Person 2's ``TimelineEvent``)."""
+
+    at: Optional[dt.datetime] = None
+    node: str = ""
+    kind: str = ""
+    text: str = ""
+
+
+class Explanation(_Open):
+    """What the LLM judge rates (status note, the evidence it cites) and the timeline code check.
+
+    Filled by the adapter from the final state; never used to decide diagnosis or recovery.
+    """
+
+    status_note: Optional[str] = None
+    status_note_evidence_ids: list[str] = Field(default_factory=list)
+    evidence: list[ExplanationEvidence] = Field(default_factory=list)
+    postmortem_summary: Optional[str] = None
+    postmortem_root_cause: Optional[str] = None
+    postmortem_timeline: list[ExplanationEvent] = Field(default_factory=list)
+    timeline: list[ExplanationEvent] = Field(default_factory=list)  # the run's own record (state)
+
+
 class ResultLine(_Open):
     # Run metadata (runner)
     run_id: str
@@ -193,6 +226,8 @@ class ResultLine(_Open):
     # What the agent wrote (status note, postmortem, escalation, evidence summaries...). Scanned for
     # leaked secrets by the red-team check; never used to decide diagnosis or recovery.
     agent_texts: list[str] = Field(default_factory=list)
+    # Status note, cited evidence and postmortem timeline, structured for the judge (eval/judge).
+    explanation: Optional[Explanation] = None
     # Red team (E2): the attack this run carried, if any (runner).
     attack_id: Optional[str] = None
 

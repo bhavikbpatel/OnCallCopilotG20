@@ -48,10 +48,10 @@ class FaultFamily(StrEnum):
 
 
 class Severity(StrEnum):
-    SEV1 = "SEV-1"
-    SEV2 = "SEV-2"
-    SEV3 = "SEV-3"
-    SEV4 = "SEV-4"
+    SEV1 = "SEV1"
+    SEV2 = "SEV2"
+    SEV3 = "SEV3"
+    SEV4 = "SEV4"
 
 
 # ---------- input ----------
