@@ -8,7 +8,7 @@ faults: []
 load:
   profile: flood
   flood_start_after_s: 30
-  flood_duration_s: 180
+  flood_duration_s: 300
 alert:
   name: FrontendTrafficHigh
   service: frontend
@@ -19,6 +19,7 @@ expected:
     level: NONE
     rule: S0.1
     provisional: true
-notes: Transient burst that clears by itself during the investigation (traffic alert, see D-015).
+notes: Transient burst that clears by itself during the investigation (traffic alert, see D-015). Was 180 s until
+  5 Nov; in the first dev batch the traffic alert never fired.
 needs_verification:
 - alert name and recovery threshold are provisional until the Prometheus rules exist
