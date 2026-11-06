@@ -1,0 +1,25 @@
+# Shop images used for every evaluation run (dev, rehearsal, E1-E4), recorded 6 Nov 2026.
+# The compose files are the opentelemetry-demo 3.1.0 release; its .env selects DEMO_VERSION=latest, so the
+# service images are the `latest` tags as downloaded before 6 Nov. `latest` moves: these digests pin them.
+# Format: image:tag digest
+ghcr.io/open-telemetry/demo:latest-accounting sha256:a9a35f07961f4e4fbfbc6236b05173658d705c1a5a56fe102ed6bb5818734214
+ghcr.io/open-telemetry/demo:latest-ad sha256:5a0f2982183bd69f75ad3f602ec75e5ff942a227ccf696692fa42f5d560c55c8
+ghcr.io/open-telemetry/demo:latest-cart sha256:6a61c583b49a71b95f0538d7789e9e5a5cad26dd4977120d7322881954d2408d
+ghcr.io/open-telemetry/demo:latest-checkout sha256:335ae1f306c841a06aa1d0474adf020b902c688e70d3d1e1c48573d33257f5e1
+ghcr.io/open-telemetry/demo:latest-currency sha256:04bb8754e014b4bf57eba648bba41f69b013d3fcd4ea39919363dfab450e2a77
+ghcr.io/open-telemetry/demo:latest-email sha256:90908769fd248d8c2b34905e66b9e7099eaa33ce6127b704a605d961526bd861
+ghcr.io/open-telemetry/demo:latest-flagd-ui sha256:21760e59fcc4e9f4e0fdbbcf9aee22805ec4ed5863c5fa3b848ee32c69e768a8
+ghcr.io/open-telemetry/demo:latest-fraud-detection sha256:06a909b53a9f5e79e9bffb2f9d5a4b23689d38ea1ab0fd1cd0a84efbee6020a5
+ghcr.io/open-telemetry/demo:latest-frontend sha256:4f4a0ffd29823bb4f168584c37741b5c237a5f4c0303e3f966a9c5a2da05b44c
+ghcr.io/open-telemetry/demo:latest-frontend-proxy sha256:e3c684b3df706e3957dff4660caf146b373cc767dde960e2729f64db0f0b1146
+ghcr.io/open-telemetry/demo:latest-image-provider sha256:6461331ede7777178853c7cce6d39f7ba0c9b48e5204c96b300378ae0accffe3
+ghcr.io/open-telemetry/demo:latest-kafka sha256:4e537175628ea7b0842c44e2bec86cc763592f2b37af10cb793fee1d1e22df28
+ghcr.io/open-telemetry/demo:latest-load-generator sha256:27d041e1e454774c41940dd60036f0d1041ecdc0ebb51856d11931f96a69d0af
+ghcr.io/open-telemetry/demo:latest-opamp-server sha256:3190152998f1b540a25b20c99e77d8394d0bc6ba89973d571ada555645395ae6
+ghcr.io/open-telemetry/demo:latest-opensearch sha256:25c9d9dc6d886f1128e4213cfda97da3debe27f3195e9f4d635a3e8f8dea5e6d
+ghcr.io/open-telemetry/demo:latest-payment sha256:487f2d4a1dbd7756bfca7f024c6ac9082b439df5f51234af29cb29790a08e380
+ghcr.io/open-telemetry/demo:latest-product-catalog sha256:3f9f560b617d4d84640407984328378e99256d5558c1400951bf60bcfabf2da7
+ghcr.io/open-telemetry/demo:latest-quote sha256:779b44f9d306fcbbfaad8e9632c8d02c37b512dc71fd24a41ee140bbe8d29c29
+ghcr.io/open-telemetry/demo:latest-recommendation sha256:a935bfd867d353ce1ba474640b3064f28d249fdc394ad5c1071eb619f34758cb
+ghcr.io/open-telemetry/demo:latest-shipping sha256:476f58f8a48aee52092e75e205284cd3130e4bf15281694db1588195a83d43e5
+ghcr.io/open-telemetry/demo:latest-telemetry-docs sha256:a40fdbd8bff47a8cd8d35daa959185be433b0eee23cde2be55d28fbb0084e61c
