@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from eval.report import (by_config, case_index, config_report, configs_markdown, experiments_markdown, find_batches,
-                         load_batch, metrics, spread, times)
+                         lesson_effects, load_batch, metrics, spread, times)
 from eval.report.__main__ import main
 from eval.runner import DoNothingAgent, run_batch
 from eval.runner.experiments import run_experiment
@@ -135,3 +136,20 @@ def test_experiment_log_page(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "## Experiment log" in out and "| E1 | C0 |" in out and "| E1 | C2 |" in out and "| no |" in out
     assert main(["--runs", str(tmp_path / "none"), "--log"]) == 2
+
+
+def _run(case_id, ok, used=(), rejected=()):
+    return SimpleNamespace(result=SimpleNamespace(case_id=case_id, lessons_used=list(used),
+                                                  lessons_rejected=list(rejected)),
+                           score=SimpleNamespace(task_success=ok))
+
+
+def test_lesson_effects_name_the_lessons_in_runs_that_got_worse():
+    before = [_run("H-1", True), _run("H-2", True), _run("H-3", False)]
+    after = [_run("H-1", False, used=["L-a"]), _run("H-2", False), _run("H-3", True, used=["L-a", "L-b"],
+                                                                         rejected=["PM-x"])]
+    fx = lesson_effects(before, after)
+    assert fx["worse_runs"] == 2 and fx["worse_runs_with_lessons"] == 1
+    rows = {x["lesson"]: x for x in fx["lessons"]}
+    assert rows["L-a"] == {"lesson": "L-a", "runs_used": 2, "task_success": 1, "runs_rejected": 0, "in_worse_runs": 1}
+    assert rows["L-b"]["in_worse_runs"] == 0 and rows["PM-x"]["runs_rejected"] == 1 and rows["PM-x"]["runs_used"] == 0

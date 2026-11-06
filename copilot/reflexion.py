@@ -170,6 +170,23 @@ def failed_runs(run_dir: Path, cases_dir: Path = DEV_CASES) -> list[dict[str, An
 
 # ---------- reflection (LLM) ----------
 
+def spend_of(ledger: Any) -> dict[str, Any] | None:
+    """Tokens and US dollars of one reflection (E3 reports what the lessons cost to make); None when unknown."""
+    if ledger is None:
+        return None
+    total = ledger.total
+    return {"tokens": total.tokens, "usd": round(total.usd, 6)}
+
+
+def generation_cost(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """What writing the candidate lessons cost, over every reflection (approved, rejected and failed alike).
+    A reflection whose cost is unknown (a failed call) is counted, never guessed."""
+    known = [r["cost"] for r in rows if r.get("cost")]
+    return {"reflections": len(rows), "with_cost": len(known),
+            "tokens": sum(c.get("tokens", 0) for c in known),
+            "usd": round(sum(c.get("usd", 0.0) for c in known), 6)}
+
+
 async def reflect(run_dir: Path, cases_dir: Path = DEV_CASES, candidates: Path = CANDIDATES,
                   settings: AppSettings | None = None, llm_factory: Any = None) -> list[dict[str, Any]]:
     """Append one pending candidate per failed run not reflected on yet. Returns the new candidates."""
@@ -190,10 +207,11 @@ async def reflect(run_dir: Path, cases_dir: Path = DEV_CASES, candidates: Path =
                 "observed_top": (run["observed"]["hypotheses"] or [None])[0], "status": "pending",
                 "reviewed_by": None, "reason": None, "decided_at": None, "lesson_id": None}
         try:
-            draft, _ = await structured_call(deps, "reflexion", "reflexion", LessonDraft, run)
-            base |= {"lesson": draft.model_dump(mode="json", exclude={"failure_mode"}), "failure_mode": draft.failure_mode}
+            draft, spent = await structured_call(deps, "reflexion", "reflexion", LessonDraft, run)
+            base |= {"lesson": draft.model_dump(mode="json", exclude={"failure_mode"}), "failure_mode": draft.failure_mode,
+                     "cost": spend_of(spent)}
         except HandoffError as exc:       # kept, so the reviewer sees the failure; it can only be rejected or edited
-            base |= {"lesson": None, "failure_mode": "", "reflection_error": str(exc)}
+            base |= {"lesson": None, "failure_mode": "", "reflection_error": str(exc), "cost": None}
         new.append(base)
     write_candidates(candidates, existing + new)
     return new
@@ -319,10 +337,12 @@ async def freeze(candidates: Path = CANDIDATES, out_dir: Path = PLAYBOOK_DIR, st
     digest = playbook_hash(lessons)
     now = datetime.now(timezone.utc)
     reviewers = sorted({l.reviewed_by for l in lessons})
+    cost = generation_cost(rows)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "playbook.json").write_text(json.dumps({
         "playbook_hash": digest, "frozen_at": now.isoformat(), "reviewed_by": reviewers,
         "source_runs": sorted({l.source_incident for l in lessons}),
+        "generation_cost": cost,
         "lessons": [l.model_dump(mode="json") for l in lessons]}, indent=2) + "\n", encoding="utf-8")
     write_rejected(out_dir / "rejected.md", rows)
     (out_dir / "README.md").write_text("\n".join([
@@ -330,7 +350,9 @@ async def freeze(candidates: Path = CANDIDATES, out_dir: Path = PLAYBOOK_DIR, st
         f"- **Hash:** `{digest}`", f"- **Frozen:** {now:%Y-%m-%d %H:%M} UTC",
         f"- **Reviewed by:** {', '.join(reviewers)}",
         f"- **Lessons:** {len(lessons)} approved, {sum(r['status'] == 'rejected' for r in rows)} rejected "
-        "(see `rejected.md`)", "",
+        "(see `rejected.md`)",
+        f"- **Cost of writing the lessons:** {cost['tokens']} tokens, ${cost['usd']:.4f} over {cost['reflections']} "
+        f"reflection(s) ({cost['reflections'] - cost['with_cost']} without a known cost); review time not included", "",
         "Built by `python -m copilot.reflexion` from dev runs only. Every lesson was approved by a person and has "
         "preconditions the graph checks against live telemetry before using it.", "",
         "Held-out and experiment runs read it with `memory: playbook` (read-only). To put it into another Postgres:",

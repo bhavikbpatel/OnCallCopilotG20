@@ -54,7 +54,8 @@ def fake_llm(monkeypatch):
         seen.append(payload)
         if payload["case_id"] == "D-011":
             raise HandoffError("reflexion: malformed output after retry")
-        return schema.model_validate(GOOD | {"failure_mode": "named checkout"}), None
+        return schema.model_validate(GOOD | {"failure_mode": "named checkout"}), base.spend("reflexion", tokens=1200,
+                                                                                           usd=0.0031)
     monkeypatch.setattr(base, "structured_call", call)
     return seen
 
@@ -115,8 +116,14 @@ def test_reflect_writes_one_pending_candidate_per_failed_run(run_dir, tmp_path, 
     assert [c["case_id"] for c in new] == ["D-001", "D-011"] and all(c["status"] == "pending" for c in new)
     assert new[0]["lesson"]["text"] == GOOD["text"] and new[0]["source_run"] == "r1"
     assert new[1]["lesson"] is None and "malformed" in new[1]["reflection_error"]   # kept for the reviewer
+    assert new[0]["cost"] == {"tokens": 1200, "usd": 0.0031} and new[1]["cost"] is None   # E3: cost of the lessons
     assert asyncio.run(reflexion.reflect(run_dir, candidates=cands)) == []          # runs are reflected on once
     assert len(reflexion.jsonl(cands)) == 2
+
+
+def test_generation_cost_adds_every_reflection_and_counts_unknown_ones():
+    rows = [{"cost": {"tokens": 1000, "usd": 0.002}}, {"cost": {"tokens": 500, "usd": 0.001}}, {"cost": None}, {}]
+    assert reflexion.generation_cost(rows) == {"reflections": 4, "with_cost": 2, "tokens": 1500, "usd": 0.003}
 
 
 # ---------- human review ----------
@@ -167,6 +174,7 @@ def test_freeze_writes_the_playbook_and_loads_exactly_it_into_the_store(tmp_path
     lessons, digest = asyncio.run(freeze(cands, out, store=store))
     data = json.loads((out / "playbook.json").read_text())
     assert data["playbook_hash"] == digest == playbook_hash(lessons) and data["reviewed_by"] == ["Rohit"]
+    assert data["generation_cost"] == {"reflections": 2, "with_cost": 0, "tokens": 0, "usd": 0}
     assert digest in (out / "README.md").read_text() and "no checkable precondition" in (out / "rejected.md").read_text()
     exported, store_hash = asyncio.run(LongTermMemory(store).export_playbook())
     assert store_hash == digest and [l.lesson_id for l in exported] == ["L-D-001-001"]   # the stale lesson is withdrawn
