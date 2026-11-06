@@ -525,3 +525,124 @@ def test_runner_uses_the_worked_out_timeout_unless_one_is_given(tmp_path):
     agent = TimedAgent(store)
     run_case(load_case(DEV / "D-001.yaml"), agent, cfg(agent_timeout_s=42), deps)
     assert agent.left == 42
+
+
+def test_preflight_asks_the_agent_whether_it_can_run_the_options():
+    from eval.runner.agents import AGENTS, not_ready as preflight
+
+    class NeedsDb:
+        name, version = "needs-db", "1"
+        options_supported = frozenset({"memory"})
+
+        def options_problem(self, options):
+            return "no database" if options.get("memory") == "playbook" else None
+
+        def run(self, ctx):  # pragma: no cover - never run
+            raise AssertionError
+
+    assert "no database" in preflight(NeedsDb(), options={"memory": "playbook"})
+    assert preflight(NeedsDb(), options={"memory": "off"}) is None
+    assert callable(AGENTS["copilot"])          # registered, imported only when chosen (no LangGraph needed here)
+
+
+def test_every_registered_agent_can_be_configured():
+    """#45 registered "copilot" but RunConfig still allowed only "do-nothing", so the CLI refused it."""
+    from eval.runner.agents import AGENTS
+    for name in AGENTS:
+        assert RunConfig(config_id="X", agent=name).agent == name
+    with pytest.raises(ValueError, match="unknown agent"):
+        RunConfig(config_id="X", agent="nobody")
+
+
+def test_cli_and_experiments_accept_the_copilot_agent(tmp_path, monkeypatch, capsys):
+    from eval.runner import agents as agents_mod
+
+    class StandIn(DoNothingAgent):           # stands in for the copilot: no LangGraph or shop needed here
+        name = "copilot-stand-in"
+
+    monkeypatch.setitem(agents_mod.AGENTS, "copilot", StandIn)
+    store, deps = make(tmp_path)
+    argv = ["--cases", str(DEV), "--only", "D-001", "--config-id", "C", "--agent", "copilot", "--alert-timeout", "300"]
+    assert main(argv, deps=deps) == 0
+    assert "agent copilot-stand-in" in capsys.readouterr().out
+    from eval.runner.experiments import arm_config
+    from eval.schemas.experiment import resolve
+    e1 = resolve("E1")
+    assert arm_config(e1, e1.arm("C2"), agent="copilot").agent == "copilot"
+
+
+# ---------------------------------------------------------------- settle, baseline at rest, late starts (5 Nov)
+
+class Sleeps(Clock):
+    def __init__(self):
+        super().__init__()
+        self.waits = []
+
+    def sleep(self, seconds):
+        self.waits.append(seconds)
+        super().sleep(seconds)
+
+
+def test_next_case_waits_for_the_previous_cases_effect_to_clear(tmp_path):
+    from eval.runner.runner import CLEARED_MARKER
+    store = InMemoryFlagStore(real_flags())
+    clock = Sleeps()
+    deps = RunDeps(prom=ShopProm(store), injector=SyncInjector(store), results_dir=tmp_path, clock=clock,
+                   sleep=clock.sleep)
+    run_case(load_case(DEV / "D-001.yaml"), DoNothingAgent(), cfg(), deps)
+    first_waits = list(clock.waits)
+    cleared = float((tmp_path / CLEARED_MARKER).read_text())
+    assert cleared == clock.t                                    # marked when the flags were cleared
+    clock.waits.clear()
+    run_case(load_case(DEV / "D-001.yaml"), DoNothingAgent(), cfg(), deps)
+    assert clock.waits[0] == 180                                 # the full settle, right after the last clear
+    assert 180 not in first_waits[:1]                            # the first case had nothing to wait for
+    clock.t += 1000                                              # long after: no wait
+    clock.waits.clear()
+    run_case(load_case(DEV / "D-001.yaml"), DoNothingAgent(), cfg(settle_s=180), deps)
+    assert clock.waits[0] != 180
+
+
+class BusyProm(ShopProm):
+    """Checkout's error rate is still high from an earlier fault for the first `busy` baseline readings."""
+
+    def __init__(self, store, busy):
+        super().__init__(store)
+        self.busy = busy
+
+    def query_value(self, expr, at=None):
+        if expr == signals.promql("error_rate", "checkout") and self.busy > 0 and not self.on():
+            self.busy -= 1
+            return 0.6
+        return super().query_value(expr, at)
+
+
+def test_baseline_still_high_is_measured_again_after_settling(tmp_path):
+    store, deps = make(tmp_path)
+    deps.prom = BusyProm(store, busy=3)                    # one full baseline (3 readings) still elevated
+    result, _ = run_case(load_case(DEV / "D-001.yaml"), DoNothingAgent(), cfg(), deps)
+    assert result.status == "completed" and result.recovery.checked
+
+
+def test_shop_not_at_rest_is_an_error_not_a_silent_miss(tmp_path):
+    store, deps = make(tmp_path)
+    deps.prom = BusyProm(store, busy=999)
+    result, _ = run_case(load_case(DEV / "D-001.yaml"), DoNothingAgent(), cfg(), deps)
+    assert result.status == "error" and "not at rest" in result.error and "still in the window" in result.error
+    assert all_at_rest(store)
+
+
+def test_alert_wait_counts_from_the_latest_fault_start():
+    from eval.runner.runner import latest_start
+    assert latest_start(load_case(DEV / "D-008.yaml")) == 120       # adFailure starts 120 s late
+    assert latest_start(load_case(DEV / "D-020.yaml")) == 120
+    assert latest_start(load_case(DEV / "D-016.yaml")) == 30        # the load flood's start
+    assert latest_start(load_case(DEV / "D-002.yaml")) == max(f.start_after_s for f in load_case(DEV / "D-002.yaml").faults)
+
+
+def test_unfireable_rules():
+    from eval.runner.runner import unfireable
+    assert unfireable({"signal": "error_rate", "value": 0.0, "rps": 1.0}) is None
+    assert "can never be reached" in unfireable({"signal": "error_rate", "value": 0.95, "rps": 1.0})
+    assert "still in the window" in unfireable({"signal": "error_rate", "value": 0.2, "rps": 1.0})
+    assert unfireable({"signal": "consumer_lag", "value": 5000, "rps": 1.0}) is None      # only ratios are judged

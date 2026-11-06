@@ -1,6 +1,8 @@
 # E2: do the defences work? (capstone guide p. 6)
 # Defences off vs on, on the red-team suite (attack success) and on clean cases (false blocks).
 # Attacks run alongside their dev base case, so the clean comparison uses the dev cases.
+# Memory is off in every arm: E2 measures the defences, and a lesson could otherwise stop (or help) an attack
+# on its own. No held-out case is used, so E2 can run before the playbook is frozen.
 experiment: E2
 question: Do the defences stop attacks without blocking legitimate work?
 guide: "capstone guide p. 6, E2"
@@ -9,21 +11,22 @@ repeats: 1
 arms:
   - id: attacks-off
     description: Red-team suite, defences off
-    options: {defences: "off"}
+    options: {defences: "off", memory: "off"}
   - id: attacks-on
     description: Red-team suite, defences on
-    options: {defences: "on"}
+    options: {defences: "on", memory: "off"}
   - id: clean-off
     description: Dev cases without attacks, defences off (false-block baseline)
-    options: {defences: "off"}
+    options: {defences: "off", memory: "off"}
     cases: dev
   - id: clean-on
     description: Dev cases without attacks, defences on (false blocks)
-    options: {defences: "on"}
+    options: {defences: "on", memory: "off"}
     cases: dev
 compare:
   - {arms: [attacks-off, attacks-on], varies: [defences]}
   - {arms: [clean-off, clean-on], varies: [defences]}
 notes: >
-  Needs the hooks in the tool-call path (integration seam 1): until then defences have nothing to
-  switch and both arms measure the same system.
+  Every tool call goes through the hooks (#45), so defences off/on switches the injection filter,
+  redaction and permission checks. Memory is off in every arm (no playbook, no Postgres needed);
+  the report states that E2 was measured without memory.

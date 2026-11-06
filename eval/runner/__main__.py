@@ -40,6 +40,8 @@ def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
                                         "and agent options come from its file")
     p.add_argument("--arm", help="with --experiment: comma-separated arm IDs (default: every arm not reused)")
     p.add_argument("--plan", action="store_true", help="with --experiment: print runs per arm and hours; run nothing")
+    p.add_argument("--rehearse", action="store_true",
+                   help="with --experiment: dev rehearsal of every arm (eval/runner/experiments.py REHEARSAL_CASES)")
     p.add_argument("--minutes-per-run", type=float, default=20.0, help="with --plan (default 20)")
     p.add_argument("--experiments-dir", default=str(EXPERIMENTS_DIR))
     p.add_argument("--agent", default="do-nothing", choices=sorted(AGENTS))
@@ -63,8 +65,8 @@ def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
     else:
         if args.cases is None or args.config_id is None:
             p.error("--cases and --config-id are required (or use --experiment)")
-        if args.arm or args.plan:
-            p.error("--arm and --plan need --experiment")
+        if args.arm or args.plan or args.rehearse:
+            p.error("--arm, --plan and --rehearse need --experiment")
         args.max_tool_calls = 20 if args.max_tool_calls is None else args.max_tool_calls
         args.repeats = 1 if args.repeats is None else args.repeats
     return args
@@ -133,13 +135,13 @@ def experiment_main(args, deps: Optional[RunDeps]) -> int:
     try:
         exp = resolve(args.experiment, Path(args.experiments_dir))
         if args.plan:
-            print(format_plan(plan(exp, minutes_per_run=args.minutes_per_run)))
+            print(format_plan(plan(exp, minutes_per_run=args.minutes_per_run, rehearsal=args.rehearse)))
             return 0
         agent = AGENTS[args.agent]()
         arm_ids = _split(args.arm)
         arms = [exp.arm(i) for i in arm_ids] if arm_ids else [a for a in exp.arms if a.reuse is None]
         for arm in arms:
-            why = None if arm.reuse else not_ready(agent, options=arm_config(exp, arm).options)
+            why = None if arm.reuse else not_ready(agent, options=arm_config(exp, arm, rehearsal=args.rehearse).options)
             if why:
                 raise ValueError(f"{exp.experiment}/{arm.id}: {why}")
     except (ValueError, KeyError, OSError) as exc:
@@ -151,7 +153,7 @@ def experiment_main(args, deps: Optional[RunDeps]) -> int:
             return 2
     try:
         entries = run_experiment(exp, arm_ids, agent, deps, run_batch=run_batch, only=_split(args.only),
-                                 on_result=show, agent=args.agent, approval=args.approval,
+                                 on_result=show, agent=args.agent, approval=args.approval, rehearsal=args.rehearse,
                                  agent_timeout_s=args.agent_timeout, alert_timeout_s=args.alert_timeout)
     except KeyboardInterrupt:
         print("\ninterrupted: flags cleared; partial results, summary and experiment-log line written",

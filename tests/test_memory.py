@@ -138,10 +138,12 @@ async def test_frozen_playbook_is_read_only_and_hash_stable():
     lessons, h = await src.export_playbook()
     assert h == playbook_hash(lessons)
 
-    target = LongTermMemory(store, run_id="heldout")
+    target = LongTermMemory(store)                          # the freeze step: the shared, unprefixed playbook
     await target.load_playbook(lessons)
-    frozen = LongTermMemory(store, run_id="heldout", read_only=True)
+    # every evaluation run has its own run_id; a frozen (read-only) reader still finds the shared playbook
+    frozen = LongTermMemory(store, run_id="E3-after-D-001-r1-20261107T090000Z", read_only=True)
     assert (await frozen.export_playbook())[1] == h
+    assert [l.lesson_id for l in await LongTermMemory(store, run_id="E3-after-D-002-r1").list_lessons()] == []
     with pytest.raises(MemoryReadOnlyError):
         await frozen.save_lesson(l007())
 

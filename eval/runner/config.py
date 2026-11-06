@@ -3,20 +3,25 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     config_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")   # e.g. "E1-C2"; used in file names
-    agent: Literal["do-nothing"] = "do-nothing"
+    agent: str = "do-nothing"                     # a name in eval/runner/agents.py AGENTS (e.g. "copilot")
     approval: Literal["approve", "reject"] = "approve"
     max_tool_calls: int = Field(20, gt=0)
     # None: worked out per case from the graph's verify windows (eval/runner/timeouts.py); a number fixes it.
     agent_timeout_s: Optional[float] = Field(None, gt=0)
     step_allowance_s: float = Field(300, gt=0)    # per attempt, besides waiting for recovery
-    alert_timeout_s: float = Field(420, gt=0)     # kafka lag needs ~5 min to build
+    alert_timeout_s: float = Field(420, gt=0)     # kafka lag needs ~5 min to build; counted from the fault's start
+    # Before measuring a case's baselines, wait this long after the previous case's flags were cleared, so its
+    # effect has left Prometheus's 2-minute windows (a fault the agent did not fix otherwise inflates the next
+    # case's "normal" level, and its alert can never fire: "error_rate ... never reached 1.05").
+    settle_s: float = Field(180, ge=0)
+    baseline_retries: int = Field(2, ge=0)        # re-measure (after settle_s) a baseline the alert could never pass
     baseline_readings: int = Field(3, ge=1)
     poll_s: float = Field(30, gt=0)
     repeats: int = Field(1, ge=1)
@@ -26,3 +31,11 @@ class RunConfig(BaseModel):
     experiment: Optional[str] = None
     arm: Optional[str] = None
     config_hash: Optional[str] = None
+
+    @field_validator("agent")
+    @classmethod
+    def _known_agent(cls, v: str) -> str:
+        from .agents import AGENTS                # imported here: agents.py must not depend on this module
+        if v not in AGENTS:
+            raise ValueError(f"unknown agent {v!r}; expected one of {sorted(AGENTS)}")
+        return v

@@ -1,4 +1,4 @@
-// GitHub Codespaces / VS Code Dev Containers: runs the whole stack (README, Option C)
+// GitHub Codespaces / VS Code Dev Containers: runs the whole stack (README, Option D)
 // on a 16 GB cloud machine instead of the laptop. Docker runs inside the codespace.
 {
   "name": "On-Call Copilot",

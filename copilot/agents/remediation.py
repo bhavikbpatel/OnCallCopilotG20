@@ -14,6 +14,7 @@ from pydantic import BaseModel, TypeAdapter
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
 from copilot.clients import ToolError
 from copilot.deps import CopilotDeps
+from copilot.hooked_toolbox import with_role
 from copilot.memory.views import remediation_view
 from copilot.policy import is_allowed
 from copilot.state import (
@@ -71,11 +72,12 @@ def make_propose_action(deps: CopilotDeps):
 
 
 def make_dry_run(deps: CopilotDeps):
+    @with_role("remediation")
     @guarded("dry_run")
     async def dry_run(state: IncidentState) -> dict[str, Any]:
         action = state["proposed_action"]
         result = await deps.ops.dry_run(action)
-        return {"dry_run": result, "budget": spend("remediation", tool_calls=1),
+        return {"dry_run": result, "budget": spend("remediation", code_calls=1),      # code-driven: not budgeted
                 "timeline": [event("dry_run", "action", f"Dry run: {result.would_do}")]}
     return dry_run
 
@@ -153,6 +155,7 @@ def mint_token(action: Action, digest: str, decided_by: str, shown_hash: str) ->
 
 
 def make_execute(deps: CopilotDeps):
+    @with_role("remediation")
     async def execute(state: IncidentState) -> dict[str, Any]:
         action, approval = state["proposed_action"], state["approval"]
         purpose = state.get("action_purpose", "fix")
@@ -160,10 +163,10 @@ def make_execute(deps: CopilotDeps):
             result = await deps.ops.execute(action, approval.token)
         except ToolError as exc:
             reason = f"execute failed: {exc}"
-            return {"escalation_reason": reason, "budget": spend("remediation", tool_calls=1),
+            return {"escalation_reason": reason, "budget": spend("remediation", code_calls=1),
                     "timeline": [event("execute", "escalate", reason)]}
 
-        update: dict[str, Any] = {"budget": spend("remediation", tool_calls=1)}
+        update: dict[str, Any] = {"budget": spend("remediation", code_calls=1)}   # the approved write: code, not budgeted
         if purpose == "rollback":
             # Our fix did not help and is now undone → refute the hypothesis it was based on, then replan.
             prev = state["outcome"]
@@ -242,6 +245,7 @@ async def _measure(deps: CopilotDeps, state: IncidentState) -> tuple[float | Non
 
 
 def make_verify(deps: CopilotDeps):
+    @with_role("remediation")
     async def verify(state: IncidentState) -> dict[str, Any]:
         """Code decides recovery. Never rolls back on missing data: too little traffic → escalate."""
         alert, s = state["alert"], deps.settings

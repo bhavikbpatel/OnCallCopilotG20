@@ -31,6 +31,7 @@ different model family only scores what code cannot.
 | `adversarial/`, `schemas/attack.py`, `checkers/attacks.py` | Red team (E2): attack format; HTTP delivery of hostile text into the shop's logs and traces; attack success, influence and false-block checks; `check` (counts only) and `probe` commands. Attacks themselves are private | done |
 | `judge/` | LLM judge for status-note quality and evidence support (anchored rubric, OpenRouter, different model family, structured output, fallback model); postmortem-timeline code check; blind labelling sheet; Cohen's kappa, quadratic-weighted and unweighted (dev outputs only) | built; calibration waits for 20+ dev runs |
 | `experiments/`, `schemas/experiment.py`, `runner/experiments.py` | E1–E4 as config files (arms, comparisons, cases, repeats), checked for fair comparisons and identical shared arms; run arm by arm by the same runner, with an experiment log | done; real arms need the copilot agent |
+| `report/` | Tables for the evaluation report from the runner's batches: every configuration's task success, policy violations, attack success, false blocks, cost per case, median and p95 latency, errors and spread across repeats; root cause top-1/top-3 by fault type and service, time to diagnose and to recover, tool calls, correct action, verified recovery, harmful and unnecessary actions; E1–E4 comparisons from the experiment log. Aggregates only | done |
 | `tests/` | pytest for everything above | done |
 | `results/` | Run outputs. Git-ignored | — |
 
@@ -111,12 +112,27 @@ intermittent fault cannot come back after a correct fix (the release is kept in 
 Agents: `do-nothing` (floor baseline). Person 2's graph plugs in as another agent in
 `runner/agents.py` (alert in, approvals through `ctx.approve`, final state out).
 
+## Report tables
+
+```bash
+python -m eval.report --out mywork/tables.md                 # every batch under eval/results/runs
+python -m eval.report --batch DEV-C2-20261104T151001Z        # one batch
+python -m eval.report --experiments --out mywork/e1-e4.md    # E1-E4 arms from the experiment log
+python -m eval.report --log --out mywork/experiment-log.md   # the experiment log (a required deliverable)
+```
+
+Failed, errored and timed-out runs stay in every denominator. Root-cause and action rates count incident cases
+only. Times come from the run's own timeline, from the moment the agent got the alert: time to diagnose (the
+commander converging, or triage calling noise), time to recover (the independent recovery reading). Held-out
+runs need `EVAL_PRIVATE_DIR` for their fault types; only aggregates are printed.
+
 ## Experiments (E1–E4)
 
 ```bash
 python -m eval.runner --experiment E1 --plan               # runs per arm, shared arms, hours (counts only)
 python -m eval.runner --experiment E4 --arm memory-off     # one arm
 python -m eval.runner --experiment E2                      # every arm that is not reused
+python -m eval.runner --experiment E1 --rehearse           # dev rehearsal: every arm once on 5 dev cases
 ```
 
 `eval/experiments/E1.yaml` ... `E4.yaml` describe each experiment from the capstone guide (pp. 5–6, 14):
@@ -128,7 +144,7 @@ comparison varies, and that an arm that `reuse`s another (E1's C2 is also E3's "
 | Exp | Arms | Cases | Repeats |
 |---|---|---|---|
 | E1 | C0, C1, C2 | held-out | 3 (the final held-out comparison) |
-| E2 | defences off / on | red team; dev cases for false blocks | 1 |
+| E2 | defences off / on, memory off in every arm | red team; dev cases for false blocks | 1 |
 | E3 | before (no memory) / after (playbook) | held-out | reuses E4 and E1 |
 | E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 |
 

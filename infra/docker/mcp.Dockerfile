@@ -9,6 +9,6 @@ COPY copilot ./copilot
 COPY eval ./eval
 COPY mcp_servers ./mcp_servers
 COPY config ./config
-RUN pip install --no-cache-dir ".[serve]"
+RUN pip install --no-cache-dir .
 
 ENV PYTHONUNBUFFERED=1

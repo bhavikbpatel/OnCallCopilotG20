@@ -26,6 +26,8 @@ class AppSettings(BaseModel):
         "runbook": ModelConfig(model="openai/gpt-5-mini"),
         "remediation": ModelConfig(model="openai/gpt-5-mini"),
         "comms": ModelConfig(model="openai/gpt-5-mini"),
+        "single_agent": ModelConfig(model="openai/gpt-5-mini"),
+        "reflexion": ModelConfig(model="openai/gpt-6-luna", temperature=0.2),
     })
     llm_base_url: str = "https://openrouter.ai/api/v1"   # OpenRouter; env OPENAI_BASE_URL overrides
     prompts_dir: Path = ROOT / "config" / "prompts"
@@ -43,6 +45,7 @@ class AppSettings(BaseModel):
     verify_settle_s: int = 90           # errors before this point after the fix are ignored (eval settle_s)
     follow_up_signals: list[str] = Field(default_factory=list)   # signals that can need a 2nd step (memory)
     verify_min_requests: int = 5        # fewer requests since the fix → too little traffic to judge
+    architecture: str = "C2"            # E1: C0 fixed workflow | C1 single agent | C2 team (copilot/graph.py)
     review_enabled: bool = True         # False on held-out runs: nothing is written to long-term memory
     memory_read_only: bool = False      # True after the playbook is frozen (E3)
     config_hash: str = ""
@@ -54,4 +57,17 @@ def load_settings(path: Path | str = DEFAULT_CONFIG) -> AppSettings:
         return AppSettings()
     raw = path.read_bytes()
     data = yaml.safe_load(raw) or {}
-    return AppSettings(**data, config_hash=hashlib.sha256(raw).hexdigest()[:12])
+    settings = AppSettings(**data)
+    return settings.model_copy(update={"config_hash": config_hash(raw, settings)})
+
+
+def config_hash(app_yaml: bytes, settings: AppSettings) -> str:
+    """The agent's version for result lines: app.yaml plus every prompt and the permissions, so a prompt or
+    permission change gives a new version (E3: the agent is tagged before held-out runs). The frozen playbook
+    lives in Postgres and is tagged separately when it is frozen."""
+    h = hashlib.sha256(app_yaml)
+    files = sorted(Path(settings.prompts_dir).glob("*.yaml")) + [Path(settings.permissions_path)]
+    for f in files:
+        if f.is_file():
+            h.update(f.name.encode() + b"\0" + f.read_bytes())
+    return h.hexdigest()[:12]

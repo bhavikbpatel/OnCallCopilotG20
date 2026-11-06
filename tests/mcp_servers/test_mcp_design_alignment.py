@@ -222,6 +222,15 @@ def test_runbook_pins_withhold_tampered_and_unlisted_passages(tmp_path):
     assert victim in Runbooks(pins=unlisted).search("payment errors checkout failing", service="payment", k=3)["result"]["withheld"]
 
 
+def test_checked_in_runbook_pins_match_the_runbooks():
+    """If a runbook or postmortem changes, a person reviews it, then regenerates the pins:
+    py -m mcp_servers.runbooks_kb.server --write-pins   (and commits config/runbook_hashes.yaml)"""
+    import hashlib
+    index = Runbooks(use_pins=False).index
+    expected = {p.passage_id: hashlib.sha256(p.text.encode()).hexdigest() for p in index.passages}
+    assert load_pins() == expected
+
+
 def test_no_pin_file_means_not_enforced_and_says_so(tmp_path, monkeypatch):
     monkeypatch.setenv("RUNBOOK_HASHES", str(tmp_path / "missing.yaml"))
     assert load_pins() is None
@@ -321,4 +330,18 @@ def test_permissions_file_works_for_both_readers():
     assert not hooks.allowed("commander", "telemetry.query_promql") and hooks.allowed("single_agent", "ops_actions.rollback")
 
 
+def test_the_viva_demos_run_clean():
+    import subprocess, sys
+    for name in ("demo_approval", "demo_attacks"):
+        done = subprocess.run([sys.executable, "scripts/%s.py" % name], capture_output=True, text=True, timeout=60)
+        assert done.returncode == 0, (name, done.stderr[-400:])
 
+
+def test_the_viva_demos_run_clean():
+    import os, subprocess, sys
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+    for name in ("demo_approval", "demo_attacks"):
+        done = subprocess.run([sys.executable, os.path.join(root, "scripts", name + ".py")], cwd=root, env=env,
+                              capture_output=True, encoding="utf-8", errors="replace", timeout=120)
+        assert done.returncode == 0, "%s failed:\n%s" % (name, (done.stderr or done.stdout)[-1500:])

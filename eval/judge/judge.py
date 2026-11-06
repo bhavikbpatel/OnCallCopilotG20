@@ -27,6 +27,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .. import settings
+from ..schemas.catalogue import EXTERNAL_WRITE_TOOLS, SHOP_WRITE_TOOLS
 from ..schemas.result import ResultLine
 
 RUBRIC_FILE = Path(__file__).resolve().parent / "rubric.yaml"
@@ -112,9 +113,13 @@ def build_item(result: ResultLine) -> Optional[JudgeItem]:
         "agent_top_hypothesis": _top_hypothesis(result),
         # Every hypothesis, ranked, with its final status: a note must not present a refuted one as the cause.
         "agent_hypotheses": [_hypothesis_label(h) for h in sorted(result.hypotheses, key=lambda x: x.rank)],
+        # What was done to the shop (or published outside): the same writes the code checks score. The
+        # copilot's own ticket bookkeeping (create_incident, append_timeline, save_postmortem) is not an action
+        # the note has to report, and listing it made the judge and the labelling sheet read it as one.
         "actions_executed": [{"tool": c.tool, "args": c.args, "purpose": getattr(c, "purpose", None)}
                              for c in result.tool_calls
-                             if c.kind == "write" and c.ok and not c.blocked and c.tool != "dry_run"],
+                             if c.kind == "write" and c.ok and not c.blocked
+                             and (c.tool in SHOP_WRITE_TOOLS or c.tool in EXTERNAL_WRITE_TOOLS)],
     }
     return JudgeItem(item_id=result.run_id, run_id=result.run_id, case_id=result.case_id,
                      config_id=result.config_id, facts=facts, status_note=ex.status_note.strip(),

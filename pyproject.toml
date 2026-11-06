@@ -6,8 +6,10 @@ dependencies = [
     "langchain>=0.3",
     "langchain-openai>=0.3",
     "langchain-mcp-adapters>=0.1",
-    # mcp 2.x removed mcp.shared.context.RequestContext, which langchain-mcp-adapters 0.3 imports.
-    "mcp>=1.9,<2",
+    # fastmcp 4 pulls mcp 2.x, which langchain-mcp-adapters 0.3 cannot import; keep both pins until the client
+    # moves off langchain-mcp-adapters (integration note, seam 6). Exact pin for fastmcp, as its docs advise.
+    "fastmcp==2.14.7",
+    "mcp>=1.27,<2",
     "langgraph>=0.4",
     "langgraph-checkpoint-postgres>=2.0",
     "psycopg[binary,pool]>=3.2",
@@ -17,9 +19,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "fastmcp>=2.10,<3", "prometheus-client>=0.21"]
-# MCP servers in Docker (infra/docker/mcp.Dockerfile). fastmcp 3+ needs mcp 2.x (see above).
-serve = ["fastmcp>=2.10,<3"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "prometheus-client>=0.21"]
 # copilot/metrics.py: /metrics for Prometheus (COPILOT_METRICS_PORT)
 metrics = ["prometheus-client>=0.21"]
 
@@ -32,4 +32,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["copilot*", "eval*"]
+include = ["copilot*", "eval*", "mcp_servers*"]

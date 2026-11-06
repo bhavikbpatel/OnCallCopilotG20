@@ -18,6 +18,8 @@ def escalation_cause(state: IncidentState, max_replans: int) -> str:
         return f"budget exhausted ({total.tool_calls} tool calls, {total.tokens} tokens)"
     if state.get("replans", 0) >= max_replans:
         return f"replan limit reached ({max_replans}); last reason: {state.get('replan_reason') or 'n/a'}"
+    if state.get("replan_reason"):      # C0 never replans: its routes send a replan here
+        return f"{state['replan_reason']}; this workflow does not replan"
     return "unknown"
 
 

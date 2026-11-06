@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from eval.runner import DoNothingAgent, run_batch
 from eval.runner.__main__ import main
 from eval.runner.agents import not_ready
-from eval.runner.experiments import LOG_NAME, arm_config, arm_inputs, format_plan, plan, run_experiment
+from eval.runner.experiments import LOG_NAME, _playbook_hash, arm_config, arm_inputs, format_plan, plan, run_experiment
 from eval.schemas.experiment import EXPERIMENTS_DIR, Experiment, load_experiment, load_experiments, resolve
 from eval.tests.test_runner import DEV, all_at_rest, make
 
@@ -278,3 +278,73 @@ def test_cli_refuses_mixed_or_missing_arguments():
 
 def test_repo_experiment_files_are_in_the_experiments_folder():
     assert sorted(p.name for p in EXPERIMENTS_DIR.glob("E*.yaml")) == ["E1.yaml", "E2.yaml", "E3.yaml", "E4.yaml"]
+
+
+def test_e2_runs_without_memory_so_it_needs_no_playbook():
+    """E2 measures the defences: memory is off in every arm (the same in both arms of each comparison)."""
+    e2 = resolve("E2")
+    assert {e2.settings(a)["memory"] for a in e2.arms} == {"off"}
+    assert all(arm_config(e2, a).options["memory"] == "off" for a in e2.arms)
+    assert {e2.settings(a)["cases"] for a in e2.arms} <= {"dev", "attacks"}      # never held-out
+
+
+# ---------------------------------------------------------------- dev rehearsal (Sprint Backlog: E1-E4 on dev cases)
+
+def test_rehearsal_moves_held_out_arms_to_the_rehearsal_dev_cases():
+    from eval.runner.experiments import REHEARSAL_CASES, arm_settings
+    e1, e4 = resolve("E1"), resolve("E4")
+    s = arm_settings(e1, e1.arm("C0"), rehearsal=True)
+    assert s["cases"] == "dev" and s["only"] == list(REHEARSAL_CASES) and s["repeats"] == 1
+    assert arm_settings(e1, e1.arm("C2"), rehearsal=True)["memory"] == "on"       # no frozen playbook yet
+    assert arm_settings(e4, e4.arm("misleading-on"), rehearsal=True)["only"] == ["D-011"]   # an arm's own cases stay
+    assert arm_settings(e1, e1.arm("C0")) == e1.settings(e1.arm("C0"))             # not rehearsing: unchanged
+    cases, _ = arm_inputs(e1, e1.arm("C1"), rehearsal=True)
+    assert [c.case_id for c in cases] == list(REHEARSAL_CASES)
+    assert all((DEV / f"{c}.yaml").is_file() for c in REHEARSAL_CASES)
+
+
+def test_rehearsal_config_is_named_and_hashed_apart():
+    e1 = resolve("E1")
+    real, dev = arm_config(e1, e1.arm("C2")), arm_config(e1, e1.arm("C2"), rehearsal=True)
+    assert dev.config_id == "E1-C2-DEV" and dev.repeats == 1 and dev.options["memory"] == "on"
+    assert dev.config_hash != real.config_hash
+
+
+def test_rehearsal_attack_arms_keep_attacks_on_rehearsal_cases(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    import eval.runner.experiments as X
+    fake = [SimpleNamespace(attack_id="A1", base_case="D-001"), SimpleNamespace(attack_id="A2", base_case="D-002")]
+    monkeypatch.setattr(X, "load_attacks", lambda folder: list(fake))
+    (tmp_path / "redteam").mkdir()
+    e2 = resolve("E2")
+    _, attacks = arm_inputs(e2, e2.arm("attacks-on"), private_dir=tmp_path, rehearsal=True)
+    assert [a.attack_id for a in attacks] == ["A1"]
+    _, attacks = arm_inputs(e2, e2.arm("attacks-on"), private_dir=tmp_path)
+    assert [a.attack_id for a in attacks] == ["A1", "A2"]
+
+
+def test_rehearsal_runs_are_logged_as_rehearsal_and_kept_out_of_the_results(tmp_path):
+    from eval.report import case_index, experiments_markdown
+    store, deps = make(tmp_path)
+    exps = load_experiments(dev_experiments(tmp_path))
+    entries = run_experiment(exps["E1"], ["C2"], DoNothingAgent(), deps, run_batch=run_batch, say=lambda s: None,
+                             rehearsal=True, alert_timeout_s=300)
+    assert entries[0]["config_id"] == "E1-C2-DEV" and entries[0]["rehearsal"] is True
+    log = [json.loads(x) for x in (tmp_path / LOG_NAME).read_text().splitlines()]
+    cases = case_index([DEV])
+    assert "| C2 | not run |" in experiments_markdown(exps, log, cases)              # not a result
+    assert "| C2 | 1 |" in experiments_markdown(exps, log, cases, rehearsal=True)
+
+
+def test_cli_rehearse_needs_an_experiment(tmp_path):
+    with pytest.raises(SystemExit):
+        main(["--cases", str(DEV), "--config-id", "X", "--rehearse"])
+    assert main(["--experiment", "E1", "--plan", "--rehearse"]) == 0
+
+
+def test_playbook_arms_log_the_frozen_playbook_hash(tmp_path):
+    pb = tmp_path / "playbook.json"
+    assert _playbook_hash("playbook", pb) is None                       # not frozen yet: nothing is claimed
+    pb.write_text(json.dumps({"playbook_hash": "ab" * 32, "lessons": []}))
+    assert _playbook_hash("playbook", pb) == "ab" * 32
+    assert _playbook_hash("off", pb) is None and _playbook_hash("on", pb) is None

@@ -116,6 +116,12 @@ Run each with `MCP_TRANSPORT=http MCP_HOST=0.0.0.0`. All of them need `APPROVAL_
 
 Failures are `{ok: false, error: {code, message}}`, which her `_parse` turns into `ToolError`.
 
+## Hooks on the graph's tool calls
+Every tool call, code-driven or model-driven, goes through one `Hooks` per incident (`Hooks.acall`): role permission, approval token, budget and loop checks before; injection filter, redaction and logging after. The routing is Person 2's (`copilot/toolctx.py`: `McpToolbox.call`, `for_agent`, the node wrapper in `graph.py`, `run_incident`); the checks are in `copilot/hooks.py`. Calls the graph makes itself (verify polling) are logged with `driver: "code"` and are not budgeted. The defences follow `defences:` in `config/app.yaml` or `COPILOT_DEFENCES`. To run the servers locally and try them, see `docs/run-mcp-servers-locally.md`.
+
+## Runbook pins
+`config/runbook_hashes.yaml` holds the sha256 of every reviewed runbook/postmortem passage; a passage that differs or is not listed is withheld (`pin_check: on`). A test fails if the runbooks change without new pins. After a person reviews the change: `py -m mcp_servers.runbooks_kb.server --write-pins`, then commit the file.
+
 ## Failing loudly
 Tools refuse bad input with a named error instead of guessing (no placeholder alert names, no silently replaced timestamps). The one deliberate exception is alert data from outside (an unknown service): the incident still opens and the result carries a warning. Log-sink failures are counted in `Hooks.costs()["sink_errors"]`. Severity is stored in the eval form (`SEV-2`); the graph's `SEV2` is accepted and normalised.
 

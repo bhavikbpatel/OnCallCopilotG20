@@ -15,7 +15,8 @@ On-Call Copilot takes a firing alert, works out from live telemetry which servic
 
 - Python **3.11+** (tested on 3.14)
 - An **OpenRouter** API key (https://openrouter.ai/keys) with these models allowed in your workspace guardrails: `openai/gpt-6-luna`, `openai/gpt-5-mini`
-- Optional: Postgres, for a persistent checkpointer and memory store (in-memory is used if not set)
+- Postgres 16, for a persistent checkpointer and memory store: needed for the frozen playbook (`memory: playbook`)
+  and `python -m copilot.reflexion freeze` / `load`; in-memory is used if `POSTGRES_DSN` is not set. See below.
 
 ### Install
 
@@ -31,6 +32,23 @@ source .venv/bin/activate
 
 pip install -e ".[dev]"
 ```
+
+### Postgres (long-term memory, frozen playbook)
+
+Either way, put the DSN in `.env` and check it with `python scripts/check_postgres.py` (creates the tables, then a
+write / read / delete).
+
+- **Docker:** `docker compose -f compose.postgres.yaml up -d` with `POSTGRES_PASSWORD` in `.env`, then
+  `POSTGRES_DSN=postgresql://oncall:<password>@localhost:5432/oncall`.
+- **Windows without Docker or admin rights** (portable binaries):
+  1. Download `postgresql-16.x-1-windows-x64-binaries.zip` from https://www.enterprisedb.com/download-postgresql-binaries
+     and unzip it to `%USERPROFILE%` (gives `%USERPROFILE%\pgsql`).
+  2. `%USERPROFILE%\pgsql\bin\initdb -D %USERPROFILE%\pgsql-data -U postgres -W -A scram-sha-256 -E UTF8`
+  3. `powershell -File scripts\postgres.ps1 start` (also `stop`, `status`; run `start` again after a reboot).
+  4. `psql -h localhost -U postgres -c "CREATE ROLE oncall LOGIN PASSWORD '<password>'" -c "CREATE DATABASE oncall OWNER oncall"`
+
+On Windows the code uses a selector event loop whenever `POSTGRES_DSN` is set (psycopg cannot use the default
+Proactor loop). A test against a real Postgres is opt-in: `COPILOT_PG_TESTS=1 pytest tests/test_postgres_playbook.py`.
 
 ### Configure secrets
 
@@ -107,7 +125,22 @@ async with copilot_runtime() as rt:                       # loads .env, connects
 
 Resume payloads: `ApprovalDecision` at the approval gate and `ReviewDecision` at the review gate (both in `copilot/state.py`).
 
-### Option C — Everything in Docker (shop, MCP servers, monitoring)
+### Option C — Evaluation runs (`run_incident`)
+
+```python
+from copilot.run import run_incident, CopilotAgent        # CopilotAgent: eval/runner's Agent protocol
+result = await run_incident(alert, approve, run_id="E1-C2-D-001-r1", limits=BudgetLimits(tool_calls=20),
+                            options={"architecture": "C2", "memory": "off", "defences": "on", "review_enabled": False})
+result.final_state, result.tool_calls, result.fixed_at, result.budget_exhausted
+```
+
+- `approve(flat_action) -> {"decision", "decided_by", "payload_hash"}`; the gate mints the token (needs `APPROVAL_SECRET`).
+- Every tool call, code-driven or model-driven, goes through one `Hooks` per incident, so `tool_calls` is the full
+  hooks log (`driver: code` for verify polling, outside the budget).
+- `architecture`: `C0` fixed workflow (runbook by alert name → its typed fix), `C1` one agent with all read tools,
+  `C2` the team. Also selectable with `architecture:` in `config/app.yaml`.
+
+### Option D — Everything in Docker (shop, MCP servers, monitoring)
 
 One command starts the Astronomy Shop (pinned submodule, 3.1.0), its Prometheus, Grafana, Jaeger and
 OpenSearch, the four MCP servers on the ports in `config/mcp_servers.yaml`, and Alertmanager:
@@ -136,6 +169,9 @@ about 30 hours on this machine.
 | Grafana (shop dashboards + "On-Call Copilot" folder) | http://localhost:8080/grafana |
 | Prometheus / Alertmanager | http://localhost:9090 , http://localhost:9093 |
 | MCP servers | http://localhost:8101/mcp … 8104/mcp (localhost only) |
+
+Postgres for the copilot (`compose.postgres.yaml`, above) is a separate file; it shares the project name, so
+Compose may list it as an orphan. That is harmless: do not pass `--remove-orphans`.
 
 `set_flag` works from the container. `restart_service`, `scale_service` and `rollback` need the actuator
 sidecar (`ACTUATOR_URL`, not built yet) and return an executor error in Docker until then.
