@@ -396,6 +396,35 @@ def configs_markdown(reports: list[dict]) -> str:
     return "\n".join(parts) + "\n"
 
 
+def common_case_runs(arm_runs: dict[str, Optional[list[Run]]], arms: list[str]
+                     ) -> Optional[tuple[set[str], dict[str, list[Run]]]]:
+    """When compared arms ran on different cases (a sampled arm), each arm's runs on the cases all of them ran
+    (every repeat kept), so the comparison is like for like. None when an arm has not run or all ran the same
+    cases (the arm table already compares them)."""
+    if any(arm_runs.get(a) is None for a in arms):
+        return None
+    sets = [{r.result.case_id for r in arm_runs[a]} for a in arms]
+    if all(x == sets[0] for x in sets):
+        return None
+    common = set.intersection(*sets)
+    return common, {a: [r for r in arm_runs[a] if r.result.case_id in common] for a in arms}
+
+
+def _common_cases_markdown(exp, arms: list[str], arm_runs: dict[str, Optional[list[Run]]]) -> list[str]:
+    found = common_case_runs(arm_runs, arms)
+    if found is None:
+        return []
+    common, runs = found
+    rows = []
+    for a in arms:
+        cols = MAIN_COLUMNS + P4_COLUMNS
+        m = metrics(runs[a]) if runs[a] else None
+        rows.append([a] + ([m[k] for k, _ in cols] if m else [0] + [None] * (len(cols) - 1)))
+    return [f"{', '.join(arms)} on the {len(common)} case(s) every one of them ran (sampled arms; all repeats "
+            f"kept, so an arm with more repeats has more runs):", "",
+            _table(["Arm"] + [h for _, h in MAIN_COLUMNS + P4_COLUMNS], rows), ""]
+
+
 def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case], rehearsal: bool = False) -> str:
     parts = ["## Experiments" + (" (dev rehearsal: shows the arms run; not results)" if rehearsal else ""), ""]
     for name, exp in sorted(exps.items()):
@@ -414,6 +443,8 @@ def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case], re
         for c in exp.compare:
             parts.append(f"Compared: {', '.join(c.arms)} (varies {', '.join(c.varies)}).")
         parts.append("")
+        for c in exp.compare:
+            parts += _common_cases_markdown(exp, list(c.arms), arm_runs)
         for c in exp.compare:
             if list(c.varies) == ["memory"]:
                 parts += _lessons_markdown(exp, list(c.arms), arm_runs)

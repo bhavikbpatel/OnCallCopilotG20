@@ -148,10 +148,20 @@ memory (`review_enabled: false`).
 
 | Exp | Arms | Cases | Repeats | Question |
 |---|---|---|---|---|
-| E1 | C0 fixed workflow, C1 one agent, C2 team | held-out | 3 | Does the team justify its cost? |
-| E2 | defences off / on (memory off in every arm) | red team; dev cases for false blocks | 1 | Do the defences stop attacks without blocking legitimate work? |
+| E1 | C0 fixed workflow, C1 one agent, C2 team | held-out (C0, C1: 21 sampled) | C2: 3; C0, C1: 1 | Does the team justify its cost? |
+| E2 | defences off / on (memory off in every arm) | red team; 10 sampled dev cases for false blocks | 1 | Do the defences stop attacks without blocking legitimate work? |
 | E3 | memory off / frozen playbook | held-out | 1 (reuses E4 and E1) | Did the lessons help, and did any make results worse? |
-| E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 | Does memory help without applying wrong lessons; how does diagnosis change with the budget? |
+| E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out (budgets 10 and 5: 14 sampled); D-011 | 1; 3 for D-011 | Does memory help without applying wrong lessons; how does diagnosis change with the budget? |
+
+**Run cut.** The full plan is 606 runs; at about 14 minutes a run (12.9 measured in the dev rehearsal, the
+3-minute settle included) that is about 141 hours of shop time, and one shop on one laptop had about 86 hours
+between the code freeze and the report. We kept in full what the guide states explicitly: the final system
+(C2) three times on every held-out case, memory off on every held-out case (E3's "before"), every deliverable
+attack with defences off and on, and the D-011 misleading-lesson test. C0 and C1 run once on 21 held-out cases,
+the budget arms on 14, and the false-block arms on 10 dev cases. These cases are picked by code before any
+held-out run (`sample_cases`: spread over fault types, noise and two-fault cases as groups of their own,
+fixed seed 20261106), and a sampled arm is compared with the others only on the cases they share
+(`eval.report --experiments` prints that table). Planned runs: 320, about 75 hours.
 
 **E3 and E4's memory comparison are the same runs.** With memory off the agent sees neither lessons nor
 past-incident write-ups; with the frozen playbook it sees the reviewed lessons and the write-ups whose fix is in
@@ -183,6 +193,9 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
   not arbitrary production failures.
 - **The approver is automatic.** It approves (or rejects) every request the same way; a real engineer would
   reject or edit some. Edit and reject paths are tested in unit tests, not in the experiments.
+- **Fewer runs for the baselines and the budgets** (section 7, run cut): C0 and C1 are measured once on half
+  of the held-out cases and the budget arms on a third, so their figures have wider uncertainty than C2's,
+  and the spread across repeats is reported for C2 only.
 - **E3 is not the playbook alone.** Measuring the lessons without the past-incident write-ups would need one
   more held-out arm (about 42 runs) that the shop time did not allow; the per-lesson table stands in for it.
 - **E2 is measured without memory** (both arms), so it says nothing about attacks that would come through
@@ -196,7 +209,7 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
 ## 10. How to reproduce
 
 ```bash
-python -m eval.runner --experiment E1 --plan            # what each arm runs (counts only)
+python -m eval.runner --experiment E1 --plan            # what each arm runs (counts only, hours)
 python -m eval.runner --experiment E1                   # run the arms that are not reused
 python -m eval.report --experiments --out tables.md     # every table in this report
 python -m eval.report --log --out experiment-log.md     # the experiment log

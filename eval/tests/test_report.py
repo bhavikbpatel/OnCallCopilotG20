@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from eval.report import (by_config, case_index, config_report, configs_markdown, experiments_markdown, find_batches,
-                         lesson_effects, load_batch, metrics, spread, times)
+                         common_case_runs, lesson_effects, load_batch, metrics, spread, times)
 from eval.report.__main__ import main
 from eval.runner import DoNothingAgent, run_batch
 from eval.runner.experiments import run_experiment
@@ -153,3 +153,13 @@ def test_lesson_effects_name_the_lessons_in_runs_that_got_worse():
     rows = {x["lesson"]: x for x in fx["lessons"]}
     assert rows["L-a"] == {"lesson": "L-a", "runs_used": 2, "task_success": 1, "runs_rejected": 0, "in_worse_runs": 1}
     assert rows["L-b"]["in_worse_runs"] == 0 and rows["PM-x"]["runs_rejected"] == 1 and rows["PM-x"]["runs_used"] == 0
+
+
+def test_sampled_arms_are_compared_on_the_cases_they_share():
+    full = [_run(f"H-{i}", True) for i in range(1, 7)] * 3            # 6 cases x 3 repeats
+    sampled = [_run("H-2", False), _run("H-5", True), _run("H-9", True)]
+    common, runs = common_case_runs({"C2": full, "C0": sampled}, ["C2", "C0"])
+    assert common == {"H-2", "H-5"}
+    assert len(runs["C2"]) == 6 and {r.result.case_id for r in runs["C0"]} == {"H-2", "H-5"}
+    assert common_case_runs({"C2": full, "C0": full}, ["C2", "C0"]) is None          # same cases: arm table
+    assert common_case_runs({"C2": full, "C0": None}, ["C2", "C0"]) is None          # not run yet

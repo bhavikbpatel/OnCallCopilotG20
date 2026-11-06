@@ -14,7 +14,7 @@ from it.
 **Dev rehearsal** (``--rehearse``; Sprint Backlog: "E1 to E4 configs run on development cases" before the
 held-out week): every arm runs once on REHEARSAL_CASES, a fixed set of dev cases covering an error fault, a
 latency-free kafka lag, the two-step email fix, a catalogue fault and a noisy alert. Held-out arms move to those
-dev cases, repeats become 1, and ``memory: playbook`` becomes ``on`` (an empty in-memory store: the frozen
+dev cases, repeats become 1, sampling is dropped, and ``memory: playbook`` becomes ``on`` (an empty in-memory store: the frozen
 playbook does not exist yet). Attack arms keep only attacks on those base cases. Batches are named
 ``E1-C2-DEV``, the log marks them ``rehearsal``, and the experiment tables leave them out unless asked for.
 They show that every arm runs; they are not results.
@@ -31,7 +31,7 @@ import yaml
 
 from ..schemas.attack import Attack, load_attacks
 from ..schemas.case import Case, load_cases
-from ..schemas.experiment import Arm, Experiment, config_hash
+from ..schemas.experiment import Arm, Experiment, config_hash, sample_cases
 from .agents import Agent
 from .config import RunConfig
 
@@ -55,6 +55,7 @@ def arm_settings(exp: Experiment, arm: Arm, rehearsal: bool = False) -> dict[str
     if not s["only"]:
         s["only"] = list(REHEARSAL_CASES)
     s["repeats"] = 1
+    s["sample"] = None
     if s["memory"] == "playbook":
         s["memory"] = "on"
     return s
@@ -99,6 +100,8 @@ def arm_inputs(exp: Experiment, arm: Arm, *, private_dir: Optional[Path] = None,
             attacks = [a for a in attacks if a.attack_id in wanted]
         else:
             cases = [c for c in cases if c.case_id in wanted]
+    if s["sample"] is not None and attacks is None:
+        cases = sample_cases(cases, s["sample"]["n"], s["sample"]["seed"])
     return cases, attacks
 
 
@@ -113,7 +116,7 @@ def arm_config(exp: Experiment, arm: Arm, rehearsal: bool = False, **run_kw: Any
                      config_hash=config_hash(s), **run_kw)
 
 
-def plan(exp: Experiment, *, private_dir: Optional[Path] = None, minutes_per_run: float = 20.0,
+def plan(exp: Experiment, *, private_dir: Optional[Path] = None, minutes_per_run: float = 14.0,
          rehearsal: bool = False) -> dict:
     """Runs per arm (counts only), which arms are shared, and the shop time the new runs need."""
     rows, total = [], 0
