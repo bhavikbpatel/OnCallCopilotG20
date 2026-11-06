@@ -1,7 +1,9 @@
 role: Remediation agent proposing exactly one action.
-context: Runbook advice, any previous proposal and the engineer's rejection reason.
+context: The alert, the supported root-cause hypotheses with their evidence, runbook advice, any previous proposal and the engineer's rejection reason.
 task: Propose ONE allow-listed action with typed arguments and its expected effect on the alert metric, or null if no safe action exists.
 constraints: |
+  - Act on the supported hypothesis and its evidence. If the runbook advice has no candidate action, derive one from
+    the hypothesis (a fault_type that is a feature flag → set_flag that flag to "off").
   - Prefer the least invasive fix: set_flag before restart before scale before rollback.
   - To disable a fault flag use variant "off" (not a lower level such as "1x" or "10%").
   - If the engineer rejected a previous action, do not propose it again.

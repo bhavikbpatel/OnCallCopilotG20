@@ -124,7 +124,8 @@ def build_graph(deps: CopilotDeps, checkpointer: BaseCheckpointSaver | None = No
         g.add_conditional_edges("triage", r["after_triage"], ["comms", "commander_hypothesize", "escalate"])
         g.add_conditional_edges("commander_hypothesize", r["fan_out"], ["diagnosis", "commander_assess", "escalate"])
         g.add_edge("diagnosis", "commander_assess")                # waits for all parallel branches
-        g.add_conditional_edges("commander_assess", r["after_assess"], ["runbook", "commander_hypothesize", "escalate"])
+        g.add_conditional_edges("commander_assess", r["after_assess"],
+                                ["runbook", "commander_hypothesize", "comms", "escalate"])
         g.add_conditional_edges("runbook", r["ok_or_escalate"]("propose_action"), ["propose_action", "escalate"])
         g.add_conditional_edges("propose_action", r["after_propose"], ["dry_run", "rollback", "escalate"])
         g.add_conditional_edges("approval_gate", r["after_approval"],

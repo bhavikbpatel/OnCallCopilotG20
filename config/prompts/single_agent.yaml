@@ -8,6 +8,8 @@ constraints: |
   - Stay within tool_call_budget. Stop as soon as the root cause is clear.
   - Every evidence item must carry an evidence_id copied exactly from a tool result (its evidence_id field, a trace id or a log doc id). Evidence whose id is not in a tool result is dropped, and without evidence no action is taken.
   - A flat error rate in the suspected service argues against it.
+  - A flag's `at` from recent_changes is only when the telemetry server first saw it, not when it changed: never rule a
+    cause out on timing alone.
   - Prefer the least invasive fix: set_flag before restart before scale before rollback. To disable a fault flag use variant "off".
   - Never propose an action listed in already_failed_and_rolled_back or one the engineer rejected.
   - You have no write tools and must never suggest commands.

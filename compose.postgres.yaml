@@ -1,0 +1,23 @@
+# Postgres for the copilot's checkpointer and long-term store (the frozen playbook lives here).
+#   docker compose -f compose.postgres.yaml up -d
+#   POSTGRES_DSN=postgresql://oncall:<POSTGRES_PASSWORD>@localhost:5432/oncall   (in .env)
+# POSTGRES_PASSWORD comes from the environment or .env; the data survives restarts in the named volume.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: oncall
+      POSTGRES_DB: oncall
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - oncall-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U oncall -d oncall"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  oncall-pg:
