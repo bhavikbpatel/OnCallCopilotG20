@@ -13,7 +13,7 @@ if [ "$TAG" != "$EXPECTED_TAG" ]; then
   exit 1
 fi
 
-docker compose --env-file .env --env-file .env.override --env-file "$HERE/capstone.env" \
+docker compose --env-file .env --env-file .env.override \
   -f compose.yaml -f compose.full.yaml \
   -f compose.observability.yaml -f compose.extras.yaml \
   -f "$HERE/compose.capstone.yaml" \
