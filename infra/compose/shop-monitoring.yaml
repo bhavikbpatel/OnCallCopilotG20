@@ -13,7 +13,13 @@ services:
       - "host.docker.internal:host-gateway"
 
   # Shop dashboards stay; ours appear in an "On-Call Copilot" folder.
+  # The shop's 175M limit is too small for Grafana 13.1.0 plus our dashboards: it sits at the
+  # limit collecting garbage and /grafana answers 503 for good, so give it 400M.
   grafana:
+    deploy:
+      resources:
+        limits:
+          memory: 400M
     volumes:
       - ../../infra/grafana/provisioning/copilot.yaml:/etc/grafana/provisioning/dashboards/copilot.yaml:ro
       - ../../infra/grafana/dashboards:/var/lib/grafana/dashboards/copilot:ro

@@ -19,5 +19,6 @@ include:
     env_file:
       - vendor/opentelemetry-demo/.env
       - vendor/opentelemetry-demo/.env.override
+      - shop/astronomy/capstone.env         # DEMO_VERSION=3.1.0 (the shop's .env says latest)
   - path: infra/compose/copilot.yaml
     project_directory: .

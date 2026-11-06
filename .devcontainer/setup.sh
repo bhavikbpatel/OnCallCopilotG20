@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One-time setup when a codespace is created. Starting the stack stays a manual
-# step (docker compose -f compose.lite.yaml up -d) so a new codespace does not
-# spend time and memory before you need it.
+# step (docker compose -f compose.lite.yaml pull --ignore-pull-failures, then
+# docker compose -f compose.lite.yaml up -d) so a new codespace does not spend
+# time and memory before you need it.
 set -euo pipefail
 
 git submodule update --init

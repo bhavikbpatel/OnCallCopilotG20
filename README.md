@@ -148,9 +148,17 @@ OpenSearch, the four MCP servers on the ports in `config/mcp_servers.yaml`, and 
 ```bash
 git submodule update --init        # once: fetches vendor/opentelemetry-demo at 3.1.0
 cp .env.example .env               # set APPROVAL_SECRET (and OPENAI_API_KEY)
+docker compose pull --ignore-pull-failures   # once: the shop's 3.1.0 images (several GB)
 docker compose up -d               # full shop, ~6-7 GB RAM for Docker
-docker compose -f compose.lite.yaml up -d   # 8 GB laptops: no Kafka, no browser load, smaller Jaeger
+# 8 GB laptops: no Kafka, no browser load, smaller Jaeger
+docker compose -f compose.lite.yaml pull --ignore-pull-failures
+docker compose -f compose.lite.yaml up -d
 ```
+
+Pull first. The shop's services can also be built from source, and `up` builds any whose image is not on
+the machine yet: that is a long compile of the whole shop. `--ignore-pull-failures` skips our four MCP
+images, which exist in no registry; `up` builds those in a few seconds. Do not use `--ignore-buildable`:
+it skips the shop images too. The shop images are pinned to 3.1.0 in `shop/astronomy/capstone.env`.
 
 On Windows, give WSL 2 enough memory first: `%UserProfile%\.wslconfig` with `[wsl2]`, `memory=6GB`,
 `swap=4GB`, then `wsl --shutdown`. That needs 16 GB of RAM; on an 8 GB laptop Windows freezes, so use a codespace.
@@ -159,7 +167,8 @@ On Windows, give WSL 2 enough memory first: `%UserProfile%\.wslconfig` with `[ws
 `.devcontainer/` asks for a 4-core / 16 GB machine with Docker inside, fetches the submodule, installs
 the package and writes `.env` with a new `APPROVAL_SECRET`. Add your OpenRouter key once as a Codespaces
 secret named `OPENAI_API_KEY` (GitHub → Settings → Codespaces → Secrets, repository OnCallCopilotG20).
-Then run `docker compose -f compose.lite.yaml up -d` in the codespace terminal and open port 8080 from
+Then run `docker compose -f compose.lite.yaml pull --ignore-pull-failures` and
+`docker compose -f compose.lite.yaml up -d` in the codespace terminal and open port 8080 from
 the **Ports** tab. Stop the codespace when you finish: the free quota is 120 core-hours a month,
 about 30 hours on this machine.
 
