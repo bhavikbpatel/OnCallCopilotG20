@@ -159,6 +159,63 @@ def test_a_run_that_ran_out_of_budget_feeds_the_loop_or_budget_alert():
     assert "copilot_budget_exhausted_total" in rule["expr"]
 
 
+def _literals(annotation) -> set:
+    import typing
+    out = set()
+    for arg in typing.get_args(annotation):
+        out |= {arg} if isinstance(arg, str) else _literals(arg)
+    return out
+
+
+def test_metric_value_sets_match_the_result_schema():
+    import typing
+    metrics = pytest.importorskip("copilot.metrics")
+    from eval.schemas.catalogue import SHOP_WRITE_TOOLS
+    from eval.schemas.result import ResultLine
+
+    fields = ResultLine.model_fields
+    assert set(metrics.RUN_STATUSES) == _literals(fields["status"].annotation)
+    assert set(metrics.FINAL_STATUSES) == _literals(fields["final_status"].annotation) | {"none"}
+    tool_call = typing.get_args(fields["tool_calls"].annotation)[0]          # list[ToolCall] -> ToolCall
+    assert set(metrics.ACTION_PURPOSES) == _literals(tool_call.model_fields["purpose"].annotation) | {"none"}
+    assert set(metrics.ACTION_TOOLS) == set(SHOP_WRITE_TOOLS)
+
+
+def test_prepare_creates_a_configs_series_at_zero_before_its_first_run():
+    metrics = pytest.importorskip("copilot.metrics")
+    from prometheus_client import REGISTRY
+
+    def value(name, **labels):
+        return REGISTRY.get_sample_value(name, labels)
+
+    metrics.prepare("T-PREPARE")
+    for status in metrics.RUN_STATUSES:
+        for final in metrics.FINAL_STATUSES:
+            assert value("copilot_incidents_total", config_id="T-PREPARE", status=status, final_status=final) == 0.0
+    for success in ("true", "false"):
+        assert value("copilot_task_success_total", config_id="T-PREPARE", success=success) == 0.0
+    assert value("copilot_llm_cost_usd_total", config_id="T-PREPARE") == 0.0
+    for final in metrics.FINAL_STATUSES:                               # created when the module loads
+        assert value("copilot_incident_duration_seconds_count", final_status=final) is not None
+    for tool in metrics.ACTION_TOOLS:
+        assert value("copilot_actions_total", tool=tool, purpose="fix") is not None
+
+
+def test_the_runner_prepares_every_batch_and_experiment_arm(monkeypatch):
+    from types import SimpleNamespace
+    import eval.runner.__main__ as runner_main
+
+    prepared, ran = [], []
+    monkeypatch.setattr(runner_main, "_metrics", SimpleNamespace(prepare=prepared.append))
+    batch = runner_main._metered(lambda cases, agent, cfg, deps, **kw: ran.append(cfg.config_id) or {"ok": 1})
+    assert batch([], None, SimpleNamespace(config_id="E4-budget-5"), None, on_result=None) == {"ok": 1}
+    assert prepared == ["E4-budget-5"] and ran == ["E4-budget-5"]          # prepared before its cases ran
+
+    source = (ROOT / "eval/runner/__main__.py").read_text(encoding="utf-8")
+    assert "run_batch=_metered(run_batch)" in source
+    assert source.index("_prepare_metrics(cfg.config_id)\n    try:\n        summary = run_batch(") > 0
+
+
 def test_record_run_counts_a_result_line():
     metrics = pytest.importorskip("copilot.metrics")
     from prometheus_client import REGISTRY

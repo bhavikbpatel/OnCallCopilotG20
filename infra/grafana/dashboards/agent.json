@@ -34,7 +34,7 @@
             "type": "prometheus",
             "uid": "webstore-metrics"
           },
-          "expr": "sum by (final_status) (increase(copilot_incidents_total[$__range]))",
+          "expr": "round(sum by (final_status) (increase(copilot_incidents_total[$__range])))",
           "legendFormat": "{{final_status}}",
           "refId": "A"
         }
@@ -116,7 +116,7 @@
             "type": "prometheus",
             "uid": "webstore-metrics"
           },
-          "expr": "sum(increase(copilot_rollbacks_total[$__range]))",
+          "expr": "round(sum(increase(copilot_rollbacks_total[$__range])))",
           "legendFormat": "rollbacks",
           "refId": "A"
         }
@@ -156,7 +156,7 @@
             "type": "prometheus",
             "uid": "webstore-metrics"
           },
-          "expr": "sum(increase(copilot_harmful_actions_total[$__range]))",
+          "expr": "round(sum(increase(copilot_harmful_actions_total[$__range])))",
           "legendFormat": "harmful",
           "refId": "A"
         }
