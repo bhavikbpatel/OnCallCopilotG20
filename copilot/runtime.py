@@ -13,6 +13,7 @@ from typing import AsyncIterator
 from dotenv import load_dotenv
 from langgraph.graph.state import CompiledStateGraph
 
+from copilot import tracing
 from copilot.config import ROOT, AppSettings, load_settings
 from copilot.deps import CopilotDeps
 from copilot.graph import build_graph
@@ -30,6 +31,7 @@ class Runtime:
 @asynccontextmanager
 async def copilot_runtime(settings: AppSettings | None = None) -> AsyncIterator[Runtime]:
     load_dotenv(ROOT / ".env")
+    tracing.setup()                  # LangSmith, masked; off unless LANGSMITH_TRACING=true (Person 5)
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not set (put it in .env, see .env.example)")
     settings = settings or load_settings()
