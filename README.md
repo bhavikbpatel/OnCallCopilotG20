@@ -225,6 +225,23 @@ actions, cost, durations, tool calls and hook blocks. Rebuild the dashboard with
 the lite stack on a GitHub runner, runs development cases with `eval.runner --min-success`, and fails
 below the threshold. It needs the `OPENAI_API_KEY` and `APPROVAL_SECRET` repository secrets.
 
+### Option E — The on-call console (Streamlit)
+
+With the stack running (Option D) and `.env` filled in:
+
+```bash
+pip install -e ".[ui]"
+streamlit run ui/app.py          # http://localhost:8501
+```
+
+The page lists the shop's firing alerts from Prometheus. **Investigate** starts the copilot on one and shows the
+plan, hypotheses and timeline live. When the copilot wants to change the shop, it pauses on an approval screen
+with the exact action, its dry run, expected effect, rollback and payload hash: approve, reject, or edit the
+action. After recovery is checked it pauses again for the postmortem review, then shows the final status.
+To try it, turn a fault on (`python -m eval.injector set paymentFailure 50%`), wait about 5 minutes for
+`CheckoutErrorRateHigh`, and `python -m eval.injector clear` afterwards. Set `COPILOT_ENGINEER` in `.env` for
+the name recorded on approvals. One incident at a time per console. Evidence: `docs/evidence/ui/`.
+
 ---
 
 ## 3. Configuration
