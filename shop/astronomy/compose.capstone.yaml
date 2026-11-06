@@ -1,11 +1,13 @@
 # Capstone override for OpenTelemetry Astronomy Shop 3.1.0.
-# The recommendation image ships a health check that runs `nc`, which is not
-# installed in the image, so the service is always "unhealthy" and frontend,
-# frontend-proxy and load-generator never start. Same port check, using bash.
+# The recommendation health check must work on both image sets: the `latest`
+# image has bash but no nc or python, the 3.1.0 image has nc but no bash. If
+# the check fails, the service is always "unhealthy" and frontend,
+# frontend-proxy and load-generator never start. Same port check: bash first,
+# nc if there is no bash.
 services:
   recommendation:
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9001'"]
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/9001' 2>/dev/null || nc -z localhost 9001"]
 
   # The telemetry MCP server's search_logs reads the shop's logs from OpenSearch at http://localhost:9200.
   # 3.1.0 publishes OpenSearch only on a random host port ("9200"), so the tool always failed with

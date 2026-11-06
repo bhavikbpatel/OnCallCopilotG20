@@ -1,0 +1,21 @@
+route:
+  receiver: copilot-incidents
+  group_by: [alertname, service]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+  routes:
+    # Alerts about the copilot itself never open a copilot incident.
+    - matchers: ['component="copilot"']
+      receiver: team
+
+receivers:
+  # Person 3's incident endpoint (FastAPI on the host, port 8000). Until it
+  # runs, deliveries fail and Alertmanager retries; the alerts still show at
+  # http://localhost:9093.
+  - name: copilot-incidents
+    webhook_configs:
+      - url: http://host.docker.internal:8000/alerts
+        send_resolved: true
+  # Shown in the Alertmanager UI; add a Slack or email receiver here if wanted.
+  - name: team

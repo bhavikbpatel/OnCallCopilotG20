@@ -1,0 +1,15 @@
+# Held-out cases and red-team attacks never go into an image.
+eval/heldout
+eval/redteam
+eval/results/runs
+
+.git
+.venv
+.env
+**/__pycache__
+*.db
+vendor
+Documents
+docs
+tests
+eval/tests

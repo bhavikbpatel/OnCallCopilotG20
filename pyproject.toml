@@ -19,7 +19,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "prometheus-client>=0.21"]
+# copilot/metrics.py: /metrics for Prometheus (COPILOT_METRICS_PORT)
+metrics = ["prometheus-client>=0.21"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

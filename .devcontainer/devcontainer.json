@@ -1,0 +1,33 @@
+// GitHub Codespaces / VS Code Dev Containers: runs the whole stack (README, Option D)
+// on a 16 GB cloud machine instead of the laptop. Docker runs inside the codespace.
+{
+  "name": "On-Call Copilot",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  // The lite stack needs about 6 GB and the full one 7 GB, plus about 15 GB of images.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  // Ports stay private to your GitHub login (the Codespaces default). Never make 8104 public:
+  // ops-actions can change the shop.
+  "forwardPorts": [8080, 9090, 9093],
+  "portsAttributes": {
+    "8080": { "label": "Shop, flags, Grafana, Jaeger" },
+    "9090": { "label": "Prometheus" },
+    "9093": { "label": "Alertmanager" },
+    "8101": { "label": "MCP telemetry", "onAutoForward": "ignore" },
+    "8102": { "label": "MCP runbooks", "onAutoForward": "ignore" },
+    "8103": { "label": "MCP tickets", "onAutoForward": "ignore" },
+    "8104": { "label": "MCP ops-actions", "onAutoForward": "ignore" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-azuretools.vscode-docker"]
+    }
+  }
+}

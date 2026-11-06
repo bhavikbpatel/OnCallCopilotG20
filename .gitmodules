@@ -1,0 +1,5 @@
+[submodule "vendor/opentelemetry-demo"]
+	path = vendor/opentelemetry-demo
+	url = https://github.com/open-telemetry/opentelemetry-demo.git
+	# Docker creates an empty mount point for our Grafana provisioning file in here.
+	ignore = untracked
