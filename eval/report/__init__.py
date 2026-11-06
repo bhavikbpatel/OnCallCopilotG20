@@ -280,6 +280,59 @@ def experiment_runs(exp, log: list[dict], cases: dict[str, Case],
     return out
 
 
+def lesson_effects(before: list[Run], after: list[Run]) -> dict[str, Any]:
+    """E3 (guide p. 6, "did any lesson make results worse?"): every lesson the ``after`` arm used or rejected, with
+    the runs that used it and how many of them succeeded, and the runs that got worse: the case succeeded in every
+    ``before`` run and failed here. Only lesson IDs and counts, never case IDs."""
+    passed_before: dict[str, bool] = {}
+    for r in before:
+        ok = bool(r.score.task_success)
+        passed_before[r.result.case_id] = passed_before.get(r.result.case_id, True) and ok
+    used: dict[str, list[bool]] = defaultdict(list)
+    rejected: dict[str, int] = defaultdict(int)
+    worse = worse_with_lessons = 0
+    worse_lessons: dict[str, int] = defaultdict(int)
+    for r in after:
+        ok = bool(r.score.task_success)
+        for lesson in r.result.lessons_used:
+            used[lesson].append(ok)
+        for lesson in r.result.lessons_rejected:
+            rejected[lesson] += 1
+        if passed_before.get(r.result.case_id) and not ok:
+            worse += 1
+            if r.result.lessons_used:
+                worse_with_lessons += 1
+            for lesson in r.result.lessons_used:
+                worse_lessons[lesson] += 1
+    lessons = [{"lesson": lid, "runs_used": len(used.get(lid, [])), "task_success": sum(used.get(lid, [])),
+                "runs_rejected": rejected.get(lid, 0), "in_worse_runs": worse_lessons.get(lid, 0)}
+               for lid in sorted(set(used) | set(rejected))]
+    return {"lessons": lessons, "worse_runs": worse, "worse_runs_with_lessons": worse_with_lessons}
+
+
+def _lessons_markdown(exp, arms: list[str], arm_runs: dict[str, Optional[list[Run]]]) -> list[str]:
+    """For a memory comparison of two arms (one with memory off): which lessons the other arm used or rejected."""
+    if len(arms) != 2:
+        return []
+    off = [a for a in arms if exp.settings(exp.arm(a))["memory"] == "off"]
+    if len(off) != 1:
+        return []
+    before, after = off[0], next(a for a in arms if a != off[0])
+    if arm_runs.get(before) is None or arm_runs.get(after) is None:
+        return []
+    fx = lesson_effects(arm_runs[before], arm_runs[after])
+    rows = [[x["lesson"], x["runs_used"], x["task_success"], x["runs_rejected"], x["in_worse_runs"]]
+            for x in fx["lessons"]]
+    out = [f"Lessons in {after} (against {before}): {fx['worse_runs']} run(s) failed on a case that succeeded "
+           f"in {before}; {fx['worse_runs_with_lessons']} of them used a lesson.", ""]
+    if rows:
+        out += [_table(["Lesson", "Runs used", "Task success", "Runs rejected (preconditions)", "Used in worse runs"],
+                       rows), ""]
+    else:
+        out += ["No lesson was used or rejected.", ""]
+    return out
+
+
 # ---------------------------------------------------------------- markdown
 
 def _fmt(v: Any) -> str:
@@ -361,6 +414,9 @@ def experiments_markdown(exps: dict, log: list[dict], cases: dict[str, Case], re
         for c in exp.compare:
             parts.append(f"Compared: {', '.join(c.arms)} (varies {', '.join(c.varies)}).")
         parts.append("")
+        for c in exp.compare:
+            if list(c.varies) == ["memory"]:
+                parts += _lessons_markdown(exp, list(c.arms), arm_runs)
     return "\n".join(parts)
 
 
@@ -371,12 +427,13 @@ def experiment_log_markdown(log: list[dict]) -> str:
     for e in log:
         rows.append([(e.get("started_at") or "")[:16].replace("T", " "), e.get("experiment"), e.get("arm"),
                      e.get("batch_id"), e.get("agent"), e.get("code"), e.get("config_hash"),
+                     (e.get("playbook_hash") or "")[:12] or None,
                      e.get("runs"), e.get("task_success_rate"), e.get("status_counts"), e.get("cost_usd_per_run"),
                      ("rehearsal, " if e.get("rehearsal") else "") + ("yes" if e.get("partial") else "no")])
     models = sorted({f"{k}: {v.get('model')}" for e in log for k, v in (e.get("models") or {}).items()
                      if isinstance(v, dict)})
     parts = ["## Experiment log", "",
-             _table(["Started (UTC)", "Exp", "Arm", "Batch", "Agent", "Code", "Config hash", "Runs",
+             _table(["Started (UTC)", "Exp", "Arm", "Batch", "Agent", "Code", "Config hash", "Playbook", "Runs",
                      "Task success", "Status", "Cost/run ($)", "Partial"], rows)]
     if models:
         parts += ["", "Models (config/app.yaml): " + "; ".join(models) + "."]

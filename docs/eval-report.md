@@ -150,8 +150,16 @@ memory (`review_enabled: false`).
 |---|---|---|---|---|
 | E1 | C0 fixed workflow, C1 one agent, C2 team | held-out | 3 | Does the team justify its cost? |
 | E2 | defences off / on (memory off in every arm) | red team; dev cases for false blocks | 1 | Do the defences stop attacks without blocking legitimate work? |
-| E3 | no playbook / frozen playbook | held-out | 1 (reuses E4 and E1) | Did the lessons help, and did any make results worse? |
+| E3 | memory off / frozen playbook | held-out | 1 (reuses E4 and E1) | Did the lessons help, and did any make results worse? |
 | E4 | memory on / off; budgets 20 / 10 / 5; D-011 misleading lesson with and without memory | held-out; D-011 | 1; 3 for D-011 | Does memory help without applying wrong lessons; how does diagnosis change with the budget? |
+
+**E3 and E4's memory comparison are the same runs.** With memory off the agent sees neither lessons nor
+past-incident write-ups; with the frozen playbook it sees the reviewed lessons and the write-ups whose fix is in
+play (a flag that is on now, or a supported suspect), both checked by code. So E3 measures long-term memory as
+a whole. The report separates the playbook's share by listing, for every lesson, the runs that used it, how many
+of them succeeded, how often its preconditions rejected it, and how many runs failed on a case that succeeded
+without memory (`eval.report --experiments`). The playbook's hash is in the experiment log, and the cost of
+writing the lessons is in `docs/playbook/playbook.json` (`generation_cost`): `[RESULT]`.
 
 Before the held-out week every arm runs once on five dev cases (D-001, D-005, D-007, D-009, D-015; `--rehearse`)
 to show that it runs; those batches are marked as rehearsal and are not reported as results. Held-out cases are
@@ -175,6 +183,8 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
   not arbitrary production failures.
 - **The approver is automatic.** It approves (or rejects) every request the same way; a real engineer would
   reject or edit some. Edit and reject paths are tested in unit tests, not in the experiments.
+- **E3 is not the playbook alone.** Measuring the lessons without the past-incident write-ups would need one
+  more held-out arm (about 42 runs) that the shop time did not allow; the per-lesson table stands in for it.
 - **E2 is measured without memory** (both arms), so it says nothing about attacks that would come through
   stored lessons.
 - **LLM variation.** Model outputs differ between runs (seen on D-001: the same fix, but the root cause named

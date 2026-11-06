@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from eval.runner import DoNothingAgent, run_batch
 from eval.runner.__main__ import main
 from eval.runner.agents import not_ready
-from eval.runner.experiments import LOG_NAME, arm_config, arm_inputs, format_plan, plan, run_experiment
+from eval.runner.experiments import LOG_NAME, _playbook_hash, arm_config, arm_inputs, format_plan, plan, run_experiment
 from eval.schemas.experiment import EXPERIMENTS_DIR, Experiment, load_experiment, load_experiments, resolve
 from eval.tests.test_runner import DEV, all_at_rest, make
 
@@ -340,3 +340,11 @@ def test_cli_rehearse_needs_an_experiment(tmp_path):
     with pytest.raises(SystemExit):
         main(["--cases", str(DEV), "--config-id", "X", "--rehearse"])
     assert main(["--experiment", "E1", "--plan", "--rehearse"]) == 0
+
+
+def test_playbook_arms_log_the_frozen_playbook_hash(tmp_path):
+    pb = tmp_path / "playbook.json"
+    assert _playbook_hash("playbook", pb) is None                       # not frozen yet: nothing is claimed
+    pb.write_text(json.dumps({"playbook_hash": "ab" * 32, "lessons": []}))
+    assert _playbook_hash("playbook", pb) == "ab" * 32
+    assert _playbook_hash("off", pb) is None and _playbook_hash("on", pb) is None

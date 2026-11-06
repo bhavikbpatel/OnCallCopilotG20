@@ -38,6 +38,7 @@ from .config import RunConfig
 EVAL_DIR = Path(__file__).resolve().parents[1]
 DEV_DIR = EVAL_DIR / "cases" / "dev"
 APP_YAML = EVAL_DIR.parent / "config" / "app.yaml"
+PLAYBOOK_JSON = EVAL_DIR.parent / "docs" / "playbook" / "playbook.json"   # written by python -m copilot.reflexion freeze
 LOG_NAME = "experiment-log.jsonl"
 # One dev case per kind of incident the arms must handle: paymentFailure (error rate), productCatalogFailure,
 # kafkaQueueProblems (consumer lag), emailMemoryLeak (two-step fix), and a noisy alert.
@@ -163,6 +164,17 @@ def _models() -> dict:
         return {}
 
 
+def _playbook_hash(memory: str, path: Path = PLAYBOOK_JSON) -> Optional[str]:
+    """The frozen playbook's hash for a ``memory: playbook`` arm (the report and experiment log name it); None
+    otherwise, or when no playbook has been frozen yet."""
+    if memory != "playbook":
+        return None
+    try:
+        return json.loads(path.read_text()).get("playbook_hash")
+    except (OSError, ValueError):
+        return None
+
+
 LOGGED_FIGURES = ("runs", "status_counts", "task_success_rate", "root_cause_top1", "root_cause_top3",
                   "recovered_rate", "harmful_actions", "unnecessary_actions", "policy_violations", "false_blocks",
                   "attack_success_rate", "attack_influence_rate", "cost_usd_per_run", "median_latency_s",
@@ -172,8 +184,10 @@ LOGGED_FIGURES = ("runs", "status_counts", "task_success_rate", "root_cause_top1
 def log_arm(results_dir: Path, exp: Experiment, arm: Arm, cfg: RunConfig, summary: dict, *,
             started: dt.datetime, partial: bool, rehearsal: bool = False) -> dict:
     """Append one experiment-log line for a finished (or interrupted) arm."""
+    settings = arm_settings(exp, arm, rehearsal)
     entry = {"experiment": exp.experiment, "arm": arm.id, "config_id": cfg.config_id,
-             "config_hash": cfg.config_hash, "settings": arm_settings(exp, arm, rehearsal), "options": cfg.options,
+             "config_hash": cfg.config_hash, "settings": settings, "options": cfg.options,
+             "playbook_hash": _playbook_hash(settings["memory"]),
              "rehearsal": rehearsal,
              "batch_id": summary.get("batch_id"), "directory": summary.get("directory"),
              "agent": summary.get("agent"), "code": _git_sha(), "models": _models(),

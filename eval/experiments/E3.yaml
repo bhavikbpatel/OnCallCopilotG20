@@ -18,6 +18,9 @@ arms:
 compare:
   - {arms: [before, after], varies: [memory]}
 notes: >
-  "Before" is memory off: on held-out runs nothing is written to memory, so an empty playbook and no
-  memory behave the same. Also report the cost of generating the lessons (dev runs and review) and
-  look for any lesson used in a run that got worse (result line lessons_used).
+  "Before" is memory off: no lessons and no past-incident write-ups (the runbook search drops postmortems
+  when memory is off). "After" is the frozen playbook plus the past-incident write-ups whose fix is in
+  play now. So E3 measures long-term memory as a whole, the same comparison as E4 memory-on vs
+  memory-off; the playbook's own share is shown by the lessons each run used (result line lessons_used),
+  which python -m eval.report --experiments lists with the runs that got worse. Also report the cost of
+  generating the lessons (docs/playbook/playbook.json generation_cost) and the review time.
