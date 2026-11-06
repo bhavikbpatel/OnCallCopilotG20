@@ -3,6 +3,8 @@ arms with their options and writes the experiment log."""
 from __future__ import annotations
 
 import json
+from collections import Counter
+from types import SimpleNamespace
 import shutil
 from pathlib import Path
 
@@ -13,8 +15,9 @@ from pydantic import ValidationError
 from eval.runner import DoNothingAgent, run_batch
 from eval.runner.__main__ import main
 from eval.runner.agents import not_ready
-from eval.runner.experiments import LOG_NAME, _playbook_hash, arm_config, arm_inputs, format_plan, plan, run_experiment
-from eval.schemas.experiment import EXPERIMENTS_DIR, Experiment, load_experiment, load_experiments, resolve
+from eval.runner.experiments import REHEARSAL_CASES, LOG_NAME, _playbook_hash, arm_config, arm_inputs, format_plan, plan, run_experiment
+from eval.schemas.experiment import (EXPERIMENTS_DIR, Experiment, config_hash, load_experiment, load_experiments,
+                                    resolve, sample_cases, stratum)
 from eval.tests.test_runner import DEV, all_at_rest, make
 
 # ---------------------------------------------------------------- the repo's experiment files
@@ -25,13 +28,20 @@ def test_repo_experiments_load_and_match_the_guide():
     assert sorted(exps) == ["E1", "E2", "E3", "E4"]
     e1 = exps["E1"]
     assert {e1.settings(a)["architecture"] for a in e1.arms} == {"C0", "C1", "C2"}
-    assert all(e1.settings(a)["repeats"] == 3 and e1.settings(a)["cases"] == "heldout" for a in e1.arms)
+    assert all(e1.settings(a)["cases"] == "heldout" for a in e1.arms)
+    # run cut (6 Nov): the final system three times on every held-out case; C0 and C1 once on a sample
+    assert e1.settings(e1.arm("C2"))["repeats"] == 3 and e1.settings(e1.arm("C2"))["sample"] is None
+    assert all(e1.settings(e1.arm(a))["repeats"] == 1 and e1.settings(e1.arm(a))["sample"]["n"] == 21
+               for a in ("C0", "C1"))
     e2 = exps["E2"]
     assert {(e2.settings(a)["cases"], e2.settings(a)["defences"]) for a in e2.arms} == {
         ("attacks", "off"), ("attacks", "on"), ("dev", "off"), ("dev", "on")}
     assert all(a.reuse for a in exps["E3"].arms)                        # E3 adds no runs of its own
     e4 = exps["E4"]
     assert {e4.settings(a)["max_tool_calls"] for a in e4.arms} == {5, 10, 20}
+    assert e4.settings(e4.arm("memory-off"))["sample"] is None                          # E3 "before": every case
+    assert all(e4.settings(e4.arm(a))["sample"]["n"] == 14 for a in ("budget-10", "budget-5"))
+    assert all(e2.settings(a)["sample"] is None for a in e2.arms if e2.settings(a)["cases"] == "attacks")
     misleading = [a for a in e4.arms if e4.settings(a)["only"] == ["D-011"]]
     assert {e4.settings(a)["memory"] for a in misleading} == {"playbook", "off"}
     assert (DEV / "D-011.yaml").is_file()
@@ -61,11 +71,54 @@ def test_fair_experiment_is_accepted():
     assert e.settings(e.arm("A"))["memory"] == "playbook"           # defaults filled in
 
 
+def test_sampled_arms_and_fewer_repeats_may_be_compared():
+    """The run cut: the report compares such arms on their common cases (eval/report common_case_runs)."""
+    e = Experiment.model_validate(exp_dict(arms=[{"id": "A", "options": {"architecture": "C0"}, "sample": 5},
+                                                 {"id": "B", "options": {"architecture": "C2"}, "repeats": 3}],
+                                           sample_seed=7))
+    assert e.settings(e.arm("A"))["sample"] == {"n": 5, "seed": 7} and e.settings(e.arm("B"))["repeats"] == 3
+    other = Experiment.model_validate(exp_dict(arms=[{"id": "A", "options": {"architecture": "C0"}, "sample": 5},
+                                                     {"id": "B", "options": {"architecture": "C2"}}], sample_seed=8))
+    assert config_hash(e.settings(e.arm("A"))) != config_hash(other.settings(other.arm("A")))   # seed is in it
+
+
+def _case(cid, *flags, noise=False):
+    return SimpleNamespace(case_id=cid, faults=[SimpleNamespace(flag=f) for f in flags],
+                           expected=SimpleNamespace(verdict="noise" if noise else "incident"))
+
+
+POOL = ([_case(f"H-{i:03d}", "paymentFailure") for i in range(1, 13)]
+        + [_case(f"H-{i:03d}", "cartFailure") for i in range(13, 19)]
+        + [_case(f"H-{i:03d}", "adFailure") for i in range(19, 22)]
+        + [_case("H-022", "cartFailure", "kafkaQueueProblems"), _case("H-023", noise=True)])
+
+
+def test_sample_is_spread_over_fault_types_and_fixed_by_the_seed():
+    picked = sample_cases(POOL, 8, seed=1)
+    assert len(picked) == 8 and picked == sample_cases(POOL, 8, seed=1)             # same input, same cases
+    by = Counter(stratum(c) for c in picked)
+    assert set(by) == {"paymentFailure", "cartFailure", "adFailure", "multi-fault", "noise"}   # every group
+    assert by["paymentFailure"] >= by["cartFailure"] >= by["adFailure"]               # roughly in proportion
+    assert [c.case_id for c in picked] == sorted(c.case_id for c in picked)          # in the pool's order
+    assert {c.case_id for c in sample_cases(POOL, 8, seed=2)} != {c.case_id for c in picked}
+    assert sample_cases(POOL, 50, seed=1) == POOL and len(sample_cases(POOL, 2, seed=1)) == 2
+
+
+def test_arms_run_their_sample_and_a_rehearsal_drops_it():
+    exp = Experiment.model_validate(exp_dict(cases="dev", sample_seed=3, arms=[
+        {"id": "A", "options": {"architecture": "C0"}, "sample": 6}, {"id": "B", "options": {"architecture": "C2"}}]))
+    cases, _ = arm_inputs(exp, exp.arm("A"))
+    assert len(cases) == 6 and cases == arm_inputs(exp, exp.arm("A"))[0]
+    assert len(arm_inputs(exp, exp.arm("B"))[0]) == 20
+    rehearsal, _ = arm_inputs(exp, exp.arm("A"), rehearsal=True)
+    assert [c.case_id for c in rehearsal] == list(REHEARSAL_CASES)
+
+
 @pytest.mark.parametrize("change, message", [
     ({"arms": [{"id": "A", "options": {"architecture": "C0"}},
                {"id": "B", "options": {"architecture": "C2"}, "max_tool_calls": 5}]}, "max_tool_calls"),
-    ({"arms": [{"id": "A", "options": {"architecture": "C0"}},
-               {"id": "B", "options": {"architecture": "C2"}, "repeats": 3}]}, "repeats"),
+    ({"arms": [{"id": "A", "options": {"architecture": "C0"}, "sample": 3},
+               {"id": "B", "options": {"architecture": "C2"}}], "cases": "attacks"}, "not on attacks"),
     ({"arms": [{"id": "A", "options": {"architecture": "C0"}},
                {"id": "B", "options": {"architecture": "C2"}, "cases": "dev"}]}, "cases"),
     ({"arms": [{"id": "A"}, {"id": "B"}]}, "would measure nothing"),

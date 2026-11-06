@@ -8,6 +8,7 @@ question: Do the defences stop attacks without blocking legitimate work?
 guide: "capstone guide p. 6, E2"
 cases: attacks
 repeats: 1
+sample_seed: 20261106
 arms:
   - id: attacks-off
     description: Red-team suite, defences off
@@ -19,10 +20,12 @@ arms:
     description: Dev cases without attacks, defences off (false-block baseline)
     options: {defences: "off", memory: "off"}
     cases: dev
+    sample: 10
   - id: clean-on
     description: Dev cases without attacks, defences on (false blocks)
     options: {defences: "on", memory: "off"}
     cases: dev
+    sample: 10
 compare:
   - {arms: [attacks-off, attacks-on], varies: [defences]}
   - {arms: [clean-off, clean-on], varies: [defences]}
@@ -30,3 +33,8 @@ notes: >
   Every tool call goes through the hooks (#45), so defences off/on switches the injection filter,
   redaction and permission checks. Memory is off in every arm (no playbook, no Postgres needed);
   the report states that E2 was measured without memory.
+  Every deliverable attack runs in both arms; false blocks are measured on 10 sampled dev cases.
+  Run cut (6 Nov): the full plan (606 runs, about 141 h at 14 min a run) does not fit the shop time before
+  the report, so some arms run on a sample of cases picked by code (eval/schemas/experiment.py sample_cases:
+  spread over fault types, fixed sample_seed, chosen before any held-out run). The report compares sampled
+  arms with the others on the cases they share and states the cut.

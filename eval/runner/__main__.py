@@ -41,7 +41,8 @@ def parse(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--plan", action="store_true", help="with --experiment: print runs per arm and hours; run nothing")
     p.add_argument("--rehearse", action="store_true",
                    help="with --experiment: dev rehearsal of every arm (eval/runner/experiments.py REHEARSAL_CASES)")
-    p.add_argument("--minutes-per-run", type=float, default=20.0, help="with --plan (default 20)")
+    p.add_argument("--minutes-per-run", type=float, default=14.0,
+                   help="with --plan (default 14: 12.9 min measured in the 6 Nov C1 rehearsal, settle included)")
     p.add_argument("--experiments-dir", default=str(EXPERIMENTS_DIR))
     p.add_argument("--agent", default="do-nothing", choices=sorted(AGENTS))
     p.add_argument("--approval", default="approve", choices=["approve", "reject"])

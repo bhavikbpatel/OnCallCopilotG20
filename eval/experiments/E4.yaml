@@ -5,6 +5,7 @@ question: Does memory help without applying wrong lessons, and how does diagnosi
 guide: "capstone guide p. 14, Project 4 signature ablation"
 cases: heldout
 repeats: 1
+sample_seed: 20261106
 arms:
   - id: memory-on
     description: Frozen playbook, budget 20 (same runs as E1 C2)
@@ -18,9 +19,11 @@ arms:
   - id: budget-10
     description: Frozen playbook, budget 10
     max_tool_calls: 10
+    sample: 14
   - id: budget-5
     description: Frozen playbook, budget 5
     max_tool_calls: 5
+    sample: 14
   - id: misleading-on
     description: D-011, the misleading paymentFailure lesson must be rejected (memory on)
     cases: dev
@@ -39,3 +42,9 @@ compare:
 notes: >
   D-011 is a dev case (docs/knowledge-demo.md): it is run three times per arm because it is a single
   case. Budget counts the agent's own tool calls; code-driven verify polls do not count.
+  Memory on and off run on all held-out cases; the budget arms run on 14 sampled cases and are compared
+  with budget 20 (memory-on) on those cases.
+  Run cut (6 Nov): the full plan (606 runs, about 141 h at 14 min a run) does not fit the shop time before
+  the report, so some arms run on a sample of cases picked by code (eval/schemas/experiment.py sample_cases:
+  spread over fault types, fixed sample_seed, chosen before any held-out run). The report compares sampled
+  arms with the others on the cases they share and states the cut.

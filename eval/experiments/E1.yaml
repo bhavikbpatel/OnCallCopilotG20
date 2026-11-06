@@ -6,13 +6,18 @@ question: Does the team of agents justify its cost compared with a fixed workflo
 guide: "capstone guide p. 6, E1; repeat the final held-out comparison three times"
 cases: heldout
 repeats: 3
+sample_seed: 20261106
 arms:
   - id: C0
     description: Fixed workflow, no agent decisions (fixed_workflow role in config/permissions.yaml)
     options: {architecture: C0}
+    sample: 21
+    repeats: 1
   - id: C1
     description: One agent with all the tools (single_agent role)
     options: {architecture: C1}
+    sample: 21
+    repeats: 1
   - id: C2
     description: Our team of agents (commander, triage, diagnosis, runbook, remediation, comms)
     options: {architecture: C2}
@@ -22,3 +27,9 @@ notes: >
   C2 with the frozen playbook and budget 20 is also E3's "after" and E4's baseline (they reuse it).
   Report task success, policy violations, false blocks, cost per case, median and p95 latency and
   errors for every arm, failed and timed-out runs included.
+  C2 runs on all held-out cases three times (the guide's "repeat the final held-out comparison three
+  times"); C0 and C1 run once on 21 sampled cases and are compared with C2 on those cases.
+  Run cut (6 Nov): the full plan (606 runs, about 141 h at 14 min a run) does not fit the shop time before
+  the report, so some arms run on a sample of cases picked by code (eval/schemas/experiment.py sample_cases:
+  spread over fault types, fixed sample_seed, chosen before any held-out run). The report compares sampled
+  arms with the others on the cases they share and states the cut.
