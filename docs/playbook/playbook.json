@@ -1,0 +1,251 @@
+{
+  "playbook_hash": "0c05d04cf34aa7ac5758fe2644993377757636683aaf9e6755b4c9a2faa64bf3",
+  "frozen_at": "2026-11-07T17:28:18.651323+00:00",
+  "reviewed_by": [
+    "Rohit"
+  ],
+  "source_runs": [
+    "DEV-C2-D-001-r1-20261104T153515Z",
+    "DEV-C2-D-004-r1-20261104T160519Z",
+    "DEV-C2-D-006-r1-20261104T163221Z",
+    "DEV-C2-D-009-r1-20261104T170610Z",
+    "DEV-C2-D-011-r1-20261104T173545Z",
+    "DEV-C2-D-012-r1-20261104T174839Z",
+    "DEV-C2-D-013-r1-20261104T180022Z",
+    "DEV-C2-D-014-r1-20261104T181506Z",
+    "DEV-C2-D-019-r1-20261104T190402Z"
+  ],
+  "generation_cost": {
+    "reflections": 17,
+    "with_cost": 17,
+    "tokens": 81269,
+    "usd": 0.011289
+  },
+  "lessons": [
+    {
+      "lesson_id": "L-D-001-001",
+      "text": "When checkout errors are elevated and payment server errors are elevated too, identify payment as the likely originating service rather than ranking checkout as the root cause; checkout may only be reporting the propagated failure.",
+      "preconditions": [
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"payment\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"payment\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.05
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.05
+          }
+        }
+      ],
+      "service": "payment",
+      "fault_family": "paymentFailure",
+      "source_incident": "DEV-C2-D-001-r1-20261104T153515Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-004-003",
+      "text": "When cart errors are elevated soon after a cartFailure flag change, do not dismiss the rollout merely because Redis errors are also present or flag-evaluation errors seem common; treat the flag change as a leading cause and disable the flag rather than restarting cart or valkey-cart.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "cartFailure",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"cart\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)",
+            "threshold": 1
+          }
+        }
+      ],
+      "service": "cart",
+      "fault_family": "cartFailure",
+      "source_incident": "DEV-C2-D-004-r1-20261104T160519Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-006-005",
+      "text": "When `imageSlowLoad` has changed recently and frontend-proxy p95 latency is high, do not rule out the fault solely because image-provider server spans are fast; disable the flag, since the added delay may not appear in provider spans.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "imageSlowLoad",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"frontend-proxy\",span_kind=\"SPAN_KIND_SERVER\"}[5m])))",
+            "threshold": 1000
+          }
+        }
+      ],
+      "service": "image-provider",
+      "fault_family": "feature_flag",
+      "source_incident": "DEV-C2-D-006-r1-20261104T163221Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-009-007",
+      "text": "When the emailMemoryLeak flag changed recently and email memory is still above its alert threshold, do not dismiss the leak hypothesis just because the alert began seconds before the rollout; disable the flag instead of escalating without a corrective action.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "emailMemoryLeak",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "sum(container_memory_usage_total_bytes{container_name=\"email\"}) / 1e6",
+            "threshold": 80
+          }
+        }
+      ],
+      "service": "email",
+      "fault_family": "memory_leak",
+      "source_incident": "DEV-C2-D-009-r1-20261104T170610Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-011-008",
+      "text": "When checkout errors are elevated after a recent change to `paymentUnreachable`, treat that flag\u2014not the payment service\u2014as the likely cause and target that exact flag; do not disable the similarly named `paymentFailure` flag.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "paymentUnreachable",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.05
+          }
+        }
+      ],
+      "service": "payment",
+      "fault_family": "feature_flag",
+      "source_incident": "DEV-C2-D-011-r1-20261104T173545Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-012-017",
+      "text": "When product-catalog p95 latency is elevated and the lock-contention flag changed recently, do not refute lock contention solely because server error rate is flat or because the flag change followed the alert; latency-dominant contention can lack an error surge, so use the flag signal and verify whether disabling it restores latency.",
+      "preconditions": [
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"product-catalog\",span_kind=\"SPAN_KIND_SERVER\"}[5m])))",
+            "threshold": 1000
+          }
+        },
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "productCatalogLockContention",
+            "within": "30m"
+          }
+        }
+      ],
+      "service": "product-catalog",
+      "fault_family": "productCatalogLockContention",
+      "source_incident": "DEV-C2-D-012-r1-20261104T174839Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-013-010",
+      "text": "When product-catalog errors are elevated after the productCatalogFailure flag is turned on, do not dismiss the flag as causal solely because the error-rate rise appears to precede the recorded flip; direct traces naming the flag identify the cause, so restore the flag to off instead of taking no action or restarting the service.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "productCatalogFailure",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"product-catalog\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"product-catalog\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.02
+          }
+        }
+      ],
+      "service": "product-catalog",
+      "fault_family": "productCatalogFailure",
+      "source_incident": "DEV-C2-D-013-r1-20261104T180022Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-014-011",
+      "text": "When ad server errors are elevated and the adFailure flag changed recently, do not dismiss the failures as transient noise based on a momentary low reading; treat the flagged ad path as the cause and turn the flag off.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "adFailure",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"ad\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"ad\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.03
+          }
+        }
+      ],
+      "service": "ad",
+      "fault_family": "feature_flag",
+      "source_incident": "DEV-C2-D-014-r1-20261104T181506Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    },
+    {
+      "lesson_id": "L-D-019-016",
+      "text": "When paymentFailure was recently turned on and checkout errors are elevated, turn paymentFailure off even if payment's own server error rate looks low.",
+      "preconditions": [
+        {
+          "check": "recent_change",
+          "args": {
+            "flag": "paymentFailure",
+            "within": "30m"
+          }
+        },
+        {
+          "check": "promql_above",
+          "args": {
+            "query": "(sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) or vector(0)) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+            "threshold": 0.05
+          }
+        }
+      ],
+      "service": "payment",
+      "fault_family": "paymentFailure",
+      "source_incident": "DEV-C2-D-019-r1-20261104T190402Z",
+      "reviewed_by": "Rohit",
+      "status": "active"
+    }
+  ]
+}

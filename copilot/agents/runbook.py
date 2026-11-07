@@ -15,6 +15,16 @@ from copilot.state import IncidentState, RunbookAdvice, sum_ledgers
 POSTMORTEM_LOOKBACK = timedelta(minutes=30)
 
 
+def lesson_scope(alert_service: str, supported: list, hypotheses: list) -> list[str]:
+    """Services whose lessons are checked: the chosen cause first, then the alert's service, then every other
+    hypothesis; each once."""
+    out: list[str] = []
+    for svc in [*(str(h.service) for h in supported), str(alert_service), *(str(h.service) for h in hypotheses)]:
+        if svc not in out:
+            out.append(svc)
+    return out
+
+
 def postmortem_applies(passage: Passage, active_flags: set[str], services: set[str]) -> bool:
     """A past incident's fix is a lesson too: it applies only when its target is in play now (code, not the model).
     set_flag → that flag is currently on; restart / scale / rollback → that service is a supported suspect."""
@@ -50,6 +60,10 @@ def make_runbook(deps: CopilotDeps):
         alert = state["alert"]
         supported = [h for h in state.get("hypotheses", []) if h.status == "supported"]
         services = [str(h.service) for h in supported]
+        # Lessons are read for every service in play, not only the chosen cause: the alert's service and every
+        # hypothesis (supported, open or refuted). Code-checked preconditions still decide which apply, so a lesson
+        # that would mislead here is read and REJECTED (E4), e.g. payment lessons on a checkout/paymentUnreachable fault.
+        lesson_services = lesson_scope(alert.service, supported, state.get("hypotheses", []))
         families = None   # fault family mapping lives with role 2; filter by service only for now
 
         # Query decomposition: one sub-query per supported hypothesis, plus the raw symptom.
@@ -62,7 +76,7 @@ def make_runbook(deps: CopilotDeps):
 
         with toolctx.scope(driver=toolctx.CODE):        # lesson preconditions: code checks, not budgeted
             memory_context = await deps.memory(state.get("run_id")).build_memory_context(
-                symptom=alert.summary, suspects=services, fault_families=families,
+                symptom=alert.summary, suspects=lesson_services, fault_families=families,
                 telemetry=deps.telemetry, engineer_id=state.get("engineer_id"),
             )
             passages, rejected_pm = await gate_postmortems(passages, deps, services)
