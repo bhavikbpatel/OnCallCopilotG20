@@ -74,6 +74,7 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `ROLLBACK_VERSION_VAR` | Compose variable holding the image version (default `DEMO_VERSION`) |
 | `KNOWN_VERSIONS` | Versions `rollback` may target (default: the pinned 3.1.0) |
 | `PROM_URL`, `FLAG_UI_URL` | As in `eval` |
+| `FLAG_POLL_S` | Seconds between background reads of the flags (default `5`, `0` = off). Started with the server so `recent_changes` times a flag from when it changed, not from the first question |
 | `OPENSEARCH_URL`, `OPENSEARCH_LOG_INDEX`, `JAEGER_URL` | Defaults `http://localhost:9200`, `otel-logs-*`, `http://localhost:16686` |
 | `INCIDENT_DB` | SQLite file for tickets (default `incidents.db`) |
 

@@ -14,6 +14,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -170,6 +171,8 @@ class Telemetry:
         self.jaeger_url = (jaeger_url or os.environ.get("JAEGER_URL") or "http://localhost:16686").rstrip("/")
         self._clock = clock
         self._first_seen = {}   # flag -> time this server first saw it away from rest
+        self._lock = threading.Lock()
+        self._watch_stop: Optional[threading.Event] = None
 
     # ------------------------------------------------------------- query_promql
 
@@ -297,24 +300,68 @@ class Telemetry:
 
     # ------------------------------------------------------------- recent_changes
 
+    def _observe(self, now: float) -> tuple:
+        """Read the flags once and note when each one was first seen away from rest.
+
+        Returns ({flag: variant} for the flags away from rest, {flag: first_seen}). Raises FlagStoreError."""
+        flags = variants_of(self.store.read())
+        active = {name: variant for name, variant in flags.items() if variant != REST_VARIANT}
+        with self._lock:
+            for name in list(self._first_seen):
+                if name not in active:
+                    del self._first_seen[name]
+            for name in active:
+                self._first_seen.setdefault(name, now)
+            return active, dict(self._first_seen)
+
+    def start_watching(self, interval_s: Optional[float] = None) -> Optional[threading.Thread]:
+        """Read the flags in the background every `interval_s` seconds (default FLAG_POLL_S, 5; 0 = off).
+
+        flagd keeps no change history, so the only way to know roughly when a flag changed is to be looking
+        when it does. Started with the server, the first-seen time is then close to the real change time
+        (at most one interval late) instead of the time the agent first asked. Returns the thread, or None
+        when polling is off or already running."""
+        if interval_s is None:
+            raw = os.environ.get("FLAG_POLL_S", "5")
+            try:
+                interval_s = float(raw)
+            except ValueError as exc:
+                raise ValueError("FLAG_POLL_S must be a number of seconds, got %r" % raw) from exc
+        if interval_s <= 0 or self._watch_stop is not None:
+            return None
+        stop = self._watch_stop = threading.Event()
+
+        def loop() -> None:
+            while not stop.is_set():
+                try:
+                    self._observe(self._clock())
+                except Exception:          # the flag service is down or slow: look again next round
+                    pass
+                stop.wait(interval_s)
+
+        thread = threading.Thread(target=loop, name="flag-watch", daemon=True)
+        thread.start()
+        return thread
+
+    def stop_watching(self) -> None:
+        if self._watch_stop is not None:
+            self._watch_stop.set()
+            self._watch_stop = None
+
     def recent_changes(self, since: str = "15m") -> dict:
         """READ. Feature flags currently away from 'off'. flagd keeps no change history, so
         first_seen_age_s counts from when this server first saw the flag, a lower bound."""
         now = self._clock()
         try:
             window = now - parse_time(since, now, now - 900)
-            flags = variants_of(self.store.read())
+            active, seen = self._observe(now)
         except ValueError as exc:
             return err("bad_argument", str(exc))
         except FlagStoreError as exc:
             return err("flag_store_error", str(exc))
-        active = {name: variant for name, variant in flags.items() if variant != REST_VARIANT}
-        for name in list(self._first_seen):
-            if name not in active:
-                del self._first_seen[name]
         changes = []
         for name, variant in sorted(active.items()):
-            first = self._first_seen.setdefault(name, now)
+            first = seen[name]
             changes.append({"flag": name, "variant": variant, "first_seen_age_s": int(now - first),
                             "at": datetime.fromtimestamp(first, timezone.utc).isoformat(),
                             "evidence_id": "flag:%s=%s" % (name, variant)})
@@ -374,4 +421,6 @@ def build_server(telemetry: Optional[Telemetry] = None):
 
 
 if __name__ == "__main__":
-    run_server(build_server(), "telemetry")
+    telemetry = Telemetry()
+    telemetry.start_watching()          # so recent_changes times a flag from when it changed, not from the first question
+    run_server(build_server(telemetry), "telemetry")

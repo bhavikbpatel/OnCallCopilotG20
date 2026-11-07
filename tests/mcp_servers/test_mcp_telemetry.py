@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from eval.injector import InMemoryFlagStore
+from eval.injector.flagstore import FlagStoreError
 from eval.telemetry import PromError, Sample
 from eval.telemetry import signals
 
@@ -163,3 +164,113 @@ def test_series_match_what_the_graph_reads():
     """copilot/tools.py reads series[i]["labels"]["service_name"] and float(series[i]["values"][-1][1])."""
     s = make().query_promql("up")["result"]["series"][0]
     assert s["labels"]["service_name"] == "payment" and float(s["values"][-1][1]) == 0.42
+
+
+# ------------------------------------------------------------------ flag timing: the server looks before it is asked
+
+class Clock:
+    def __init__(self, now=NOW):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def watched(clock):
+    store = InMemoryFlagStore(flags())
+    return Telemetry(prom=FakeProm(), flag_store=store, clock=clock), store
+
+
+def test_a_flag_is_timed_from_when_the_poll_saw_it_not_from_the_first_question():
+    clock = Clock()
+    t, store = watched(clock)
+    t._observe(clock())                              # the server starts: nothing is on
+    clock.now = NOW + 30
+    store.poke("paymentFailure", "100%")             # the fault is injected
+    t._observe(clock())                              # the next background read sees it
+    clock.now = NOW + 90                             # the alert fires and triage asks, a minute later
+    change = t.recent_changes()["result"]["changes"][0]
+    assert change["first_seen_age_s"] == 60          # without the poll this would be 0: "changed after the alert"
+    from datetime import datetime, timezone
+    assert datetime.fromisoformat(change["at"]) == datetime.fromtimestamp(NOW + 30, timezone.utc)
+
+
+def test_without_a_poll_the_first_question_still_starts_the_clock():
+    clock = Clock()
+    t, store = watched(clock)
+    store.poke("paymentFailure", "100%")
+    assert t.recent_changes()["result"]["changes"][0]["first_seen_age_s"] == 0
+
+
+def test_a_cleared_flag_is_forgotten_and_timed_afresh_when_it_returns():
+    clock = Clock()
+    t, store = watched(clock)
+    store.poke("paymentFailure", "100%")
+    t._observe(clock())
+    clock.now = NOW + 10
+    store.poke("paymentFailure", "off")
+    t._observe(clock())
+    assert t.recent_changes()["result"]["changes"] == []
+    clock.now = NOW + 20
+    store.poke("paymentFailure", "100%")
+    clock.now = NOW + 25
+    assert t.recent_changes()["result"]["changes"][0]["first_seen_age_s"] == 0
+
+
+def test_the_background_reader_picks_up_a_flag_by_itself():
+    import time as _time
+    t, store = watched(_time.time)
+    thread = t.start_watching(0.01)
+    try:
+        assert thread is not None and thread.daemon
+        assert t.start_watching(0.01) is None        # already running
+        store.poke("paymentFailure", "100%")
+        deadline = _time.time() + 3
+        while "paymentFailure" not in t._first_seen and _time.time() < deadline:
+            _time.sleep(0.01)
+        assert "paymentFailure" in t._first_seen     # no recent_changes call was made
+    finally:
+        t.stop_watching()
+
+
+def test_the_reader_survives_the_flag_service_being_down():
+    import time as _time
+    t, store = watched(_time.time)
+    real = store.read
+    state = {"down": True}
+
+    def read():
+        if state["down"]:
+            raise FlagStoreError("flag service not reachable")
+        return real()
+
+    store.read = read
+    thread = t.start_watching(0.01)
+    try:
+        _time.sleep(0.1)
+        assert thread.is_alive()
+        state["down"] = False
+        store.poke("paymentFailure", "100%")
+        deadline = _time.time() + 3
+        while "paymentFailure" not in t._first_seen and _time.time() < deadline:
+            _time.sleep(0.01)
+        assert "paymentFailure" in t._first_seen
+    finally:
+        t.stop_watching()
+
+
+def test_polling_can_be_switched_off_and_a_bad_setting_is_refused(monkeypatch):
+    t, _ = watched(Clock())
+    assert t.start_watching(0) is None
+    monkeypatch.setenv("FLAG_POLL_S", "0")
+    assert t.start_watching() is None
+    monkeypatch.setenv("FLAG_POLL_S", "often")
+    import pytest
+    with pytest.raises(ValueError, match="FLAG_POLL_S"):
+        t.start_watching()
+
+
+def test_a_down_flag_service_is_still_reported_by_recent_changes():
+    t, store = watched(Clock())
+    store.read = lambda: (_ for _ in ()).throw(FlagStoreError("flag service not reachable"))
+    assert code(t.recent_changes()) == "flag_store_error"
