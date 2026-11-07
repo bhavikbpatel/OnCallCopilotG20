@@ -149,3 +149,53 @@ def test_noise_alert_closes_without_any_action(monkeypatch):
     st = res.final_state
     assert st["final_status"] == "noise" and shop.writes == [] and st.get("proposed_action") is None
     assert "judged noise" in st["status_note"].text
+
+
+# ---------- lessons are checked for every service in play (PR #71 review) ----------
+
+def test_lesson_scope_covers_the_cause_the_alert_and_every_hypothesis():
+    from copilot.agents.runbook import lesson_scope
+    chosen = hyp("checkout", "paymentUnreachable")
+    others = [chosen, hyp("payment", "paymentFailure", status="refuted"), hyp("checkout", "noise", status="open")]
+    assert lesson_scope("frontend", [chosen], others) == ["checkout", "frontend", "payment"]
+
+
+def test_d011_with_the_frozen_playbook_rejects_the_misleading_lessons(monkeypatch):
+    """Correct diagnosis (checkout/paymentUnreachable): the payment lessons are still read, and their preconditions
+    reject the misleading ones while the paymentUnreachable lesson applies. Uses the committed playbook.json."""
+    from pathlib import Path
+
+    from langgraph.store.memory import InMemoryStore
+
+    from copilot.memory.long_term import LongTermMemory
+    from copilot.reflexion import load_into, read_playbook
+    from copilot.state import Alert, RunbookAdvice
+
+    lessons, digest = read_playbook(Path(__file__).resolve().parents[1] / "docs" / "playbook" / "playbook.json")
+    store = InMemoryStore()
+    asyncio.run(load_into(store, lessons, digest))
+
+    async def changes(since):
+        return [{"flag": "paymentUnreachable", "variant": "on", "at": datetime.now(timezone.utc)}]
+
+    async def scalar(query):                      # checkout fails; payment gets no traffic at all
+        return 1.0 if 'service_name="checkout"' in query else None
+
+    async def search(*a, **k):
+        return []
+
+    async def advice(deps, agent, prompt, schema, payload):
+        return RunbookAdvice(runbook_id=None), None
+    monkeypatch.setattr(runbook, "structured_call", advice)
+    deps = SimpleNamespace(store=store, settings=load_settings(),
+                           telemetry=SimpleNamespace(recent_changes=changes, query_scalar=scalar),
+                           runbooks=SimpleNamespace(search=search),
+                           memory=lambda run_id: LongTermMemory(store, run_id=run_id, read_only=True))
+    alert = Alert(alert_name="CheckoutErrorRateHigh", service="checkout", signal="error_rate", summary="s", query="q",
+                  threshold=0.05, value=0.9, fired_at=datetime.now(timezone.utc), fingerprint="f")
+    st = {"alert": alert, "run_id": "E4-H-011-r1", "hypotheses": [hyp("checkout", "paymentUnreachable"),
+                                                                 hyp("payment", "paymentFailure", status="refuted")]}
+    out = asyncio.run(runbook.make_runbook(deps)(st))
+    ctx = out["memory_context"]
+    assert [l.lesson_id for l in ctx.applicable_lessons] == ["L-D-011-008"]
+    assert {"L-D-001-001", "L-D-019-016"} <= {r.lesson.lesson_id for r in ctx.rejected_lessons}

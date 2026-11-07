@@ -270,3 +270,19 @@ def test_freeze_notes_go_into_the_readme(tmp_path):
     reflexion.write_candidates(cands, [decide(pending(), "approve", "Rohit")])
     asyncio.run(freeze(cands, tmp_path / "pb", store=InMemoryStore(), notes=["a failed reflection was re-run"]))
     assert "## Notes\n\n- a failed reflection was re-run" in (tmp_path / "pb" / "README.md").read_text()
+
+
+def test_a_held_out_run_is_refused_even_when_it_errored(tmp_path):
+    d = tmp_path / "b"
+    d.mkdir()
+    (d / "results.jsonl").write_text(json.dumps(dict(result("r9", "H-004"), status="error")) + "\n")
+    (d / "scores.jsonl").write_text(json.dumps(score("r9", "H-004", status="error")) + "\n")
+    with pytest.raises(ValueError, match="not a dev case"):
+        failed_runs(d)
+
+
+def test_freeze_without_notes_has_no_notes_section(tmp_path):
+    cands = tmp_path / "candidates.jsonl"
+    reflexion.write_candidates(cands, [decide(pending(), "approve", "Rohit")])
+    asyncio.run(freeze(cands, tmp_path / "pb", store=InMemoryStore()))
+    assert "## Notes" not in (tmp_path / "pb" / "README.md").read_text()

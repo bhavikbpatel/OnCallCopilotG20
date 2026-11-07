@@ -128,8 +128,10 @@ def available_queries(services: Iterable[str]) -> dict[str, dict[str, str]]:
 
 
 def ran(result: dict[str, Any]) -> bool:
-    """The agent actually worked the incident. A run with status "error" (alert never fired, runner failure) has no
-    trajectory; "timeout" and "budget_exhausted" are real agent failures and are kept."""
+    """Whether the agent's own work decided the outcome. Status "error" means the harness did: the alert never fired,
+    preflight failed or an attack could not be delivered, the agent crashed, or the run was contaminated or not cleaned
+    up. Such runs are not learned from even when a trajectory exists. "timeout" and "budget_exhausted" are real agent
+    failures and are kept."""
     return result.get("status") != "error"
 
 
@@ -151,7 +153,7 @@ def failed_runs(run_dir: Path, cases_dir: Path = DEV_CASES) -> list[dict[str, An
         result = results.get(score["run_id"])
         if score.get("task_success") or not what or result is None or case_id not in cases:
             continue
-        if not ran(result):          # the alert never fired or the runner failed: no agent failure to learn from
+        if not ran(result):          # the harness, not the agent, decided this run (see ran())
             continue
         expected = cases[case_id].expected
         hyps = result.get("hypotheses") or []
@@ -415,7 +417,8 @@ def main(argv: list[str] | None = None) -> None:
     f = sub.add_parser("freeze", help="write the playbook and its hash; load it into Postgres")
     f.add_argument("--candidates", type=Path, default=CANDIDATES)
     f.add_argument("--out", type=Path, default=PLAYBOOK_DIR)
-    f.add_argument("--note", action="append", default=[], help="a note for README.md (repeatable)")
+    f.add_argument("--note", action="append", default=[],
+                   help="a note for README.md (repeatable); a re-freeze without --note drops the notes")
     lo = sub.add_parser("load", help="load a frozen playbook.json into POSTGRES_DSN (hash checked)")
     lo.add_argument("playbook", type=Path)
     a = p.parse_args(argv)
