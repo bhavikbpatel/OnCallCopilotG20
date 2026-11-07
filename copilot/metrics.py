@@ -6,6 +6,7 @@ and the hooks need no extra calls:
 
     from copilot import metrics
     metrics.serve()                          # if COPILOT_METRICS_PORT is set
+    metrics.prepare(config_id)               # when a batch or arm starts: its series exist at 0
     metrics.record_run(result, report)       # once per finished case or incident
 
 The Grafana dashboard (infra/grafana/dashboards/agent.json) and the alert
@@ -31,6 +32,14 @@ _LATENCY_BUCKETS = (30, 60, 120, 180, 300, 450, 600, 900, 1200, 1800)
 # increase() ignores a counter's first sample, so a series born at 1 would never fire the alert.
 ALERT_BLOCK_REASONS = ("loop_detected", "budget_exceeded", "token_budget_exceeded", "cost_budget_exceeded",
                        "agent_budget_exceeded")
+
+# Every value a run can record (eval/schemas/result.py; tests/test_infra.py checks they still match), so the
+# labelled series exist at 0 before the first run: the dashboard reads them with increase(), which ignores a
+# series' first sample, so a series born at 1 drops the first run of each kind ("Runs by final status" read 0).
+RUN_STATUSES = ("completed", "budget_exhausted", "timeout", "error")
+FINAL_STATUSES = ("recovered", "rolled_back", "escalated", "noise", "none")
+ACTION_TOOLS = ("set_flag", "restart_service", "scale_service", "rollback")
+ACTION_PURPOSES = ("fix", "follow_up", "rollback", "none")
 
 if ENABLED:
     INCIDENTS = Counter(
@@ -66,8 +75,29 @@ if ENABLED:
     REPLANS = Counter("copilot_replans_total", "Replans (refuted hypotheses that changed the plan).")
     COST_USD = Counter("copilot_llm_cost_usd_total", "LLM spend in USD.", ["config_id"])
     TOKENS = Counter("copilot_llm_tokens_total", "LLM tokens.", ["config_id"])
+    for _final in FINAL_STATUSES:
+        INCIDENT_DURATION.labels(final_status=_final)
+    for _tool in ACTION_TOOLS:
+        for _purpose in ACTION_PURPOSES:
+            ACTIONS.labels(tool=_tool, purpose=_purpose)
 
 _served = False
+
+
+def prepare(config_id: str) -> None:
+    """Create a run configuration's series at 0; call when a batch or experiment arm starts, before its first run.
+
+    The config_id is only known then. Without this the first run of each status, final status and success
+    value is lost to increase() (see RUN_STATUSES), and a one-case batch reads 0 on the dashboard."""
+    if not ENABLED:
+        return
+    for status in RUN_STATUSES:
+        for final in FINAL_STATUSES:
+            INCIDENTS.labels(config_id=config_id, status=status, final_status=final)
+    for success in ("true", "false"):
+        TASK_SUCCESS.labels(config_id=config_id, success=success)
+    COST_USD.labels(config_id=config_id)
+    TOKENS.labels(config_id=config_id)
 
 
 def serve(port: Optional[int] = None) -> Optional[int]:

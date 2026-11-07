@@ -121,6 +121,19 @@ def _start_metrics() -> None:
         print(f"metrics on http://localhost:{port}/metrics", flush=True)
 
 
+def _prepare_metrics(config_id: str) -> None:
+    if _metrics is not None:
+        _metrics.prepare(config_id)      # this config's series exist at 0 before its first run
+
+
+def _metered(batch):
+    """run_batch for experiment arms: each arm's config_id is prepared before its cases run."""
+    def wrapped(cases, agent, cfg, *args, **kwargs):
+        _prepare_metrics(cfg.config_id)
+        return batch(cases, agent, cfg, *args, **kwargs)
+    return wrapped
+
+
 def show(result, report):
     if _metrics is not None:
         _metrics.record_run(result, report)
@@ -153,7 +166,7 @@ def experiment_main(args, deps: Optional[RunDeps]) -> int:
         if deps is None:
             return 2
     try:
-        entries = run_experiment(exp, arm_ids, agent, deps, run_batch=run_batch, only=_split(args.only),
+        entries = run_experiment(exp, arm_ids, agent, deps, run_batch=_metered(run_batch), only=_split(args.only),
                                  on_result=show, agent=args.agent, approval=args.approval, rehearsal=args.rehearse,
                                  agent_timeout_s=args.agent_timeout, alert_timeout_s=args.alert_timeout)
     except KeyboardInterrupt:
@@ -209,6 +222,7 @@ def main(argv: Optional[list[str]] = None, deps: Optional[RunDeps] = None) -> in
 
     what = f"{len(attacks)} attack(s)" if attacks else f"{len(cases)} case(s)"
     print(f"{what} x {cfg.repeats} repeat(s), agent {agent.name}, config {cfg.config_id}", flush=True)
+    _prepare_metrics(cfg.config_id)
     try:
         summary = run_batch(cases, agent, cfg, deps, on_result=show, attacks=attacks)
     except KeyboardInterrupt:

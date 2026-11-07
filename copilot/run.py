@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from copilot import toolctx
+from copilot import toolctx, tracing
 from copilot.config import ROOT, AppSettings, load_settings
 from copilot.deps import CopilotDeps
 from copilot.graph import ARCHITECTURES, build_graph
@@ -158,6 +158,7 @@ async def run_incident(alert: Alert | Mapping[str, Any], approve: Approve, *, ru
                        store: BaseStore | None = None) -> IncidentResult:
     """`store`: an open long-term store to use instead of make_store(POSTGRES_DSN) (tests, a caller's own pool)."""
     load_dotenv(ROOT / ".env")
+    tracing.setup()                  # LangSmith, masked; off unless LANGSMITH_TRACING=true (Person 5)
     options = dict(options or {})
     settings = settings or load_settings()
     limits = BudgetLimits.model_validate(limits) if isinstance(limits, Mapping) else (limits or settings.limits)
