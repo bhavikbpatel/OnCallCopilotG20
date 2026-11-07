@@ -100,6 +100,8 @@ A full run costs roughly 15–50k tokens.
 
 ### Option B — Against the real shop (needs the MCP servers)
 
+Note: this path does not run the hooks (permissions, budget, injection filter); `run_incident` (option C) does. See `docs/threat-model.md`, known gaps.
+
 Requires the four MCP servers from role 4 (`telemetry`, `runbooks_kb`, `tickets`, `ops_actions`) running at the URLs in `config/mcp_servers.yaml`. The incident API (FastAPI) uses the graph like this:
 
 ```python
