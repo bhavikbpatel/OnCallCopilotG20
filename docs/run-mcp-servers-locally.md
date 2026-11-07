@@ -44,6 +44,31 @@ http://localhost:9200, `JAEGER_URL` http://localhost:16686. If Jaeger is only re
 proxy, try `$env:JAEGER_URL = "http://localhost:8080/jaeger/ui"` (unverified). Without `ACTUATOR_URL`,
 restart/scale/rollback use `docker compose` directly (laptop only).
 
+## The actuator (restart, scale, rollback)
+
+`ops_actions` on your laptop runs `docker compose` itself when `ACTUATOR_URL` is not set, so you can skip this
+for local tries. In Docker, or whenever `ops_actions` runs in a container, restart/scale/rollback go through the
+actuator, a small process that runs on the machine that has the shop checkout. Start it in another terminal:
+
+```
+$env:OTEL_DEMO_DIR = "C:\path\to\OnCallCopilotG20\vendor\opentelemetry-demo"
+$env:CAPSTONE_COMPOSE_OVERRIDE = "..\..\shop\astronomy\compose.capstone.yaml"   # as in shop/astronomy/start.sh
+py -m mcp_servers.actuator.server        # 8105, this machine only
+```
+
+For `mcp-ops` in the compose stack to reach it, listen on all interfaces and give both sides one token (the
+actuator refuses to start on any other address without one):
+
+```
+$env:ACTUATOR_TOKEN = "any-long-random-string"      # also in .env, for mcp-ops
+$env:ACTUATOR_HOST = "0.0.0.0"
+py -m mcp_servers.actuator.server
+```
+
+For local `ops_actions` processes, set `$env:ACTUATOR_URL = "http://127.0.0.1:8105"` (and the same
+`ACTUATOR_TOKEN`) before starting them. `py scripts/try_servers.py` then checks `/health` and `/status`.
+The actuator only accepts the four fixed endpoints, the copilot's allow-listed services and known versions.
+
 ## 4. Try them
 
 In a fifth terminal (same `.venv`, same `APPROVAL_SECRET`):

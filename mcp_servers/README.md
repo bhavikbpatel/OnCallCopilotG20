@@ -62,7 +62,9 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `APPROVAL_STATE_DB` | SQLite file of spent tokens (default `approval_state.db`); give every server the same path |
 | `COPILOT_DEFENCES` | `on`, `off`, or `redaction=off,permissions=on`; overrides `defences:` in `config/app.yaml` (for E2) |
 | `COPILOT_CONFIG` | Config file to read `defences:` from (default `config/app.yaml`) |
-| `ACTUATOR_URL` | Base URL of the actuator sidecar. Set = `ops_actions` calls its four endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`); unset = direct `docker compose` (laptop only) |
+| `ACTUATOR_URL` | Base URL of the actuator (`mcp_servers/actuator`). Set = `ops_actions` calls its four endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`); unset = direct `docker compose` (laptop only) |
+| `ACTUATOR_TOKEN` | Sent by `ops_actions` as `Authorization: Bearer <token>`; the actuator needs the same value. Required when the actuator listens beyond this machine |
+| `ACTUATOR_HOST`, `ACTUATOR_PORT` | Where the actuator listens (defaults `127.0.0.1`, `8105`). Use `0.0.0.0` for containers to reach it, with a token |
 | `MCP_ALLOWLIST` | Pinned servers/tool hashes (default `config/mcp_allowlist.yaml`) |
 | `RUNBOOK_HASHES` | Reviewed passage hashes (default `config/runbook_hashes.yaml`). No file = not enforced |
 | `MCP_TRANSPORT` | `stdio` (default) or `http`. With http: `MCP_HOST` (default 127.0.0.1; 0.0.0.0 in a container), `MCP_PORT` (defaults 8101 telemetry, 8102 runbooks_kb, 8103 tickets, 8104 ops_actions) |
@@ -83,6 +85,9 @@ defences: {injection_filter: true, redaction: true, permissions: true}
 ## Not verified against a live shop yet
 
 The OpenSearch and Jaeger endpoints and log field names, `DEMO_VERSION` as the image variable, and the FastMCP wrappers (`build_server`, the read/write `tags`/`annotations`, `MCP_TRANSPORT=http`) were written from the docs and tested only through the plain Python classes. Run each server once against the running shop and fix field names if needed, and run `pytest tests/mcp_servers` with `fastmcp` installed so the marking test is not skipped.
+
+## The actuator (restart, scale, rollback)
+`mcp_servers/actuator/server.py` is the one process that runs Docker for the copilot. `ops_actions` calls it over four fixed endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`; plus `GET /health`), and it runs `docker compose` for the shop with the same code as the laptop path (`ComposeExecutor`). It does not trust its caller: every request is checked against the same allow-list as `ops_actions` (protected services, replicas 1 to 3, known versions), takes no extra fields, and runs as a fixed argument list, never a shell. It listens on `127.0.0.1:8105` by default and refuses to start on any other address without `ACTUATOR_TOKEN`. It runs on the machine that has the shop checkout (`OTEL_DEMO_DIR`), not in a container, so no container holds the Docker socket. `mcp-ops` in `infra/compose/copilot.yaml` reaches it at `host.docker.internal:8105`. Not running means the three actions return an `executor_error` and change nothing. Start it: `docs/run-mcp-servers-locally.md`. Tests: `tests/mcp_servers/test_actuator.py` (the whole path with Docker replaced by a recording stub; not yet run against a real Docker).
 
 ## Compose names, ports and images (for Person 5)
 
