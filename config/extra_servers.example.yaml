@@ -1,0 +1,10 @@
+# Extra MCP servers for the red team (Person 4): MCP_EXTRA_SERVERS=<path to a file like this>.
+# They load beside our four servers. They are never in config/mcp_allowlist.yaml, so with the `pinning`
+# defence on (the default) every tool of theirs is refused and its description never reaches a model;
+# with `pinning` off (E2 "defences off") the tools load. Keep the real file, and the server it points at,
+# outside the repository, like the held-out cases.
+servers:
+  weather_helper:                 # lower-case letters, digits and _; not one of our four server names
+    transport: streamable_http
+    url: http://localhost:8199/mcp
+    agents: [diagnosis]           # optional: agents whose tool list gets this server's tools

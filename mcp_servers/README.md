@@ -60,7 +60,8 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `APPROVAL_SECRET` | **Required.** Same value for the gate/runner and every MCP server. Missing = nothing is issued and nothing verifies (fails closed) |
 | `APPROVAL_DEV_MODE` | `1` allows a public built-in secret, for local tests only. Never for a demo or evaluation run |
 | `APPROVAL_STATE_DB` | SQLite file of spent tokens (default `approval_state.db`); give every server the same path |
-| `COPILOT_DEFENCES` | `on`, `off`, or `redaction=off,permissions=on`; overrides `defences:` in `config/app.yaml` (for E2) |
+| `COPILOT_DEFENCES` | `on`, `off`, or `redaction=off,permissions=on` (names: `injection_filter`, `redaction`, `permissions`, `pinning`); overrides `defences:` in `config/app.yaml` (for E2) |
+| `MCP_EXTRA_SERVERS` | Path of a YAML file of extra MCP servers to load beside our four (red team; see "Pinned tool descriptions"). Unset = none |
 | `COPILOT_CONFIG` | Config file to read `defences:` from (default `config/app.yaml`) |
 | `ACTUATOR_URL` | Base URL of the actuator (`mcp_servers/actuator`). Set = `ops_actions` calls its four endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`); unset = direct `docker compose` (laptop only) |
 | `ACTUATOR_TOKEN` | Sent by `ops_actions` as `Authorization: Bearer <token>`; the actuator needs the same value. Required when the actuator listens beyond this machine |
@@ -123,6 +124,13 @@ Failures are `{ok: false, error: {code, message}}`, which her `_parse` turns int
 
 ## Hooks on the graph's tool calls
 Every tool call, code-driven or model-driven, goes through one `Hooks` per incident (`Hooks.acall`): role permission, approval token, budget and loop checks before; injection filter, redaction and logging after. The routing is Person 2's (`copilot/toolctx.py`: `McpToolbox.call`, `for_agent`, the node wrapper in `graph.py`, `run_incident`); the checks are in `copilot/hooks.py`. Calls the graph makes itself (verify polling) are logged with `driver: "code"` and are not budgeted. The defences follow `defences:` in `config/app.yaml` or `COPILOT_DEFENCES`. To run the servers locally and try them, see `docs/run-mcp-servers-locally.md`.
+
+## Pinned tool descriptions, and planting an extra server
+`McpToolbox.connect` checks every tool each server advertises against `config/mcp_allowlist.yaml` (`mcp_servers/common/pinning.py`): the server must be pinned, the tool must be pinned, and the description hash must be unchanged. A tool that fails is still loaded but **refused while the `pinning` defence is on** (the default): the model is never handed its description, and a call to it returns `{ok: false, error: {code}}` with the reason (`server_not_pinned`, `tool_not_pinned`, `description_changed`) and never reaches the server. `toolbox.pin_problems` lists what was refused and `toolbox.pin_missing` the pinned tools a server no longer offers. After a reviewed change to a tool's docstring, regenerate the pins: `py -m mcp_servers.common.pinning --write`. `py scripts/try_servers.py` prints the pin check for the servers that are running.
+
+`pinning` is the fourth defence in `GuardConfig` (`defences:` in `config/app.yaml`, or `COPILOT_DEFENCES=pinning=off`, or `off` for all four), so experiment E2 flips it with the others.
+
+For the red team: `MCP_EXTRA_SERVERS=<file>` loads servers we have not seen, in addition to our four (format: `config/extra_servers.example.yaml`). They are never pinned, so with pinning on every tool of theirs is refused and their descriptions never reach a model. With `pinning` off the tools load, and the `agents:` listed for a server get its tools in their tool list (as read tools); the hooks still decide whether a call is allowed (an extra server is in no role's permission list, so a call is `blocked` unless permissions are off too). A file that was asked for but is wrong, or a planted server that cannot be reached, stops the run with the reason instead of being skipped. Our own server names cannot be reused. Tests: `tests/mcp_servers/test_extra_servers.py`.
 
 ## Runbook pins
 `config/runbook_hashes.yaml` holds the sha256 of every reviewed runbook/postmortem passage; a passage that differs or is not listed is withheld (`pin_check: on`). A test fails if the runbooks change without new pins. After a person reviews the change: `py -m mcp_servers.runbooks_kb.server --write-pins`, then commit the file.
