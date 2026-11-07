@@ -40,10 +40,13 @@ jobs:
           cache: pip
       - run: pip install -e ".[dev,metrics]"
 
+      # Pull first: `up` builds any shop service whose image is missing from source (each has a
+      # build section), a long compile. --ignore-pull-failures skips our MCP images, which `up` builds.
       - name: Start the lite stack
         run: |
           test -n "$APPROVAL_SECRET" || { echo "::error::APPROVAL_SECRET secret is not set"; exit 1; }
-          docker compose -f compose.lite.yaml up -d --quiet-pull
+          docker compose -f compose.lite.yaml pull --quiet --ignore-pull-failures
+          docker compose -f compose.lite.yaml up -d
       - name: Wait for span metrics in Prometheus
         run: |
           for i in $(seq 1 60); do

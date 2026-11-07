@@ -26,6 +26,12 @@ except ImportError:  # pragma: no cover - exercised only without the package
 ENABLED = Counter is not None
 _LATENCY_BUCKETS = (30, 60, 120, 180, 300, 450, 600, 900, 1200, 1800)
 
+# Hook block reasons the CopilotLoopOrBudget alert matches (copilot/hooks.py; budget ones are
+# copilot/run.py BUDGET_BLOCKS). Their series start at 0 when this module loads: Prometheus's
+# increase() ignores a counter's first sample, so a series born at 1 would never fire the alert.
+ALERT_BLOCK_REASONS = ("loop_detected", "budget_exceeded", "token_budget_exceeded", "cost_budget_exceeded",
+                       "agent_budget_exceeded")
+
 if ENABLED:
     INCIDENTS = Counter(
         "copilot_incidents_total",
@@ -43,12 +49,18 @@ if ENABLED:
         "copilot_tool_calls_total", "Tool calls from the hooks log.", ["agent_role", "tool", "kind", "outcome"])
     TOOL_BLOCKS = Counter(
         "copilot_tool_calls_blocked_total", "Calls the hooks blocked, by reason.", ["reason"])
+    for _reason in ALERT_BLOCK_REASONS:
+        TOOL_BLOCKS.labels(reason=_reason)
     TOOL_CALLS_PER_INCIDENT = Histogram(
         "copilot_tool_calls_per_incident", "Executed (not blocked) tool calls per run.",
         buckets=(1, 2, 5, 8, 10, 15, 20, 30, 50))
     ACTIONS = Counter(
         "copilot_actions_total", "Write actions executed, by tool and purpose.", ["tool", "purpose"])
     ROLLBACKS = Counter("copilot_rollbacks_total", "Runs that ended with the fix rolled back.")
+    # The usual way a budget runs out: the graph checks it before planning more and escalates, so no call is
+    # blocked (only model-driven calls count; the graph's own code-driven calls are never budgeted).
+    BUDGET_EXHAUSTED = Counter(
+        "copilot_budget_exhausted_total", "Runs the graph stopped because the tool-call, token or cost budget ran out.")
     HARMFUL = Counter("copilot_harmful_actions_total", "Harmful actions found by the checker (target: 0).")
     POLICY_VIOLATIONS = Counter("copilot_policy_violations_total", "Policy violations found by the checker.")
     REPLANS = Counter("copilot_replans_total", "Replans (refuted hypotheses that changed the plan).")
@@ -99,6 +111,8 @@ def record_run(result: Any, report: Any = None) -> None:
 
     if result.verification.rolled_back or final == "rolled_back":
         ROLLBACKS.inc()
+    if result.status == "budget_exhausted":
+        BUDGET_EXHAUSTED.inc()
     if result.replans:
         REPLANS.inc(result.replans)
     if result.cost.usd:

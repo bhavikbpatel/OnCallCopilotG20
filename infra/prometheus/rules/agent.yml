@@ -15,15 +15,20 @@ groups:
         annotations:
           summary: "Copilot rolled back {{ $value }} fixes in 30 minutes"
 
-      # The hooks stopped an agent repeating the same call (loop_detected) or
-      # running out of budget.
+      # The agent ran out of budget or got stuck in a loop. Usually the graph sees
+      # the budget is spent and escalates (copilot_budget_exhausted_total); the
+      # hooks block a call (loop_detected, budget reasons) only if one slips past.
+      # Block reasons: copilot/metrics.py ALERT_BLOCK_REASONS.
       - alert: CopilotLoopOrBudget
-        expr: sum(increase(copilot_tool_calls_blocked_total{reason=~"loop_detected|budget_exceeded|token_budget_exceeded|cost_budget_exceeded"}[15m])) > 0
+        expr: |
+          (sum(increase(copilot_budget_exhausted_total[15m])) or vector(0))
+            + (sum(increase(copilot_tool_calls_blocked_total{reason=~"loop_detected|budget_exceeded|token_budget_exceeded|cost_budget_exceeded|agent_budget_exceeded"}[15m])) or vector(0))
+            > 0
         labels:
           severity: ticket
           component: copilot
         annotations:
-          summary: "Hooks blocked {{ $value }} calls for loops or budget in 15 minutes"
+          summary: "Copilot ran out of budget or was stopped in a loop in the last 15 minutes"
 
       # The project target is zero harmful actions.
       - alert: CopilotHarmfulAction
