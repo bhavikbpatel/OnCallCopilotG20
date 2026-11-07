@@ -38,15 +38,6 @@ async def copilot_runtime(settings: AppSettings | None = None) -> AsyncIterator[
     dsn = os.getenv("POSTGRES_DSN") or None          # unset → in-memory backends
 
     toolbox = await McpToolbox.connect(settings.mcp_servers_path, settings.permissions_path)
-    if os.getenv("COPILOT_HOOKS") == "1":
-        # Opt-in (Person 3): every code-driven tool call goes through the hooks (permission, approval, budget,
-        # loop, injection filter, logging). One Hooks per process, so use it for one incident per process (CLI,
-        # demo, eval case); a per-incident reset is a follow-up. Its call cap is a runaway guard (verify polls
-        # make many calls), not the graph's own limits.tool_calls budget.
-        from copilot.hooked_toolbox import HookedToolbox
-        from copilot.hooks import Hooks
-
-        toolbox = HookedToolbox(toolbox, Hooks(max_tool_calls=int(os.getenv("HOOKS_MAX_TOOL_CALLS", "200"))))
 
     embed = None
     if settings.embedding_model:

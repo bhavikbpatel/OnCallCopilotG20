@@ -26,6 +26,7 @@ class GuardConfig:
     injection_filter: bool = True    # neutralise instruction-like lines in tool output
     redaction: bool = True           # remove secrets / PII from tool output and alerts
     permissions: bool = True         # per-agent tool permissions in the hooks
+    pinning: bool = True             # refuse tools whose server or description is not pinned (config/mcp_allowlist.yaml)
     # Optional model layer (Prompt Guard 2 on tool results, Llama Guard 4 on engineer text): any callable
     # text -> risk score 0..1. Not part of the on/off config; the app sets it. None = regex layer only.
     classifier: Optional[Callable[[str], float]] = None
@@ -33,7 +34,7 @@ class GuardConfig:
 
     @classmethod
     def all_off(cls) -> "GuardConfig":
-        return cls(False, False, False)
+        return cls(False, False, False, False)
 
     @classmethod
     def load(cls, path: Optional[str] = None, env: Optional[Mapping[str, str]] = None) -> "GuardConfig":
@@ -77,7 +78,7 @@ class GuardConfig:
             return True
 
 
-_DEFENCES = ("injection_filter", "redaction", "permissions")
+_DEFENCES = ("injection_filter", "redaction", "permissions", "pinning")
 
 
 def _on(value: Any) -> bool:

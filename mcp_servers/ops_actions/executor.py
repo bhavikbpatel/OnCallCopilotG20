@@ -79,6 +79,16 @@ class ComposeExecutor:
         return os.environ.get(self.version_var, SHOP_VERSION)
 
 
+def _reason(exc: urllib.error.HTTPError) -> str:
+    """The actuator's own message from an error body ({"ok": false, "error": {"message": ...}}), if it sent one."""
+    try:
+        error = json.loads(exc.read().decode() or "{}").get("error")
+        message = error.get("message") if isinstance(error, dict) else error
+        return ": %s" % str(message)[:200] if message else ""
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
 class ActuatorExecutor:
     """Client for the `actuator` sidecar, which alone holds the Docker socket (system design section 6).
 
@@ -87,26 +97,31 @@ class ActuatorExecutor:
         POST /scale     {"service": s, "replicas": n}
         POST /rollback  {"service": s, "to_version": v}
         GET  /status?service=s  -> {"replicas": n, "version": v}
+    When ACTUATOR_TOKEN is set it is sent as `Authorization: Bearer <token>`.
     A non-2xx answer or an {"ok": false} body is an ExecutorError. The service and version values
     were already checked against the allow-list by ops_actions before they get here.
     """
 
-    def __init__(self, base_url: Optional[str] = None, timeout_s: float = 120.0, opener=None):
+    def __init__(self, base_url: Optional[str] = None, timeout_s: float = 120.0, opener=None,
+                 token: Optional[str] = None):
         self.base_url = (base_url or os.environ.get("ACTUATOR_URL") or "").rstrip("/")
         self.timeout_s = timeout_s
+        self.token = token if token is not None else os.environ.get("ACTUATOR_TOKEN", "")
         self._open = opener or urllib.request.urlopen
 
     def _call(self, method: str, path: str, body: Optional[dict] = None) -> dict:
         if not self.base_url:
             raise ExecutorError("ACTUATOR_URL is not set; cannot reach the actuator sidecar")
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.base_url + path, data=data, method=method,
-                                     headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if self.token:
+            headers["Authorization"] = "Bearer " + self.token
+        req = urllib.request.Request(self.base_url + path, data=data, method=method, headers=headers)
         try:
             with self._open(req, timeout=self.timeout_s) as resp:
                 payload = json.loads(resp.read().decode() or "{}")
         except urllib.error.HTTPError as exc:
-            raise ExecutorError("actuator %s %s failed: HTTP %s" % (method, path, exc.code)) from exc
+            raise ExecutorError("actuator %s %s failed: HTTP %s%s" % (method, path, exc.code, _reason(exc))) from exc
         except (urllib.error.URLError, OSError, ValueError) as exc:
             raise ExecutorError("actuator %s %s unreachable: %s" % (method, path, exc)) from exc
         if isinstance(payload, dict) and payload.get("ok") is False:

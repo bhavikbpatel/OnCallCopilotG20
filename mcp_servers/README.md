@@ -60,9 +60,12 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `APPROVAL_SECRET` | **Required.** Same value for the gate/runner and every MCP server. Missing = nothing is issued and nothing verifies (fails closed) |
 | `APPROVAL_DEV_MODE` | `1` allows a public built-in secret, for local tests only. Never for a demo or evaluation run |
 | `APPROVAL_STATE_DB` | SQLite file of spent tokens (default `approval_state.db`); give every server the same path |
-| `COPILOT_DEFENCES` | `on`, `off`, or `redaction=off,permissions=on`; overrides `defences:` in `config/app.yaml` (for E2) |
+| `COPILOT_DEFENCES` | `on`, `off`, or `redaction=off,permissions=on` (names: `injection_filter`, `redaction`, `permissions`, `pinning`); overrides `defences:` in `config/app.yaml` (for E2) |
+| `MCP_EXTRA_SERVERS` | Path of a YAML file of extra MCP servers to load beside our four (red team; see "Pinned tool descriptions"). Unset = none |
 | `COPILOT_CONFIG` | Config file to read `defences:` from (default `config/app.yaml`) |
-| `ACTUATOR_URL` | Base URL of the actuator sidecar. Set = `ops_actions` calls its four endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`); unset = direct `docker compose` (laptop only) |
+| `ACTUATOR_URL` | Base URL of the actuator (`mcp_servers/actuator`). Set = `ops_actions` calls its four endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`); unset = direct `docker compose` (laptop only) |
+| `ACTUATOR_TOKEN` | Sent by `ops_actions` as `Authorization: Bearer <token>`; the actuator needs the same value. Required when the actuator listens beyond this machine |
+| `ACTUATOR_HOST`, `ACTUATOR_PORT` | Where the actuator listens (defaults `127.0.0.1`, `8105`). Use `0.0.0.0` for containers to reach it, with a token |
 | `MCP_ALLOWLIST` | Pinned servers/tool hashes (default `config/mcp_allowlist.yaml`) |
 | `RUNBOOK_HASHES` | Reviewed passage hashes (default `config/runbook_hashes.yaml`). No file = not enforced |
 | `MCP_TRANSPORT` | `stdio` (default) or `http`. With http: `MCP_HOST` (default 127.0.0.1; 0.0.0.0 in a container), `MCP_PORT` (defaults 8101 telemetry, 8102 runbooks_kb, 8103 tickets, 8104 ops_actions) |
@@ -71,6 +74,7 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `ROLLBACK_VERSION_VAR` | Compose variable holding the image version (default `DEMO_VERSION`) |
 | `KNOWN_VERSIONS` | Versions `rollback` may target (default: the pinned 3.1.0) |
 | `PROM_URL`, `FLAG_UI_URL` | As in `eval` |
+| `FLAG_POLL_S` | Seconds between background reads of the flags (default `5`, `0` = off). Started with the server so `recent_changes` times a flag from when it changed, not from the first question |
 | `OPENSEARCH_URL`, `OPENSEARCH_LOG_INDEX`, `JAEGER_URL` | Defaults `http://localhost:9200`, `otel-logs-*`, `http://localhost:16686` |
 | `INCIDENT_DB` | SQLite file for tickets (default `incidents.db`) |
 
@@ -83,6 +87,9 @@ defences: {injection_filter: true, redaction: true, permissions: true}
 ## Not verified against a live shop yet
 
 The OpenSearch and Jaeger endpoints and log field names, `DEMO_VERSION` as the image variable, and the FastMCP wrappers (`build_server`, the read/write `tags`/`annotations`, `MCP_TRANSPORT=http`) were written from the docs and tested only through the plain Python classes. Run each server once against the running shop and fix field names if needed, and run `pytest tests/mcp_servers` with `fastmcp` installed so the marking test is not skipped.
+
+## The actuator (restart, scale, rollback)
+`mcp_servers/actuator/server.py` is the one process that runs Docker for the copilot. `ops_actions` calls it over four fixed endpoints (`POST /restart`, `/scale`, `/rollback`, `GET /status?service=`; plus `GET /health`), and it runs `docker compose` for the shop with the same code as the laptop path (`ComposeExecutor`). It does not trust its caller: every request is checked against the same allow-list as `ops_actions` (protected services, replicas 1 to 3, known versions), takes no extra fields, and runs as a fixed argument list, never a shell. It listens on `127.0.0.1:8105` by default and refuses to start on any other address without `ACTUATOR_TOKEN`. It runs on the machine that has the shop checkout (`OTEL_DEMO_DIR`), not in a container, so no container holds the Docker socket. `mcp-ops` in `infra/compose/copilot.yaml` reaches it at `host.docker.internal:8105`. Not running means the three actions return an `executor_error` and change nothing. Start it: `docs/run-mcp-servers-locally.md`. Tests: `tests/mcp_servers/test_actuator.py` (the whole path with Docker replaced by a recording stub; not yet run against a real Docker).
 
 ## Compose names, ports and images (for Person 5)
 
@@ -118,6 +125,13 @@ Failures are `{ok: false, error: {code, message}}`, which her `_parse` turns int
 
 ## Hooks on the graph's tool calls
 Every tool call, code-driven or model-driven, goes through one `Hooks` per incident (`Hooks.acall`): role permission, approval token, budget and loop checks before; injection filter, redaction and logging after. The routing is Person 2's (`copilot/toolctx.py`: `McpToolbox.call`, `for_agent`, the node wrapper in `graph.py`, `run_incident`); the checks are in `copilot/hooks.py`. Calls the graph makes itself (verify polling) are logged with `driver: "code"` and are not budgeted. The defences follow `defences:` in `config/app.yaml` or `COPILOT_DEFENCES`. To run the servers locally and try them, see `docs/run-mcp-servers-locally.md`.
+
+## Pinned tool descriptions, and planting an extra server
+`McpToolbox.connect` checks every tool each server advertises against `config/mcp_allowlist.yaml` (`mcp_servers/common/pinning.py`): the server must be pinned, the tool must be pinned, and the description hash must be unchanged. A tool that fails is still loaded but **refused while the `pinning` defence is on** (the default): the model is never handed its description, and a call to it returns `{ok: false, error: {code}}` with the reason (`server_not_pinned`, `tool_not_pinned`, `description_changed`) and never reaches the server. `toolbox.pin_problems` lists what was refused and `toolbox.pin_missing` the pinned tools a server no longer offers. After a reviewed change to a tool's docstring, regenerate the pins: `py -m mcp_servers.common.pinning --write`. `py scripts/try_servers.py` prints the pin check for the servers that are running.
+
+`pinning` is the fourth defence in `GuardConfig` (`defences:` in `config/app.yaml`, or `COPILOT_DEFENCES=pinning=off`, or `off` for all four), so experiment E2 flips it with the others.
+
+For the red team: `MCP_EXTRA_SERVERS=<file>` loads servers we have not seen, in addition to our four (format: `config/extra_servers.example.yaml`). They are never pinned, so with pinning on every tool of theirs is refused and their descriptions never reach a model. With `pinning` off the tools load, and the `agents:` listed for a server get its tools in their tool list (as read tools); the hooks still decide whether a call is allowed (an extra server is in no role's permission list, so a call is `blocked` unless permissions are off too). A file that was asked for but is wrong, or a planted server that cannot be reached, stops the run with the reason instead of being skipped. Our own server names cannot be reused. Tests: `tests/mcp_servers/test_extra_servers.py`.
 
 ## Runbook pins
 `config/runbook_hashes.yaml` holds the sha256 of every reviewed runbook/postmortem passage; a passage that differs or is not listed is withheld (`pin_check: on`). A test fails if the runbooks change without new pins. After a person reviews the change: `py -m mcp_servers.runbooks_kb.server --write-pins`, then commit the file.

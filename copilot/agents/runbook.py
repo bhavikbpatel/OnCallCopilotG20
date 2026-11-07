@@ -8,7 +8,6 @@ from copilot import toolctx
 from copilot.agents.base import emit, event, guarded, now, spend, structured_call
 from copilot.clients import Passage, ToolError
 from copilot.deps import CopilotDeps
-from copilot.hooked_toolbox import with_role
 from copilot.memory.views import runbook_view
 from copilot.state import IncidentState, RunbookAdvice, sum_ledgers
 
@@ -46,7 +45,6 @@ async def gate_postmortems(passages: dict[str, Passage], deps: CopilotDeps,
 
 
 def make_runbook(deps: CopilotDeps):
-    @with_role("runbook")
     @guarded("runbook")
     async def runbook(state: IncidentState) -> dict[str, Any]:
         alert = state["alert"]

@@ -23,6 +23,8 @@ from copilot import toolctx
 from copilot.clients import Passage, RecoveryCount, ServiceHealth, ToolError
 from copilot.state import Action, Alert, DryRunResult, Postmortem, Severity
 from eval.telemetry import signals
+from mcp_servers.common.loader import extra_servers_path, load_extra_servers, pin_problems
+from mcp_servers.common.pinning import OUR_SERVERS, load_allowlist
 
 
 def load_server_connections(path: Path) -> dict[str, dict[str, Any]]:
@@ -71,19 +73,64 @@ class McpToolbox:
     """Every call, code-driven or model-driven, goes through the incident's Hooks when one is set
     (copilot.toolctx; run_incident sets it): permission, approval, budget and loop checks, redaction, the log."""
 
-    def __init__(self, tools: dict[str, BaseTool], permissions: dict[str, set[str]]):
+    def __init__(self, tools: dict[str, BaseTool], permissions: dict[str, set[str]],
+                 pin_problems: dict[str, str] | None = None, pin_missing: list[str] | None = None,
+                 extra_read: set[str] | None = None):
         self.tools = tools                    # qualified name "server.tool" → tool
         self.permissions = permissions
+        self.pin_problems = dict(pin_problems or {})   # "server.tool" → why the pin check refuses it (threat T3)
+        self.pin_missing = list(pin_missing or [])     # pinned tools a server no longer offers
+        self.extra_read = set(extra_read or ())        # tools of extra servers: handed to models as read tools
 
     @classmethod
-    async def connect(cls, servers_path: Path, permissions_path: Path) -> "McpToolbox":
+    async def connect(cls, servers_path: Path, permissions_path: Path, extra_servers: str | None = None,
+                      allowlist_path: str | None = None) -> "McpToolbox":
+        """Connect our servers, plus the extra ones in `extra_servers` / MCP_EXTRA_SERVERS (red-team planted
+        servers, mcp_servers/common/loader.py). Every tool is checked against config/mcp_allowlist.yaml; a tool
+        that fails is still loaded but refused while the pinning defence is on (`pin_refusal`), so the E2
+        "defences off" arm can run the same toolbox."""
         connections = load_server_connections(servers_path)
+        permissions = load_permissions(permissions_path)
+        grants: dict[str, list[str]] = {}
+        extra = extra_servers_path(extra_servers)
+        if extra:
+            more, grants = load_extra_servers(extra, reserved=set(connections) | set(OUR_SERVERS))
+            connections.update(more)
+        allowlist = load_allowlist(allowlist_path)
         client = MultiServerMCPClient(connections)
         tools: dict[str, BaseTool] = {}
+        problems: dict[str, str] = {}
+        missing: list[str] = []
+        extra_read: set[str] = set()
         for server in connections:
-            for tool in await client.get_tools(server_name=server):
+            try:
+                found = await client.get_tools(server_name=server)
+            except Exception as exc:
+                if server not in grants:
+                    raise
+                raise RuntimeError(f"extra MCP server {server!r} ({connections[server]['url']}) could not be "
+                                   f"loaded: {exc}") from exc
+            bad, gone = pin_problems(server, found, allowlist)
+            problems.update({f"{server}.{name}": why for name, why in bad.items()})
+            missing += [f"{server}.{name}" for name in gone]
+            for tool in found:
                 tools[f"{server}.{tool.name}"] = tool
-        return cls(tools, load_permissions(permissions_path))
+                if server in grants:
+                    extra_read.add(f"{server}.{tool.name}")
+        for server, agents in grants.items():
+            for agent in agents:
+                permissions.setdefault(agent, set()).add(f"{server}.*")
+        return cls(tools, permissions, problems, missing, extra_read)
+
+    def pin_refusal(self, qualified: str) -> dict[str, str] | None:
+        """The error to answer with when the pin check refuses this tool and the pinning defence is on.
+
+        The defence follows the incident's Hooks config (so E2 can switch it per arm); with no Hooks it is on."""
+        why = self.pin_problems.get(qualified)
+        config = getattr(toolctx.current().hooks, "config", None)
+        if not why or not getattr(config, "pinning", True):
+            return None
+        return {"code": why, "message": f"{qualified} is not an approved tool ({why}); see config/mcp_allowlist.yaml"}
 
     def for_agent(self, agent: str) -> list[BaseTool]:
         """The tools permissions.yaml grants the agent ("server.*" patterns allowed), each wrapped so the model's
@@ -93,7 +140,9 @@ class McpToolbox:
 
         allowed = self.permissions.get(agent.split(":")[0], set())
         return [self._model_tool(name, t) for name, t in self.tools.items()
-                if any(fnmatch.fnmatchcase(name, p) for p in allowed) and TOOL_KINDS.get(name) == READ]
+                if any(fnmatch.fnmatchcase(name, p) for p in allowed)
+                and (TOOL_KINDS.get(name) == READ or name in self.extra_read)
+                and not self.pin_refusal(name)]
 
     async def call(self, qualified: str, args: dict[str, Any]) -> Any:
         return _parse(await self.envelope(qualified, args))
@@ -102,6 +151,9 @@ class McpToolbox:
         tool = self.tools.get(qualified)
         if tool is None:
             raise ToolError("tool_not_found", qualified)
+        refusal = self.pin_refusal(qualified)
+        if refusal:
+            return {"ok": False, "error": refusal}
 
         async def invoke(a: dict[str, Any]) -> dict[str, Any]:
             return _envelope(await tool.ainvoke(a))

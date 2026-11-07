@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from copilot.agents.base import emit, event, guarded, structured_call
 from copilot.agents.remediation import HIGHER_IS_HEALTHY, SIGNAL_ALIASES
 from copilot.deps import CopilotDeps
-from copilot.hooked_toolbox import with_role
 from copilot.memory.views import comms_view
 from copilot.state import IncidentState, Postmortem, ProposedLesson, StatusNote, TimelineEvent
 
@@ -63,7 +62,6 @@ def status_line(state: IncidentState, timeline: list[TimelineEvent]) -> str:
 
 
 def make_comms(deps: CopilotDeps):
-    @with_role("comms")
     @guarded("comms")
     async def comms(state: IncidentState) -> dict[str, Any]:
         timeline = sorted(state.get("timeline", []), key=lambda e: e.at)   # parallel branches finish out of order
