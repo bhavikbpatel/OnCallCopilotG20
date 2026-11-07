@@ -129,6 +129,36 @@ def test_dashboard_and_agent_rules_use_defined_metrics():
     assert not _used(rules) - defined, _used(rules) - defined
 
 
+def test_loop_or_budget_alert_matches_every_budget_and_loop_block():
+    metrics = pytest.importorskip("copilot.metrics")
+    from prometheus_client import REGISTRY
+    from copilot.run import BUDGET_BLOCKS
+
+    rule = next(r for r in load(ROOT / "infra/prometheus/rules/agent.yml")["groups"][0]["rules"]
+                if r["alert"] == "CopilotLoopOrBudget")
+    alerted = set(re.search(r'reason=~"([^"]+)"', rule["expr"]).group(1).split("|"))
+    assert alerted == set(BUDGET_BLOCKS) | {"loop_detected"}
+    assert alerted == set(metrics.ALERT_BLOCK_REASONS)
+    for reason in metrics.ALERT_BLOCK_REASONS:   # exported at 0 before any run, so the first block counts
+        assert REGISTRY.get_sample_value("copilot_tool_calls_blocked_total", {"reason": reason}) is not None
+
+
+def test_a_run_that_ran_out_of_budget_feeds_the_loop_or_budget_alert():
+    metrics = pytest.importorskip("copilot.metrics")
+    from prometheus_client import REGISTRY
+    from eval.schemas.result import ResultLine
+
+    data = json.loads((ROOT / "eval/schemas/examples/result_D-001.json").read_text(encoding="utf-8"))
+    result = ResultLine.model_validate(data).model_copy(update={"status": "budget_exhausted"})
+    before = REGISTRY.get_sample_value("copilot_budget_exhausted_total")
+    assert before is not None          # unlabelled, so exported at 0 before any run
+    metrics.record_run(result)
+    assert REGISTRY.get_sample_value("copilot_budget_exhausted_total") == before + 1
+    rule = next(r for r in load(ROOT / "infra/prometheus/rules/agent.yml")["groups"][0]["rules"]
+                if r["alert"] == "CopilotLoopOrBudget")
+    assert "copilot_budget_exhausted_total" in rule["expr"]
+
+
 def test_record_run_counts_a_result_line():
     metrics = pytest.importorskip("copilot.metrics")
     from prometheus_client import REGISTRY
