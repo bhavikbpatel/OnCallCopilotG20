@@ -389,7 +389,10 @@ async def _into_store(lessons: list[Lesson], digest: str, store: Any, dsn: str |
 def main(argv: list[str] | None = None) -> None:
     from dotenv import load_dotenv
 
+    from copilot import tracing
+
     load_dotenv(ROOT / ".env")
+    tracing.setup()                  # LangSmith, masked; off unless LANGSMITH_TRACING=true (Person 5)
     p = argparse.ArgumentParser(prog="python -m copilot.reflexion", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("reflect", help="one candidate lesson per failed dev run")

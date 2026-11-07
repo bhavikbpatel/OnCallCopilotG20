@@ -64,6 +64,29 @@ Edit `.env` (it is git-ignored — **never put keys in `.env.example`**):
 | `OPENAI_BASE_URL` | no | Override the LLM endpoint. Default comes from `config/app.yaml` (`https://openrouter.ai/api/v1`). |
 | `POSTGRES_DSN` | no | e.g. `postgresql://user:pass@localhost:5432/copilot`. Empty → in-memory (state lost on restart). |
 | `MCP_TELEMETRY_URL`, `MCP_RUNBOOKS_URL`, `MCP_TICKETS_URL`, `MCP_OPS_URL` | no | Override MCP server URLs from `config/mcp_servers.yaml`. |
+| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | no | Tracing, below. Off unless `LANGSMITH_TRACING=true` and a key are set. |
+
+### Tracing (LangSmith)
+
+Every LLM call, tool call and step of the incident graph goes to LangSmith, so you can follow a diagnosis step
+by step (for example the run where the first hypothesis is refuted and the commander replans). An incident shows
+up as up to three traces, because the graph pauses at the approval and at the postmortem review and resumes; they
+share the incident's thread (its `run_id`).
+Get a key at smith.langchain.com (Settings → API Keys), then in `.env`:
+
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=oncall-copilot
+```
+
+Nothing else to change: the eval runner, the incident runtime and `python -m copilot.reflexion` call
+`copilot.tracing.setup()` after loading `.env`. Before anything leaves the machine, `copilot/tracing.py` masks
+every string in the trace: approval tokens and other credentials by key, and keys, bearer tokens, emails and
+card numbers in free text (the same `redact` the MCP servers use). Metric values and identifiers (`run_id`,
+`incident_id`, tool-call ids) stay readable. Tests never trace (`tests/conftest.py`).
+LangSmith's free plan (November 2026) has one seat and 5,000 traces a month (about three per incident); share
+single traces with the team through LangSmith's share links.
 
 ### Check the install
 
@@ -205,6 +228,23 @@ actions, cost, durations, tool calls and hook blocks. Rebuild the dashboard with
 `promtool`, `amtool` and the MCP image build on every PR. `.github/workflows/eval-gate.yml` (manual) starts
 the lite stack on a GitHub runner, runs development cases with `eval.runner --min-success`, and fails
 below the threshold. It needs the `OPENAI_API_KEY` and `APPROVAL_SECRET` repository secrets.
+
+### Option E — The on-call console (Streamlit)
+
+With the stack running (Option D) and `.env` filled in:
+
+```bash
+pip install -e ".[ui]"
+streamlit run ui/app.py          # http://localhost:8501
+```
+
+The page lists the shop's firing alerts from Prometheus. **Investigate** starts the copilot on one and shows the
+plan, hypotheses and timeline live. When the copilot wants to change the shop, it pauses on an approval screen
+with the exact action, its dry run, expected effect, rollback and payload hash: approve, reject, or edit the
+action. After recovery is checked it pauses again for the postmortem review, then shows the final status.
+To try it, turn a fault on (`python -m eval.injector set paymentFailure 50%`), wait about 5 minutes for
+`CheckoutErrorRateHigh`, and `python -m eval.injector clear` afterwards. Set `COPILOT_ENGINEER` in `.env` for
+the name recorded on approvals. One incident at a time per console. Evidence: `docs/evidence/ui/`.
 
 ---
 

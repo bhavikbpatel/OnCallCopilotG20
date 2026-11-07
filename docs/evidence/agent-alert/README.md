@@ -36,5 +36,8 @@ blocked by hooks).
    more and escalates. Two earlier runs of the same case ended this way and the alert stayed silent. The new
    counter `copilot_budget_exhausted_total` counts those runs, and the alert fires on it or on blocked calls.
 
-**Known gap.** Dashboard panels that use `increase()` on labelled counters ("Runs by final status", "Task
-success") miss the first run of each label combination for the same reason as fix 1, so they read 0 here.
+**Fixed later (branch `person5-tracing`).** Dashboard panels that use `increase()` on labelled counters ("Runs by
+final status", "Task success") missed the first run of each label combination for the same reason as fix 1, so
+they read 0 here. The runner now calls `metrics.prepare(config_id)` when a batch or arm starts, so every series a
+run can touch exists at 0 first: see `docs/evidence/dashboard/one-run-counted.jpg`, where a single run shows as 1.
+Still open: "Tool calls by role" (labels from the hooks log) can miss the first call of each role and tool.
