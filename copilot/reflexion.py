@@ -127,6 +127,12 @@ def available_queries(services: Iterable[str]) -> dict[str, dict[str, str]]:
     return out
 
 
+def ran(result: dict[str, Any]) -> bool:
+    """The agent actually worked the incident. A run with status "error" (alert never fired, runner failure) has no
+    trajectory; "timeout" and "budget_exhausted" are real agent failures and are kept."""
+    return result.get("status") != "error"
+
+
 def failed_runs(run_dir: Path, cases_dir: Path = DEV_CASES) -> list[dict[str, Any]]:
     """One reflection input per failed dev run: verdict by code, expected answer, the run's trajectory."""
     if "heldout" in str(cases_dir).replace("-", "").lower():
@@ -144,6 +150,8 @@ def failed_runs(run_dir: Path, cases_dir: Path = DEV_CASES) -> list[dict[str, An
         what = failures(score)
         result = results.get(score["run_id"])
         if score.get("task_success") or not what or result is None or case_id not in cases:
+            continue
+        if not ran(result):          # the alert never fired or the runner failed: no agent failure to learn from
             continue
         expected = cases[case_id].expected
         hyps = result.get("hypotheses") or []
@@ -327,7 +335,8 @@ async def load_into(store: Any, lessons: list[Lesson], expected_hash: str) -> No
 
 
 async def freeze(candidates: Path = CANDIDATES, out_dir: Path = PLAYBOOK_DIR, store: Any = None,
-                 dsn: str | None = None) -> tuple[list[Lesson], str]:
+                 dsn: str | None = None, notes: list[str] | None = None) -> tuple[list[Lesson], str]:
+    """`notes`: anything a reader of the playbook must know about how it was built (shown in README.md)."""
     rows = jsonl(candidates)
     if any(r["status"] == "pending" for r in rows):
         raise ValueError("review every candidate before freezing (pending ones remain)")
@@ -357,7 +366,8 @@ async def freeze(candidates: Path = CANDIDATES, out_dir: Path = PLAYBOOK_DIR, st
         "preconditions the graph checks against live telemetry before using it.", "",
         "Held-out and experiment runs read it with `memory: playbook` (read-only). To put it into another Postgres:",
         "", "```bash", "POSTGRES_DSN=... python -m copilot.reflexion load docs/playbook/playbook.json", "```", "",
-        "Any change to a lesson gives a new hash, and held-out runs made with the old one must be redone.", ""]),
+        "Any change to a lesson gives a new hash, and held-out runs made with the old one must be redone.", "",
+        *(["## Notes", "", *(f"- {n}" for n in notes), ""] if notes else [])]),
         encoding="utf-8")
     await _into_store(lessons, digest, store, dsn)
     return lessons, digest
@@ -405,6 +415,7 @@ def main(argv: list[str] | None = None) -> None:
     f = sub.add_parser("freeze", help="write the playbook and its hash; load it into Postgres")
     f.add_argument("--candidates", type=Path, default=CANDIDATES)
     f.add_argument("--out", type=Path, default=PLAYBOOK_DIR)
+    f.add_argument("--note", action="append", default=[], help="a note for README.md (repeatable)")
     lo = sub.add_parser("load", help="load a frozen playbook.json into POSTGRES_DSN (hash checked)")
     lo.add_argument("playbook", type=Path)
     a = p.parse_args(argv)
@@ -415,7 +426,7 @@ def main(argv: list[str] | None = None) -> None:
     elif a.cmd == "review":
         review_cli(a.candidates, a.reviewer)
     elif a.cmd == "freeze":
-        lessons, digest = asyncio.run(freeze(a.candidates, a.out, dsn=dsn), loop_factory=loop_factory(dsn))
+        lessons, digest = asyncio.run(freeze(a.candidates, a.out, dsn=dsn, notes=a.note), loop_factory=loop_factory(dsn))
         print(f"froze {len(lessons)} lesson(s); playbook hash {digest}")
     else:
         lessons, digest = read_playbook(a.playbook)

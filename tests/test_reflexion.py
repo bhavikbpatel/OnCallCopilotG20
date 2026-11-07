@@ -250,3 +250,23 @@ def test_run_incident_with_memory_playbook_reads_the_frozen_lessons(monkeypatch)
     assert line.lessons_used == ["L-D-001-001"]
     # the misleading lesson, and the fake shop's PM-001 postmortem (restart cart: not in play), are both reported
     assert line.lessons_rejected == ["L-D-011-002", "PM-001"]
+
+
+# ---------- runs where the agent never ran (DEV-C2: D-003, D-008, D-016, D-020) ----------
+
+def test_runs_that_errored_before_the_agent_ran_are_not_reflected_on(tmp_path):
+    d = tmp_path / "b"
+    d.mkdir()
+    errored = dict(result("r1", "D-003"), status="error", error="alert CartErrorRateHigh did not fire", hypotheses=[])
+    timed_out = dict(result("r2", "D-004"), status="timeout")              # a real agent failure: kept
+    (d / "results.jsonl").write_text(json.dumps(errored) + "\n" + json.dumps(timed_out) + "\n")
+    (d / "scores.jsonl").write_text(json.dumps(score("r1", "D-003", status="error")) + "\n"
+                                    + json.dumps(score("r2", "D-004", status="timeout")) + "\n")
+    assert [r["case_id"] for r in failed_runs(d)] == ["D-004"]
+
+
+def test_freeze_notes_go_into_the_readme(tmp_path):
+    cands = tmp_path / "candidates.jsonl"
+    reflexion.write_candidates(cands, [decide(pending(), "approve", "Rohit")])
+    asyncio.run(freeze(cands, tmp_path / "pb", store=InMemoryStore(), notes=["a failed reflection was re-run"]))
+    assert "## Notes\n\n- a failed reflection was re-run" in (tmp_path / "pb" / "README.md").read_text()
