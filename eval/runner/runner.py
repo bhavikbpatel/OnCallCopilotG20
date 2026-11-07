@@ -137,8 +137,17 @@ def approved_flag_changes(tool_calls: Optional[list]) -> set[tuple[str, str]]:
 
 
 def unexplained_drift(record, allowed: set[tuple[str, str]]) -> list[dict]:
-    """Flag changes during the run that neither the plan nor the agent's approved writes made."""
-    return [d for d in record.drift if (d["flag"], d["seen"]) not in allowed]
+    """Flag changes during the run that neither the plan nor the agent's approved writes made.
+
+    A flag released for the agent's approved fix that is still at a variant the plan itself applied is the
+    fault not switched off yet: the injector expects the fix's variant from the approval on, but the write
+    lands only when the agent executes it, and a drift check can fall in between (issue #62). Nobody else
+    changed anything, so that is not contamination."""
+    released = {r["flag"] for r in record.released}
+    planned = {(flag, variant) for a in record.applied for flag, variant in a["changes"].items()}
+    return [d for d in record.drift
+            if (d["flag"], d["seen"]) not in allowed
+            and not (d["flag"] in released and (d["flag"], d["seen"]) in planned)]
 
 
 def _run_agent(agent: Agent, ctx: AgentContext, timeout_s: float) -> tuple[AgentResult, str, Optional[str]]:
@@ -378,7 +387,10 @@ def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
     results, reports, ran, attack_reports = [], [], [], []
     interrupted = False
     try:
-        with (out / "results.jsonl").open("a") as rf, (out / "scores.jsonl").open("a") as sf:
+        # UTF-8 explicitly: model_dump_json keeps non-ASCII text (an agent's "→"), and Windows' default
+        # encoding cannot write it, which lost the result line.
+        with (out / "results.jsonl").open("a", encoding="utf-8") as rf, \
+                (out / "scores.jsonl").open("a", encoding="utf-8") as sf:
             for repeat in range(1, cfg.repeats + 1):
                 for case, attack in plan:
                     if attack is None:
@@ -386,7 +398,7 @@ def run_batch(cases: list[Case], agent: Agent, cfg: RunConfig, deps: RunDeps,
                     else:
                         result, report, ar = run_attack(attack, case, agent, cfg, deps, repeat=repeat)
                         attack_reports.append(ar)
-                        with (out / "attacks.jsonl").open("a") as af:
+                        with (out / "attacks.jsonl").open("a", encoding="utf-8") as af:
                             af.write(ar.model_dump_json() + "\n")
                     rf.write(result.model_dump_json() + "\n")
                     sf.write(report.model_dump_json() + "\n")

@@ -109,9 +109,10 @@ class FixingAgent:
 
     name, version = "test-fixer", "1"
 
-    def __init__(self, store):
+    def __init__(self, store, before_write=None):
         self.store = store
         self.seen: list[AgentContext] = []
+        self.before_write = before_write      # runs between the approval and the write (issue #62)
 
     def run(self, ctx):
         self.seen.append(ctx)
@@ -125,6 +126,8 @@ class FixingAgent:
                                  "status": "supported", "evidence": []}], "severity": "SEV-2"}
         if decision["decision"] != "approve":
             return AgentResult(state=state | {"final_status": "escalated"}, tool_calls=calls)
+        if self.before_write:
+            self.before_write()
         apply(self.store, {"paymentFailure": "off"})
         calls.append({"seq": 1, "agent": "remediation", "agent_role": "remediation", "server": "ops_actions",
                       "tool": "set_flag", "kind": "write", "args": args, "payload_hash": h, "ok": True,
@@ -263,6 +266,49 @@ def test_perfect_run_scores_as_success(tmp_path):
     assert result.recovery.recovered is True and not report.policy_violations
     assert result.approvals[0].decision == "approve" and result.approvals[0].has_token is None
     assert all_at_rest(store)
+
+
+def test_a_drift_check_between_approval_and_write_is_not_contamination(tmp_path):
+    # Issue #62: the fix is approved (the injector expects "off" from then on), the injector's periodic check
+    # runs while the flag is still at the fault's 50%, and only then does the agent's write land.
+    store, deps = make(tmp_path)
+    agent = FixingAgent(store, before_write=deps.injector._check_drift)
+    result, report = run_case(load_case(DEV / "D-001.yaml"), agent, cfg(), deps)
+    assert deps.injector.record.drift[0]["seen"] == "50%"          # the check did see the stale value
+    assert result.status == "completed", result.error
+    assert report.task_success and all_at_rest(store)
+
+
+def test_real_contamination_around_a_released_flag_is_still_caught():
+    from types import SimpleNamespace
+    from eval.runner.runner import unexplained_drift
+
+    record = SimpleNamespace(applied=[{"changes": {"paymentFailure": "50%"}}], released=[{"flag": "paymentFailure"}],
+                             drift=[{"flag": "paymentFailure", "seen": "50%"},      # fix approved, not landed yet
+                                    {"flag": "paymentFailure", "seen": "25%"},      # someone else's value
+                                    {"flag": "adFailure", "seen": "on"}])           # another flag
+    unexplained = unexplained_drift(record, allowed={("paymentFailure", "off")})
+    assert [(d["flag"], d["seen"]) for d in unexplained] == [("paymentFailure", "25%"), ("adFailure", "on")]
+    record.released = []                       # not released: the plan's value where "off" was expected is drift
+    assert ("paymentFailure", "50%") in [(d["flag"], d["seen"]) for d in unexplained_drift(record, set())]
+
+
+class NoteAgent:
+    """Escalates with non-ASCII text, as the copilot's notes often have ("50% → off"). TEST ONLY."""
+
+    name, version = "test-note", "1"
+
+    def run(self, ctx):
+        return AgentResult(state={"run_id": ctx.run_id, "final_status": "escalated",
+                                  "escalation_reason": "paymentFailure 50% → off was not tried"})
+
+
+def test_results_with_non_ascii_text_are_written(tmp_path):
+    # Windows' default file encoding (cp1252) cannot write "→": the result line was lost before the fix.
+    store, deps = make(tmp_path)
+    run_batch([load_case(DEV / "D-001.yaml")], NoteAgent(), cfg(), deps)
+    line = next(tmp_path.glob("TEST-*/results.jsonl")).read_text(encoding="utf-8")
+    assert "→" in json.loads(line)["escalation_reason"]
 
 
 def test_agent_sees_only_the_alert(tmp_path):
