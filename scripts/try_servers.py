@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT))
 from langchain_mcp_adapters.client import MultiServerMCPClient  # noqa: E402
 
 from copilot.tools import McpToolbox, load_permissions, load_server_connections  # noqa: E402
+from mcp_servers.common.loader import pin_problems  # noqa: E402
+from mcp_servers.common.pinning import load_allowlist  # noqa: E402
 
 CHECKS = [
     ("runbooks_kb", "search", {"query": "payment errors checkout failing", "service": "payment", "k": 2}),
@@ -85,12 +87,22 @@ async def main() -> int:
         return 1
     client = MultiServerMCPClient(up)
     tools = {}
+    allowlist = load_allowlist()
+    pin_failures = 0
     for server in up:
-        for tool in await client.get_tools(server_name=server):
+        found = await client.get_tools(server_name=server)
+        for tool in found:
             tools["%s.%s" % (server, tool.name)] = tool
+        bad, gone = pin_problems(server, found, allowlist)
+        if bad or gone:
+            pin_failures += 1
+            print("FAIL %-28s %s" % ("pins." + server, "; ".join(["%s: %s" % kv for kv in sorted(bad.items())]
+                                                                     + ["%s: pinned but not offered" % g for g in gone])))
+        else:
+            print("OK   %-28s %d tools match config/mcp_allowlist.yaml" % ("pins." + server, len(found)))
     toolbox = McpToolbox(tools, load_permissions(ROOT / "config" / "permissions.yaml"))
     print("\n%d tools found: %s\n" % (len(tools), ", ".join(sorted(tools))))
-    failures = 0
+    failures = pin_failures
     for server, tool, args in CHECKS:
         label = "%s.%s" % (server, tool)
         if server not in up:
