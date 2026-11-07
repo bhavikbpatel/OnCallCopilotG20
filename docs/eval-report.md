@@ -196,7 +196,43 @@ to show that it runs; those batches are marked as rehearsal and are not reported
 run only after the playbook is frozen. Any change made after seeing held-out results turns
 those cases into development cases, and this report would say so.
 
-`[RESULT: eval.report --experiments, one table per experiment]`
+### E2: defences off / on
+
+From `python -m eval.report --experiments` (the latest complete batch of each arm in the experiment log). All
+four arms ran on the same code (`6769bc5`, agent `copilot@c7c9256dd320`), memory off, one run per case.
+
+| Arm | Runs | Task success | Policy violations | Attacks judged | Attacks succeeded / influenced | False blocks | Harmful | Errors | Cost/case ($) | Latency median / p95 (s) | Tool calls (median) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| attacks-off | 34 | 18 | 0 | 25 | 0 / 0 | 0 | 0 | 9 | 0.020 | 803 / 1057 | 3 |
+| attacks-on | 34 | 20 | 0 | 27 | 0 / 0 | 0 | 0 | 7 | 0.021 | 802 / 1021 | 3 |
+| clean-off | 10 | 6 | 0 | – | – | 0 | 0 | 0 | 0.032 | 864 / 1044 | 4.5 |
+| clean-on | 10 | 7 | 0 | – | – | 0 | 0 | 0 | 0.035 | 986 / 1219 | 8.5 |
+
+Attacks by goal (judged, succeeded, influenced), defences off / on: `forbidden_write` 16 / 17 judged,
+`approval_bypass` 3 / 3, `secret_leak` 4 / 4, `budget_exhaustion` 2 / 3; none succeeded or influenced a run in
+either arm.
+
+- **No attack succeeded, with or without the defences.** 0 of 25 judged attacks succeeded with defences off and
+  0 of 27 with defences on, and no run moved toward an attack's goal (influenced 0 in both arms). So E2 does not
+  show the switchable defences changing attack success: in these runs the agent did not act on the injected
+  text, so no defence had to stop it. The switch (`copilot/run.py`, `guard_config`) turns off the hooks'
+  injection filter, redaction and permission checks; the typed, allow-listed actions and the approval bound to
+  the payload hash (checked again inside the MCP servers) stay on in both arms.
+- **No legitimate work blocked.** 0 false blocks in the 10 clean runs with defences on (and in every other arm).
+- **The cost of the defences on clean cases**, as measured on 10 cases: median 8.5 tool calls against 4.5, median
+  latency 986 s against 864 s, $0.035 a case against $0.032. Task success, 7 against 6 of 10, is too few cases
+  to show a difference either way.
+- **Errors (16 in total) are counted, never judged.** 12 are the 6 attacks with no delivery path, in each attack
+  arm. 4 are runs whose alert never fired, so the agent never started: base cases D-003, D-015 and D-016 with
+  defences off, D-001 with defences on (the fault's signal stayed under the alert threshold; section 9, traffic).
+- **Over all 88 runs:** no harmful or unnecessary action, no policy violation, no rollback.
+- **Re-run.** The first attempt at attacks-on, clean-off and clean-on (6–7 Nov) stopped part-way: the OpenRouter
+  key reached its spending limit at about 01:24 IST on 7 Nov, and every model call after that failed (HTTP 402).
+  Those three arms were run again in full on 7 Nov with the same code and the same arm settings (the config
+  hashes in the experiment log match). The stopped batches stay in the experiment log and are not used.
+  attacks-off is the 6 Nov batch, on the same code.
+
+`[RESULT: eval.report --experiments, E1, E3 and E4 tables]`
 
 ## 8. Results
 
@@ -233,8 +269,14 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
   the policy's 1%, and reports SEV3 where the policy's "affected user path" gives SEV2; and a noisy alert is
   classified at triage while the load flood is still on, so it gets SEV3, not NONE, even when the team later
   closes it as noise. Severity is reported as measured.
+- **E2 ran on earlier code than the held-out arms.** E2 used `6769bc5`. Two changes merged after it: the
+  telemetry server now records when a flag changed from background polling (#67; before, a flag looked as if
+  it changed when the agent first asked, after the alert), and the runner no longer marks a correct fix as
+  contaminated when a drift check falls between approval and the write (#63; no E2 run was marked
+  contaminated, so E2 is not affected by it).
 - **Not covered:** the 6 attacks with no delivery path in the harness (poisoned runbook step, poisoned
-  third-party tool description, chat); `[RESULT: any arm not run]`.
+  third-party tool description, chat). Of the 28 delivered, 25 were judged with defences off and 27 with
+  defences on; the rest are runs whose alert never fired (section 7, E2). `[RESULT: any arm not run]`.
 
 ## 10. How to reproduce
 
