@@ -14,6 +14,8 @@ import json
 import os
 import socket
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -35,6 +37,28 @@ CHECKS = [
     ("telemetry", "search_logs", {"service": "payment", "limit": 3}),
     ("telemetry", "get_traces", {"service": "payment", "limit": 2}),
 ]
+
+
+def check_actuator() -> bool:
+    """/health needs no token; /status?service=cart asks Docker (needs OTEL_DEMO_DIR on the actuator)."""
+    base = os.environ.get("ACTUATOR_URL", "").rstrip("/")
+    if not base:
+        print("SKIP %-28s ACTUATOR_URL not set (ops_actions uses docker compose directly)" % "actuator")
+        return True
+    ok = True
+    headers = {"Authorization": "Bearer " + os.environ["ACTUATOR_TOKEN"]} if os.environ.get("ACTUATOR_TOKEN") else {}
+    for label, path, extra in (("actuator.health", "/health", {}), ("actuator.status", "/status?service=cart", headers)):
+        try:
+            req = urllib.request.Request(base + path, headers=extra)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                print("OK   %-28s %s" % (label, short(json.loads(resp.read().decode()))))
+        except urllib.error.HTTPError as exc:
+            ok = False
+            print("FAIL %-28s HTTP %s %s" % (label, exc.code, exc.read().decode()[:160]))
+        except (OSError, ValueError) as exc:
+            ok = False
+            print("FAIL %-28s %s" % (label, str(exc)[:200]))
+    return ok
 
 
 def reachable(url: str) -> bool:
@@ -77,6 +101,9 @@ async def main() -> int:
         except Exception as exc:                      # noqa: BLE001 - report every failure, keep going
             failures += 1
             print("FAIL %-28s %s" % (label, str(exc)[:200]))
+    print()
+    if not check_actuator():
+        failures += 1
     print("\n%d check(s) failed." % failures if failures else "\nAll checks passed.")
     return 1 if failures else 0
 

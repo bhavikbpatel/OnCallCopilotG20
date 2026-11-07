@@ -182,8 +182,10 @@ about 30 hours on this machine.
 Postgres for the copilot (`compose.postgres.yaml`, above) is a separate file; it shares the project name, so
 Compose may list it as an orphan. That is harmless: do not pass `--remove-orphans`.
 
-`set_flag` works from the container. `restart_service`, `scale_service` and `rollback` need the actuator
-sidecar (`ACTUATOR_URL`, not built yet) and return an executor error in Docker until then.
+`set_flag` works from the container. `restart_service`, `scale_service` and `rollback` go to the actuator, a
+small process that runs `docker compose` for the shop. Start it on the machine that has the shop checkout
+(`docs/run-mcp-servers-locally.md`, section "The actuator"); until it runs they return an executor error and
+change nothing.
 
 **Alerts.** `infra/prometheus/rules/shop.yml` holds one rule per alert name the cases use
 (`CheckoutErrorRateHigh`, `CartErrorRateHigh`, …), generated from `eval/telemetry/signals.py` so a live alert
