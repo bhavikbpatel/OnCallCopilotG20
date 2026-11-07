@@ -18,8 +18,9 @@ once Prometheus fired it, and the incident was started from the page.
 | ~21:50 | Postmortem accepted; final status **recovered**, action verified, not rolled back | `7-final-status-recovered.jpg` |
 
 **How it is wired.** `ui/incident.py` drives the graph through `copilot.runtime.copilot_runtime()` (the incident
-API's wiring: MCP servers, hooks with `COPILOT_HOOKS=1`, checkpointer, LangSmith tracing) on its own thread, and
-answers the two `interrupt()` pauses with the engineer's decision. An approval carries the payload hash of the
+API's wiring: MCP servers, checkpointer, LangSmith tracing) on its own thread, with one set of hooks per incident
+set through `copilot.toolctx` as `copilot.run.run_incident` does (the run above used the older `COPILOT_HOOKS=1`
+switch, which #66 removed), and answers the two `interrupt()` pauses with the engineer's decision. An approval carries the payload hash of the
 action shown; the approval token is minted inside the graph, never by the page. The alert comes from the shop's
 own Prometheus rules (`infra/prometheus/rules/shop.yml`), rebuilt with the same query and threshold.
 

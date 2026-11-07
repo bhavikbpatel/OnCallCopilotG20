@@ -9,9 +9,11 @@ No Streamlit here, so it can be tested; ui/app.py draws it.
     session.answer(approval_answer(session.view()["pending"], "approve", engineer="uppili"))
 
 The graph is driven the way copilot/graph.py documents for the incident API (stream, then answer each pause
-with Command(resume=...)), on copilot.runtime.copilot_runtime(): the same MCP servers, hooks, checkpointer and
-tracing as the incident API. The approval token is minted inside the graph; the console only sends the
-engineer's decision, bound to the payload hash the engineer was shown.
+with Command(resume=...)), on copilot.runtime.copilot_runtime(): the same MCP servers, checkpointer and tracing
+as the incident API. Every tool call goes through one `Hooks` per incident (permissions, approval check, budget,
+loops, injection filter, log), set the way copilot.run.run_incident sets it (copilot.toolctx). The approval token
+is minted inside the graph; the console only sends the engineer's decision, bound to the payload hash the
+engineer was shown.
 """
 from __future__ import annotations
 
@@ -19,7 +21,6 @@ import asyncio
 import datetime as dt
 import hashlib
 import json
-import os
 import threading
 import urllib.parse
 import urllib.request
@@ -152,10 +153,16 @@ def timeline_rows(values: dict) -> list[dict]:
 
 
 def _default_runtime() -> AbstractAsyncContextManager:
-    # Every tool call through the hooks (permissions, approval check, budget, loops, injection filter, log).
-    os.environ.setdefault("COPILOT_HOOKS", "1")
     from copilot.runtime import copilot_runtime
     return copilot_runtime()
+
+
+def incident_hooks(settings: Any) -> Any:
+    """One incident's hooks, built as copilot.run.run_incident builds them: the permissions file, the model's
+    tool-call budget (code-driven calls are logged, not budgeted), the configured defences."""
+    from copilot.hooks import Hooks, load_permissions
+    return Hooks(permissions=load_permissions(str(settings.permissions_path)),
+                 max_tool_calls=settings.limits.tool_calls)
 
 
 class IncidentSession:
@@ -171,6 +178,7 @@ class IncidentSession:
         self.incident_id = incident_id or f"ui-{alert.alert_name}-{stamp}"
         self.engineer_id = engineer_id
         self._runtime = runtime
+        self.hooks: Any = None           # this incident's copilot.hooks.Hooks, once it starts
         self._lock = threading.Lock()
         self._status = "starting"
         self._values: dict[str, Any] = {}
@@ -225,26 +233,30 @@ class IncidentSession:
     async def _run(self) -> None:
         from langgraph.types import Command
 
+        from copilot import toolctx
+
         async with self._runtime() as rt:
             graph = rt.graph
             config = {"configurable": {"thread_id": self.incident_id, "run_id": None,
                                        "engineer_id": self.engineer_id}, "recursion_limit": 200}
             inp: Any = {"alert": self.alert}
-            self._set(status="running")
-            while True:
-                async for _ in graph.astream(inp, config, stream_mode=["updates", "custom"]):
+            self.hooks = incident_hooks(rt.deps.settings)
+            with toolctx.scope(hooks=self.hooks):      # the graph's node tasks copy this context
+                self._set(status="running")
+                while True:
+                    async for _ in graph.astream(inp, config, stream_mode=["updates", "custom"]):
+                        snap = await graph.aget_state(config)
+                        self._set(values=dict(snap.values))
                     snap = await graph.aget_state(config)
                     self._set(values=dict(snap.values))
-                snap = await graph.aget_state(config)
-                self._set(values=dict(snap.values))
-                pending = [i for t in snap.tasks for i in (t.interrupts or ())]
-                if not pending:
-                    self._set(status="done")
-                    return
-                payload = pending[0].value
-                kind = "approval" if payload.get("kind") == "approval" else "review"
-                future = self._loop.create_future()
-                self._set(answer=future, pending=payload, status=f"awaiting_{kind}")
-                value = await future
-                self._set(answer=None, pending=None, status="running")
-                inp = Command(resume=value)
+                    pending = [i for t in snap.tasks for i in (t.interrupts or ())]
+                    if not pending:
+                        self._set(status="done")
+                        return
+                    payload = pending[0].value
+                    kind = "approval" if payload.get("kind") == "approval" else "review"
+                    future = self._loop.create_future()
+                    self._set(answer=future, pending=payload, status=f"awaiting_{kind}")
+                    value = await future
+                    self._set(answer=None, pending=None, status="running")
+                    inp = Command(resume=value)

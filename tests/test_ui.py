@@ -129,12 +129,16 @@ class _State(TypedDict, total=False):
     review: dict
 
 
-def _stand_in_graph():
+def _stand_in_graph(seen=None):
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.graph import END, START, StateGraph
     from langgraph.types import interrupt
 
+    from copilot import toolctx
+
     def plan(state):
+        if seen is not None:
+            seen.append(toolctx.current().hooks)          # what a tool call made in this node would go through
         return {"timeline": [{"node": "plan", "kind": "plan", "text": "scope, hypotheses, test"}]}
 
     def gate(state):
@@ -155,9 +159,11 @@ def _stand_in_graph():
 
 
 def _runtime(graph):
+    from copilot.config import AppSettings
+
     @asynccontextmanager
     async def runtime():
-        yield SimpleNamespace(graph=graph)
+        yield SimpleNamespace(graph=graph, deps=SimpleNamespace(settings=AppSettings()))
     return runtime
 
 
@@ -181,6 +187,18 @@ def test_a_session_pauses_for_the_engineer_twice_and_finishes():
     values = session.view()["values"]
     assert values["approval"]["decision"] == "approve" and values["approval"]["payload_hash"] == "h1"
     assert values["review"]["accept_postmortem"] is True
+
+
+def test_the_graph_runs_under_this_incidents_hooks():
+    from copilot.config import AppSettings
+    from copilot.hooks import Hooks
+
+    seen = []
+    session = IncidentSession(_alert(), runtime=_runtime(_stand_in_graph(seen)))
+    assert session.wait(("awaiting_approval",)) == "awaiting_approval"
+    assert len(seen) == 1 and isinstance(seen[0], Hooks) and seen[0] is session.hooks
+    assert seen[0].max_tool_calls == AppSettings().limits.tool_calls
+    assert seen[0].permissions                              # config/permissions.yaml, as run_incident loads it
 
 
 def test_answering_when_nothing_waits_is_refused():
