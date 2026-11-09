@@ -53,8 +53,15 @@ actuator, a small process that runs on the machine that has the shop checkout. S
 ```
 $env:OTEL_DEMO_DIR = "C:\path\to\OnCallCopilotG20\vendor\opentelemetry-demo"
 $env:CAPSTONE_COMPOSE_OVERRIDE = "..\..\shop\astronomy\compose.capstone.yaml"   # as in shop/astronomy/start.sh
+$env:COMPOSE_PROJECT_NAME = "oncallcopilotg20"                      # the running stack's project name, see the note below
 py -m mcp_servers.actuator.server        # 8105, this machine only
 ```
+
+`COMPOSE_PROJECT_NAME` must be the project of the stack that is running. The actuator runs `docker compose` from
+`vendor\opentelemetry-demo`, so without it Compose uses that folder's name and not the project you started with
+`docker compose -f compose.lite.yaml up -d` from the repo root, whose name is the repo folder in lower case
+(`oncallcopilotg20` here). Check yours with `docker compose ls`. After starting the actuator, check it sees the stack:
+`/status?service=payment` should show `replicas` 1 (see the call at the end of this section).
 
 For `mcp-ops` in the compose stack to reach it, listen on all interfaces and give both sides one token (the
 actuator refuses to start on any other address without one):
@@ -68,6 +75,14 @@ py -m mcp_servers.actuator.server
 For local `ops_actions` processes, set `$env:ACTUATOR_URL = "http://127.0.0.1:8105"` (and the same
 `ACTUATOR_TOKEN`) before starting them. `py scripts/try_servers.py` then checks `/health` and `/status`.
 The actuator only accepts the four fixed endpoints, the copilot's allow-listed services and known versions.
+
+Check that it sees the running stack (in another terminal; leave out the header if you started it without a token):
+
+```
+Invoke-RestMethod -Uri "http://127.0.0.1:8105/status?service=payment" -Headers @{Authorization="Bearer $env:ACTUATOR_TOKEN"} | ConvertTo-Json
+```
+
+Expected: `"ok": true`, `"replicas": 1`, `"version": "3.1.0"`. If `replicas` is 0, check `COMPOSE_PROJECT_NAME`.
 
 ## 4. Try them
 

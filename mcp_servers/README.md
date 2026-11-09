@@ -71,6 +71,7 @@ tool_calls, budget = hooks.tool_calls(), hooks.budget()   # straight into the re
 | `MCP_TRANSPORT` | `stdio` (default) or `http`. With http: `MCP_HOST` (default 127.0.0.1; 0.0.0.0 in a container), `MCP_PORT` (defaults 8101 telemetry, 8102 runbooks_kb, 8103 tickets, 8104 ops_actions) |
 | `OTEL_DEMO_DIR` | Shop checkout, same as `shop/astronomy/start.sh` (restart, scale, rollback) |
 | `CAPSTONE_COMPOSE_OVERRIDE` | Path to `shop/astronomy/compose.capstone.yaml` |
+| `COMPOSE_PROJECT_NAME` | Name of the running compose project (`docker compose ls`). For `compose.lite.yaml` started from the repo root it is the repo folder in lower case, `oncallcopilotg20`. The actuator runs from the shop folder, so without this it uses a different project name from the running stack |
 | `ROLLBACK_VERSION_VAR` | Compose variable holding the image version (default `DEMO_VERSION`) |
 | `KNOWN_VERSIONS` | Versions `rollback` may target (default: the pinned 3.1.0) |
 | `PROM_URL`, `FLAG_UI_URL` | As in `eval` |
