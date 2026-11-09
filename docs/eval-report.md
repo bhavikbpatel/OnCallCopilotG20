@@ -1,8 +1,13 @@
 # On-Call Copilot: evaluation report
 
-**Owner:** Person 4 (Bhavik, evaluation and red team) · **Status:** DRAFT. Method sections are complete; every
-result marked `[RESULT]` is filled from `python -m eval.report` once the runs exist. No number in this draft is
-an estimate.
+**Owner:** Person 4 (Bhavik, evaluation and red team) · **Status:** results as of 9 Nov 2026. Method sections are
+complete. Every number is produced by `python -m eval.report` from the run files; none is an estimate.
+
+**Not all planned runs were completed.** The project's OpenRouter model credit (tokens) ran out during the
+held-out week, so we could not run every scenario we planned. Done: E2 (defences off / on) in full, and the final
+system (C2) on the 42 held-out cases, two full repeats on all 42 cases and a third on 22 of them. Not run: E1's
+fixed-workflow and single-agent comparison, E3 (before and after the playbook) and E4 (memory, budgets, the
+misleading lesson). They are marked "not run" in sections 7 to 9 and nothing is estimated for them.
 
 ## 1. What we measure and why
 
@@ -181,20 +186,46 @@ attack with defences off and on, and the D-011 misleading-lesson test. C0 and C1
 the budget arms on 14, and the false-block arms on 10 dev cases. These cases are picked by code before any
 held-out run (`sample_cases`: spread over fault types, noise and two-fault cases as groups of their own,
 fixed seed 20261106), and a sampled arm is compared with the others only on the cases they share
-(`eval.report --experiments` prints that table). Planned runs: 320, about 75 hours.
+(`eval.report --experiments` prints that table). Planned runs: 320, about 75 hours. What was actually run is in
+"What was run" below.
 
 **E3 and E4's memory comparison are the same runs.** With memory off the agent sees neither lessons nor
 past-incident write-ups; with the frozen playbook it sees the reviewed lessons and the write-ups whose fix is in
 play (a flag that is on now, or a supported suspect), both checked by code. So E3 measures long-term memory as
 a whole. The report separates the playbook's share by listing, for every lesson, the runs that used it, how many
 of them succeeded, how often its preconditions rejected it, and how many runs failed on a case that succeeded
-without memory (`eval.report --experiments`). The playbook's hash is in the experiment log, and the cost of
-writing the lessons is in `docs/playbook/playbook.json` (`generation_cost`): `[RESULT]`.
+without memory (`eval.report --experiments`). The playbook's hash is in the experiment log. Writing the lessons
+cost 81,269 tokens, $0.011, over 17 reflections (`docs/playbook/playbook.json`, `generation_cost`; the time a
+person spent reviewing them is not included). 9 lessons were approved and 8 rejected with their reasons
+(`docs/playbook/rejected.md`); the frozen playbook's hash is
+`0c05d04cf34aa7ac5758fe2644993377757636683aaf9e6755b4c9a2faa64bf3`. The per-lesson table needs the memory-off arm,
+which was not run (below).
 
 Before the held-out week every arm runs once on five dev cases (D-001, D-005, D-007, D-009, D-015; `--rehearse`)
 to show that it runs; those batches are marked as rehearsal and are not reported as results. Held-out cases are
 run only after the playbook is frozen. Any change made after seeing held-out results turns
 those cases into development cases, and this report would say so.
+
+### What was run
+
+| Part | Planned runs | Run | Where |
+|---|---|---|---|
+| E2: defences off / on (28 deliverable attacks twice; 10 dev cases twice) | 76 | 76 | reported below; the 12 attack runs with no delivery path are extra and counted as errors |
+| E1 C2: final system, 3 repeats on 42 held-out cases | 126 | 106 | section 8; 20 not run |
+| E1 C0 and C1: fixed workflow, one agent (21 cases each) | 42 | 0 | not run |
+| E3 / E4 memory off (42 held-out cases) | 42 | 0 | not run |
+| E4 budgets 10 and 5 (14 cases each) | 28 | 0 | not run |
+| E4 misleading lesson, with and without memory (3 each) | 6 | 0 | not run |
+| Total | 320 | 182 | |
+
+**Why some runs were not run.** The project's OpenRouter model credit ran out twice. The first time, on 7 Nov,
+the API key reached its limit part-way through E2, and the three affected E2 arms were run again after it was
+raised (E2 below). The second time, at about 02:05 IST on 9 Nov, the account's credit ran out during the third
+repeat of C2: every model call after that failed with HTTP 402 ("this request requires more credits"). The last
+20 runs of that repeat, and the 19 runs of memory-off that were then started, ended with this error before the
+agent ran. Those 39 attempts are not agent results and are not counted as failures of the system: the 20 C2
+runs are shown separately in section 8, and the memory-off attempts are not reported. No more credit was
+available to finish the remaining runs before the report was due.
 
 ### E2: defences off / on
 
@@ -232,13 +263,82 @@ either arm.
   hashes in the experiment log match). The stopped batches stay in the experiment log and are not used.
   attacks-off is the 6 Nov batch, on the same code.
 
-`[RESULT: eval.report --experiments, E1, E3 and E4 tables]`
+### E1, E3 and E4: not run
+
+**Not run: model credit ran out.** E1's comparison arms (C0 fixed workflow, C1 single agent), E3 (before the
+playbook) and E4 (memory off, budgets 10 and 5, the misleading lesson) have no results. We therefore cannot say
+here what the team of agents adds over a fixed workflow or one agent, whether the playbook helped on held-out
+cases, or what memory and the budgets change. The configurations, the case samples and the checks for these
+arms are built and tested, so they can be run when credit is available; the
+report would then be updated. Section 8 shows C2 alone.
 
 ## 8. Results
 
-`[RESULT: python -m eval.report — every configuration: task success, policy violations, attack success, false
-blocks, cost per case, median and p95 latency, errors; spread across the three E1 repeats; root cause, action,
-recovery and harmful actions by fault type and by service; time to diagnose and to recover]`
+Only E2 (section 7) and the final system C2 on the held-out cases have results. The other arms were not run
+(section 7, "What was run").
+
+### C2 on the 42 held-out cases
+
+Batch `E1-C2-20261107T185424Z`: code `873c846`, agent `copilot@c7c9256dd320`, frozen playbook
+`0c05d04c…`, memory on, defences on, 3 repeats of the 42 held-out cases (126 runs planned). **20 runs, all in
+the third repeat, did not run:** every model call failed with HTTP 402 (no credit) from about 02:05 IST on
+9 Nov. Because the third repeat therefore covers 22 of 42 cases, the figures are given two ways.
+
+| | All 126 attempted (the 20 count as failures) | 106 runs that reached the model |
+|---|---|---|
+| Task success | 65 (0.516) | 65 (0.613) |
+| Cost per case | $0.025 | $0.029 (total $3.13) |
+| Median / p95 latency | 824.6 s / 1159 s | 850.3 s / 1186.6 s |
+| Median tool calls | 4 | 5 |
+
+The 106-run view is the fairer measure of the system; the 126-run view shows what was lost. For the 106 runs:
+
+| Measure | Value |
+|---|---|
+| Root cause: first hypothesis correct (top-1) | 0.64 |
+| Root cause: every injected fault in the first three (top-3) | 0.60 |
+| Correct action | 0.70 |
+| Verified recovery (judged runs; 2 not judged) | 0.86 |
+| Harmful actions | 1 |
+| Unnecessary actions | 0 |
+| Policy violations | 0 |
+| Rollbacks | 0 |
+| Time to diagnose / to recover (median) | 79.1 s / 392.1 s |
+| Errors | 5 (alert never fired), 1 budget exhausted |
+
+Top-3 is below top-1 because two-fault cases need both faults inside the first three hypotheses.
+
+**Spread across repeats** (task success): repeat 1 27/42 (0.643), repeat 2 25/42 (0.595), repeat 3 13/22
+(0.591, only 22 cases funded); mean 0.61, standard deviation 0.029. The guide asks for three full repeats; we have
+two full ones and a partial third.
+
+**By fault type** (106 runs; a fault type appears in several cases; two-fault cases are listed by both faults):
+
+| Fault | Runs | Top-1 | Top-3 | Correct action | Recovered | Harmful | Median diagnose (s) |
+|---|---|---|---|---|---|---|---|
+| adFailure | 8 | 0.875 | 0.875 | 0.875 | 1.0 | 0 | 75.8 |
+| adFailure + paymentFailure | 2 | 1.0 | 0 | 0 | 1.0 | 0 | 81.4 |
+| cartFailure | 12 | 0.583 | 0.583 | 0.75 | 0.75 | 0 | 86.8 |
+| emailMemoryLeak | 12 | 0.583 | 0.583 | 0.583 | 0.833 | 0 | 79.1 |
+| emailMemoryLeak + productCatalogFailure | 2 | 1.0 | 0 | 0 | 1.0 | 0 | 60.5 |
+| imageSlowLoad | 10 | 0.5 | 0.5 | 0.5 | 0.5 | 0 | 139.9 |
+| imageSlowLoad + paymentUnreachable | 2 | 0 | 0 | 0 | 1.0 | 0 | 96.7 |
+| kafkaQueueProblems | 12 | 0.5 | 0.5 | 0.5 | 1.0 | 0 | 84.5 |
+| noise (no fault) | 6 | n/a | n/a | n/a | n/a | 0 | n/a |
+| paymentFailure | 12 | 0.833 | 0.833 | 0.833 | 0.9 | 0 | 64.1 |
+| paymentUnreachable | 8 | 0 | 0 | 0.875 | 0.857 | 1 | 71.4 |
+| productCatalogFailure | 12 | 1.0 | 1.0 | 1.0 | 1.0 | 0 | 66.5 |
+| productCatalogLockContention | 8 | 0.75 | 0.75 | 0.875 | 0.875 | 0 | 90.0 |
+
+Single-fault cases with clear telemetry (productCatalogFailure, paymentFailure, adFailure) are diagnosed well.
+paymentUnreachable is never named first (0 of 8) although the action is mostly right, and imageSlowLoad is hardest.
+Counts per row are small (2 to 12 runs), so these are descriptions, not rankings.
+
+**The one harmful action.** In a paymentUnreachable run the remediation agent set `paymentFailure` off, a flag that
+was not the injected fault. The automatic approver approved it, and the shop did not recover. It is the only
+harmful action in 106 runs; it is counted in the zero-harm figure above and not hidden.
+
+Not available: any comparison with C0 or C1, the effect of the playbook, the effect of memory and the budgets.
 
 ## 9. Limits
 
@@ -252,11 +352,15 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
   not arbitrary production failures.
 - **The approver is automatic.** It approves (or rejects) every request the same way; a real engineer would
   reject or edit some. Edit and reject paths are tested in unit tests, not in the experiments.
-- **Fewer runs for the baselines and the budgets** (section 7, run cut): C0 and C1 are measured once on half
-  of the held-out cases and the budget arms on a third, so their figures have wider uncertainty than C2's,
-  and the spread across repeats is reported for C2 only.
-- **E3 is not the playbook alone.** Measuring the lessons without the past-incident write-ups would need one
-  more held-out arm (about 42 runs) that the shop time did not allow; the per-lesson table stands in for it.
+- **Model credit ran out, so not all scenarios were run (the main limit of this report).** 182 of the 320
+  planned runs were done (section 7, "What was run"). E1's C0 and C1, E3, and all of E4 have no results, so the
+  report cannot answer E1's "what does the team add" question, E3's "did the lessons help" or E4's ablation, and
+  does not guess. The final-system comparison has two full repeats and a third on 22 of 42 cases, so its
+  spread rests on less than the three repeats the guide asks for.
+- **The held-out figures are for one model, one shop and a small sample:** 42 cases, many of the same fault
+  type (late start 21 of 42), so fault-type rows have 2 to 12 runs each.
+- **E3 would not have been the playbook alone** even if run: it is memory as a whole (the same runs as E4
+  memory on / off). Without it, only the playbook's generation cost and the review of its lessons are reported.
 - **E2 is measured without memory** (both arms), so it says nothing about attacks that would come through
   stored lessons.
 - **LLM variation.** Model outputs differ between runs (seen on D-001: the same fix, but the root cause named
@@ -276,7 +380,7 @@ recovery and harmful actions by fault type and by service; time to diagnose and 
   contaminated, so E2 is not affected by it).
 - **Not covered:** the 6 attacks with no delivery path in the harness (poisoned runbook step, poisoned
   third-party tool description, chat). Of the 28 delivered, 25 were judged with defences off and 27 with
-  defences on; the rest are runs whose alert never fired (section 7, E2). `[RESULT: any arm not run]`.
+  defences on; the rest are runs whose alert never fired (section 7, E2). Arms not run are listed in section 7, "What was run".
 
 ## 10. How to reproduce
 
