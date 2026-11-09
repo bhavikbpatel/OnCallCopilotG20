@@ -218,6 +218,8 @@ those cases into development cases, and this report would say so.
 | E4 misleading lesson, with and without memory (3 each) | 6 | 0 | not run |
 | Total | 320 | 182 | |
 
+The dev rehearsal batches (each arm once on five dev cases) only showed that the arms run; they are marked as rehearsal in the experiment log and are not results. They are not in the 182.
+
 **Why some runs were not run.** The project's OpenRouter model credit ran out twice. The first time, on 7 Nov,
 the API key reached its limit part-way through E2, and the three affected E2 arms were run again after it was
 raised (E2 below). The second time, at about 02:05 IST on 9 Nov, the account's credit ran out during the third
