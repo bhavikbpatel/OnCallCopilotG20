@@ -97,6 +97,15 @@ def memory_on(memory: Any) -> bool:
     return memory_mode(memory) != "off"
 
 
+def run_env() -> dict[str, str]:
+    """The environment run_incident will see: the repo's .env under os.environ (load_dotenv never overrides).
+    The runner does not load .env itself, so anything decided before run_incident (the event loop, the pre-flight)
+    must read it from here, not from os.environ alone."""
+    from dotenv import dotenv_values
+
+    return {k: v for k, v in dotenv_values(ROOT / ".env").items() if v} | dict(os.environ)
+
+
 def options_problem(options: Mapping[str, Any] | None, env: Mapping[str, str] | None = None) -> str | None:
     """Why these arm options cannot run here, or None. The runner asks before the first case (CopilotAgent)."""
     env = os.environ if env is None else env
@@ -217,7 +226,9 @@ class CopilotAgent:
         call fails with "RuntimeError: Event loop is closed"."""
         with self._lock:
             if self._loop is None or self._loop.is_closed():
-                self._loop = new_event_loop(os.getenv("POSTGRES_DSN"))     # Postgres on Windows: selector loop
+                # Postgres on Windows needs a selector loop; the DSN may be only in .env (9 Nov: every E4 case
+                # failed "Psycopg cannot use the 'ProactorEventLoop'" when it was read from os.environ alone).
+                self._loop = new_event_loop(run_env().get("POSTGRES_DSN") or None)
                 threading.Thread(target=self._loop.run_forever, daemon=True, name="copilot-loop").start()
             return self._loop
 
@@ -230,10 +241,7 @@ class CopilotAgent:
 
     def options_problem(self, options: Mapping[str, Any] | None) -> str | None:
         """For the runner's pre-flight (eval.runner.agents.not_ready): checked once, before the first case."""
-        from dotenv import dotenv_values
-
-        env = {k: v for k, v in dotenv_values(ROOT / ".env").items() if v} | dict(os.environ)
-        return options_problem(options, env)
+        return options_problem(options, run_env())
 
     def run(self, ctx: Any) -> Any:
         from eval.runner.agents import AgentResult

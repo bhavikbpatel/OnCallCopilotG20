@@ -321,3 +321,27 @@ def test_copilot_agent_stops_a_case_at_its_deadline(monkeypatch):
         assert agent.run(_ctx("next")).state["final_status"] == "recovered"     # the loop is still usable
     finally:
         agent.close()
+
+
+def test_copilot_agent_picks_a_selector_loop_on_windows_when_the_dsn_is_only_in_dotenv(monkeypatch, tmp_path):
+    """Live E4 run, 9 Nov: POSTGRES_DSN only in .env, the runner never loads it, so the agent's loop was Proactor
+    and every case failed "Psycopg cannot use the 'ProactorEventLoop' to run in async mode"."""
+    from copilot.memory import backends
+
+    (tmp_path / ".env").write_text("POSTGRES_DSN=postgresql://u:p@localhost:5432/copilot\n")
+    monkeypatch.setattr(run_mod, "ROOT", tmp_path)
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
+    monkeypatch.setattr(backends.sys, "platform", "win32")
+    agent = CopilotAgent(settings())
+    try:
+        assert isinstance(agent._event_loop(), asyncio.SelectorEventLoop)
+    finally:
+        agent.close()
+    (tmp_path / ".env").write_text("")                      # no DSN anywhere: keep the default (Proactor on Windows)
+    agent = CopilotAgent(settings())
+    try:
+        default = asyncio.new_event_loop()
+        default.close()
+        assert type(agent._event_loop()) is type(default)
+    finally:
+        agent.close()
