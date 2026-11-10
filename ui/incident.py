@@ -165,6 +165,15 @@ def incident_hooks(settings: Any) -> Any:
                  max_tool_calls=settings.limits.tool_calls)
 
 
+def _event_loop() -> asyncio.AbstractEventLoop:
+    """The incident's own loop, chosen as copilot.run.CopilotAgent chooses it: with Postgres on Windows, a selector
+    loop (psycopg refuses Windows' default Proactor loop). The DSN may be only in .env (10 Nov dry run: the console
+    failed every incident with "Psycopg cannot use the 'ProactorEventLoop'")."""
+    from copilot.memory.backends import new_event_loop
+    from copilot.run import run_env
+
+    return new_event_loop(run_env().get("POSTGRES_DSN") or None)
+
 class IncidentSession:
     """One incident, driven on its own thread and event loop so a page can poll it and answer its pauses.
 
@@ -185,7 +194,7 @@ class IncidentSession:
         self._pending: Optional[dict] = None
         self._error: Optional[str] = None
         self._answer: Optional[asyncio.Future] = None
-        self._loop = asyncio.new_event_loop()
+        self._loop = _event_loop()
         self._thread = threading.Thread(target=self._main, daemon=True, name=f"incident-{self.incident_id}")
         self._thread.start()
 
