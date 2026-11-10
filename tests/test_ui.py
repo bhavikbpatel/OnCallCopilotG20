@@ -218,3 +218,19 @@ def test_a_failure_is_shown_not_raised():
     session = IncidentSession(_alert(), runtime=broken)
     assert session.wait(("done",)) == "error"
     assert "mcp-telemetry" in session.view()["error"]
+
+
+def test_a_session_uses_a_selector_loop_on_windows_when_the_dsn_is_only_in_dotenv(monkeypatch, tmp_path):
+    """10 Nov dry run: POSTGRES_DSN only in .env, the incident's loop was Proactor and the console failed at once."""
+    import asyncio
+
+    from copilot import run as run_mod
+    from copilot.memory import backends
+
+    (tmp_path / ".env").write_text("POSTGRES_DSN=postgresql://u:p@localhost:5432/copilot" + chr(10))
+    monkeypatch.setattr(run_mod, "ROOT", tmp_path)
+    monkeypatch.delenv("POSTGRES_DSN", raising=False)
+    monkeypatch.setattr(backends.sys, "platform", "win32")
+    session = IncidentSession(_alert(), runtime=_runtime(_stand_in_graph()))
+    assert isinstance(session._loop, asyncio.SelectorEventLoop)
+    assert session.wait(("awaiting_approval",)) == "awaiting_approval"      # and the incident runs on it

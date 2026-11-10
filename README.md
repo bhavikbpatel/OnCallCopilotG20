@@ -39,7 +39,8 @@ Either way, put the DSN in `.env` and check it with `python scripts/check_postgr
 write / read / delete).
 
 - **Docker:** `docker compose -f compose.postgres.yaml up -d` with `POSTGRES_PASSWORD` in `.env`, then
-  `POSTGRES_DSN=postgresql://oncall:<password>@localhost:5432/oncall`.
+  `POSTGRES_DSN=postgresql://oncall:<password>@127.0.0.1:5432/oncall`. Use `127.0.0.1`, not `localhost`: on Windows
+  `localhost` tries IPv6 first, and the container listens on IPv4 only, so the copilot hangs connecting.
 - **Windows without Docker or admin rights** (portable binaries):
   1. Download `postgresql-16.x-1-windows-x64-binaries.zip` from https://www.enterprisedb.com/download-postgresql-binaries
      and unzip it to `%USERPROFILE%` (gives `%USERPROFILE%\pgsql`).
@@ -62,7 +63,7 @@ Edit `.env` (it is git-ignored — **never put keys in `.env.example`**):
 | :-- | :-- | :-- |
 | `OPENAI_API_KEY` | yes | Your OpenRouter key (`sk-or-...`). The OpenAI client is pointed at OpenRouter. |
 | `OPENAI_BASE_URL` | no | Override the LLM endpoint. Default comes from `config/app.yaml` (`https://openrouter.ai/api/v1`). |
-| `POSTGRES_DSN` | no | e.g. `postgresql://user:pass@localhost:5432/copilot`. Empty → in-memory (state lost on restart). |
+| `POSTGRES_DSN` | no | e.g. `postgresql://user:pass@127.0.0.1:5432/copilot` (`127.0.0.1`, not `localhost`, on Windows). Empty → in-memory (state lost on restart). |
 | `MCP_TELEMETRY_URL`, `MCP_RUNBOOKS_URL`, `MCP_TICKETS_URL`, `MCP_OPS_URL` | no | Override MCP server URLs from `config/mcp_servers.yaml`. |
 | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | no | Tracing, below. Off unless `LANGSMITH_TRACING=true` and a key are set. |
 
