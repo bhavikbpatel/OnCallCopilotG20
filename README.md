@@ -7,6 +7,24 @@ On-Call Copilot takes a firing alert, works out from live telemetry which servic
 - Overall design: [Documents/On-Call-Copilot-System-Design.md](Documents/On-Call-Copilot-System-Design.md)
 - Agent graph and memory design: [Documents/agent_graph_design.md](Documents/agent_graph_design.md)
 
+## Submission
+
+Everything the capstone brief asks for, in one place:
+
+| Item | Where |
+|---|---|
+| Start everything with one command | [2. Run the agent, option D](#option-d--everything-in-docker-shop-mcp-servers-monitoring): `docker compose up -d` |
+| Architecture diagram and numbered walkthrough | [System design §2](Documents/On-Call-Copilot-System-Design.md#2-architecture-and-one-incident-end-to-end) ([diagram](Documents/images/architecture.png)) |
+| Threat model | [docs/threat-model.md](docs/threat-model.md) |
+| Memory policy | [docs/memory-policy.md](docs/memory-policy.md) |
+| Evaluation report | [docs/eval-report.md](docs/eval-report.md) |
+| Experiment log | [docs/experiment-log.md](docs/experiment-log.md) |
+| Contribution log | [docs/contribution-log.md](docs/contribution-log.md) |
+| Slides | [PDF](docs/oncall-copilot-slides.pdf) · [PPTX with speaker notes](docs/oncall-copilot-slides.pptx) |
+| Backup demo recording (about 20 min) | [Release demo-2026-11-12](https://github.com/bhavikbpatel/OnCallCopilotG20/releases/tag/demo-2026-11-12): scene 1 at 0:00, scene 2 at 5:15, scene 3 at 8:41 |
+
+No API keys or private data are in the repo: secrets live in a local `.env` (see [Configure secrets](#configure-secrets)).
+
 ---
 
 ## 1. Setup
