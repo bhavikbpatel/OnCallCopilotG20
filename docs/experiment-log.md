@@ -1,6 +1,6 @@
 # Experiment log and tables
 
-Generated on 11 Nov 2026 by `python -m eval.report --log` and `python -m eval.report --experiments` (counts only; no
+Generated on 11 Nov 2026 (E1-C2 updated 12 Nov) by `python -m eval.report --log` and `python -m eval.report --experiments` (counts only; no
 held-out case content). The raw run files stay local (`eval/results/` is not committed).
 
 **How to read the log.**
@@ -9,7 +9,9 @@ held-out case content). The raw run files stay local (`eval/results/` is not com
   the model key reached its spending limit; run again in full on 7 Nov with the same settings) and the first
   memory-off attempt of 8 Nov (28 runs, all HTTP 402; run again on 9 Nov).
 - The final-system batch `E1-C2-20261107T185424Z` has 126 runs: 20 in its third repeat failed on HTTP 402 when the
-  model credit ran out and were not re-run (reported in `docs/eval-report.md`, section 8.1).
+  model credit ran out. Those 20 cases were run again on 11 Nov (`E1-C2-R3FILL-20261111T131331Z`: same code `873c846`,
+  agent, settings and frozen playbook, one run each). That batch is marked partial in the log, so the tool's own
+  "latest complete batch" rule does not pick it; the E1 tables below combine the two batches (`docs/eval-report.md`, 8.1).
 - The tables below use the latest complete batch of each arm. Sampled arms are compared only on shared cases.
 
 ## Experiment log
@@ -46,6 +48,7 @@ held-out case content). The raw run files stay local (`eval/results/` is not com
 | 2026-11-10 04:34 | E4 | budget-5 | E4-budget-5-20261110T043433Z | copilot@c7c9256dd320 | 3d927dc | 7883505a514993ed | 0c05d04cf34a | 14 | 0.5 | completed 11, budget_exhausted 3 | 0.022 | no |
 | 2026-11-10 08:10 | E1 | C0 | E1-C0-20261110T081038Z | copilot@c7c9256dd320 | 3d927dc | ec040c7ec1f6c920 | 0c05d04cf34a | 21 | 0.429 | completed 21 | 0.007 | no |
 | 2026-11-10 12:33 | E1 | C1 | E1-C1-20261110T123311Z | copilot@c7c9256dd320 | 3d927dc | 38a09d48ad06f74a | 0c05d04cf34a | 21 | 0.714 | completed 20, error 1 | 0.02 | no |
+| 2026-11-11 13:13 | E1 | C2 | E1-C2-R3FILL-20261111T131331Z | copilot@c7c9256dd320 | 873c846 | c8064110a4ca448d | 0c05d04cf34a | 20 | 0.6 | completed 20 | 0.03 | partial (re-run of the 20 HTTP 402 runs of repeat 3) |
 
 Models (config/app.yaml): commander: openai/gpt-6-luna; comms: openai/gpt-5-mini; diagnosis: openai/gpt-5-mini; reflexion: openai/gpt-6-luna; remediation: openai/gpt-5-mini; runbook: openai/gpt-5-mini; single_agent: openai/gpt-5-mini; triage: openai/gpt-5-mini.
 
@@ -53,11 +56,13 @@ Models (config/app.yaml): commander: openai/gpt-6-luna; comms: openai/gpt-5-mini
 
 ### E1: Does the team of agents justify its cost compared with a fixed workflow and a single agent?
 
+C2 here is the 9 Nov batch with its 20 HTTP 402 runs replaced by the re-run of 11 Nov (`E1-C2-R3FILL-20261111T131331Z`, same code, agent and settings; computed with eval.report's own functions by a local script, `combine_c2.py`, kept outside the repository).
+
 | Arm | Runs | Task success | Rate | Policy violations | Attack success | False blocks | Cost/case ($) | Median latency (s) | p95 latency (s) | Errors | Root cause top-1 | Top-3 | Correct action | Verified recovery | Harmful | Unnecessary | Time to diagnose (s, median) | Time to recover (s, median) | Tool calls (median) | Rollbacks |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | C0 | 21 | 9 | 0.429 | 0 | – | 0 | 0.007 | 761.8 | 938.2 | 0 | 0.5 | 0.5 | 0.5 | 0.526 | 3 | 0 | – | 228.1 | 0 | 0 |
 | C1 | 21 | 15 | 0.714 | 0 | – | 0 | 0.02 | 807.5 | 978.1 | error 1 | 0.8 | 0.75 | 0.85 | 1 | 0 | 0 | – | 371.6 | 6 | 0 |
-| C2 | 126 | 65 | 0.516 | 0 | – | 0 | 0.025 | 824.6 | 1159.0 | budget_exhausted 1, error 25 | 0.547 | 0.513 | 0.598 | 0.86 | 1 | 0 | 79.1 | 392.1 | 4 | 0 |
+| C2 | 126 | 77 | 0.611 | 0 | – | 0 | 0.03 | 844.8 | 1159.0 | budget_exhausted 1, error 5 | 0.641 | 0.59 | 0.692 | 0.862 | 2 | 0 | 79.0 | 394.2 | 5 | 0 |
 
 Compared: C0, C1, C2 (varies architecture).
 
@@ -67,7 +72,7 @@ C0, C1, C2 on the 21 case(s) every one of them ran (sampled arms; all repeats ke
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | C0 | 21 | 9 | 0.429 | 0 | – | 0 | 0.007 | 761.8 | 938.2 | 0 | 0.5 | 0.5 | 0.5 | 0.526 | 3 | 0 | – | 228.1 | 0 | 0 |
 | C1 | 21 | 15 | 0.714 | 0 | – | 0 | 0.02 | 807.5 | 978.1 | error 1 | 0.8 | 0.75 | 0.85 | 1 | 0 | 0 | – | 371.6 | 6 | 0 |
-| C2 | 63 | 30 | 0.476 | 0 | – | 0 | 0.026 | 819.8 | 1133.4 | budget_exhausted 1, error 13 | 0.517 | 0.483 | 0.6 | 0.935 | 0 | 0 | 84.9 | 400.0 | 4 | 0 |
+| C2 | 63 | 36 | 0.571 | 0 | – | 0 | 0.032 | 858.6 | 1135.8 | budget_exhausted 1, error 2 | 0.617 | 0.567 | 0.717 | 0.929 | 0 | 0 | 84.2 | 400.5 | 7 | 0 |
 
 ### E2: Do the defences stop attacks without blocking legitimate work?
 
