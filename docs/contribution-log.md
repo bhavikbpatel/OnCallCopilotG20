@@ -79,5 +79,7 @@ their own rows only.
 | 9 Nov | Person 4 (Bhavik) | this PR | Evaluation report with the results that exist, docs only: a "what was run" table (182 of 320 planned runs), the final system on the 42 held-out cases (106 runs [...]
 | 11 Nov | Person 4 (Bhavik) | this PR | Final evaluation results, docs only: E1 (fixed workflow, single agent, team), E3, E4 (memory, budgets, misleading lesson) added to the report with the final-sy[...]
 | 12 Nov | Person 4 (Bhavik) | this PR | Re-ran the 20 final-system runs of repeat 3 that failed on HTTP 402 (same code, agent, settings and playbook); report and experiment log updated to 126 of 126 [...]
-| 12 Nov | Person 6 (Manasi) | this PR | Added this contribution log entry for Manasi and recorded the update to the project contribution log. |
 | 12 Nov | Person 2 (Rohit) | this PR | Person 2's rows added to this log (docs only); the blank line that split the table before #70 removed |
+| 31 Oct | Person 1 (Manasi) | #8 | Severity classification, runbook and memory updates, retrieval improvements, and accepted-incident and lesson lifecycle |
+| 1 Nov | Person 1 (Manasi) | #25 | Updated runbooks and aligned severity policy, case expectations, and tests with measured impact and evidence |
+| 5 Nov | Person 1 (Manasi) | #32 | Integrated the latest main while preserving severity-policy updates and keeping the classifier, cases, tests, and docs aligned |
