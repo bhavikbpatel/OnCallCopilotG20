@@ -3,11 +3,11 @@
 **Owner:** Person 4 (Bhavik, evaluation and red team) · **Status:** results as of 9 Nov 2026. Method sections are
 complete. Every number is produced by `python -m eval.report` from the run files; none is an estimate.
 
-**Not all planned runs were completed.** The project's OpenRouter model credit (tokens) ran out during the
-held-out week, so we could not run every scenario we planned. Done: E2 (defences off / on) in full, and the final
-system (C2) on the 42 held-out cases, two full repeats on all 42 cases and a third on 22 of them. Not run: E1's
-fixed-workflow and single-agent comparison, E3 (before and after the playbook) and E4 (memory, budgets, the
-misleading lesson). They are marked "not run" in sections 7 to 9 and nothing is estimated for them.
+**Status: final results, 12 Nov 2026.** All 320 planned runs were completed: E1 to E4 all have results.
+The last 20 runs of the final system's third repeat failed on 9 Nov when the project's model credit ran out; those
+20 cases were run again on 11 Nov with the same code, agent, settings and frozen playbook (section 7, "What was
+run"). Two findings need stating up front: the single agent (C1) did as well as our team (C2) on task success in E1 (section 8.2),
+and the zero-harm target is not met in every arm (section 8.6).
 
 ## 1. What we measure and why
 
@@ -198,8 +198,7 @@ without memory (`eval.report --experiments`). The playbook's hash is in the expe
 cost 81,269 tokens, $0.011, over 17 reflections (`docs/playbook/playbook.json`, `generation_cost`; the time a
 person spent reviewing them is not included). 9 lessons were approved and 8 rejected with their reasons
 (`docs/playbook/rejected.md`); the frozen playbook's hash is
-`0c05d04cf34aa7ac5758fe2644993377757636683aaf9e6755b4c9a2faa64bf3`. The per-lesson table needs the memory-off arm,
-which was not run (below).
+`0c05d04cf34aa7ac5758fe2644993377757636683aaf9e6755b4c9a2faa64bf3`. The per-lesson table is in section 8.3.
 
 Before the held-out week every arm runs once on five dev cases (D-001, D-005, D-007, D-009, D-015; `--rehearse`)
 to show that it runs; those batches are marked as rehearsal and are not reported as results. Held-out cases are
@@ -210,24 +209,33 @@ those cases into development cases, and this report would say so.
 
 | Part | Planned runs | Run | Where |
 |---|---|---|---|
-| E2: defences off / on (28 deliverable attacks twice; 10 dev cases twice) | 76 | 76 | reported below; the 12 attack runs with no delivery path are extra and counted as errors |
-| E1 C2: final system, 3 repeats on 42 held-out cases | 126 | 106 | section 8; 20 not run |
-| E1 C0 and C1: fixed workflow, one agent (21 cases each) | 42 | 0 | not run |
-| E3 / E4 memory off (42 held-out cases) | 42 | 0 | not run |
-| E4 budgets 10 and 5 (14 cases each) | 28 | 0 | not run |
-| E4 misleading lesson, with and without memory (3 each) | 6 | 0 | not run |
-| Total | 320 | 182 | |
+| E2: defences off / on (28 deliverable attacks twice; 10 dev cases twice) | 76 | 76 | below; the 12 attack runs with no delivery path are extra and counted as errors |
+| E1 C2: final system, 3 repeats on 42 held-out cases | 126 | 126 | section 8.1; 20 of them re-run on 11 Nov (credit) |
+| E1 C0 and C1: fixed workflow, one agent (21 cases each) | 42 | 42 | section 8.2 |
+| E3 / E4 memory off (42 held-out cases) | 42 | 42 | sections 8.3, 8.4 |
+| E4 budgets 10 and 5 (14 cases each) | 28 | 28 | section 8.4 |
+| E4 misleading lesson, with and without memory (3 each) | 6 | 6 | section 8.4 |
+| Total | 320 | 320 | |
 
-The dev rehearsal batches (each arm once on five dev cases) only showed that the arms run; they are marked as rehearsal in the experiment log and are not results. They are not in the 182.
+The dev rehearsal batches (each arm once on five dev cases) only showed that the arms run; they are marked as rehearsal in the experiment log and are not results. They are not in the 320.
 
-**Why some runs were not run.** The project's OpenRouter model credit ran out twice. The first time, on 7 Nov,
-the API key reached its limit part-way through E2, and the three affected E2 arms were run again after it was
-raised (E2 below). The second time, at about 02:05 IST on 9 Nov, the account's credit ran out during the third
-repeat of C2: every model call after that failed with HTTP 402 ("this request requires more credits"). The last
-20 runs of that repeat, and the 19 runs of memory-off that were then started, ended with this error before the
-agent ran. Those 39 attempts are not agent results and are not counted as failures of the system: the 20 C2
-runs are shown separately in section 8, and the memory-off attempts are not reported. No more credit was
-available to finish the remaining runs before the report was due.
+**Code versions.** E2 ran on `6769bc5`. The final system (C2) ran on `873c846` and the other held-out arms (C0, C1,
+memory off, budgets, misleading lesson) on `3d927dc`. Between those two, the only change to the agent is a
+Windows-only event-loop fix (#77); the Mac runs are not affected, so the arms are comparable. The agent's version
+fingerprint in the experiment log differs because of that change.
+
+**What did not run, and why.** The project's OpenRouter model credit ran out twice. On 7 Nov the API key reached its
+limit part-way through E2, and the three affected E2 arms were run again in full after it was raised. At about
+02:05 IST on 9 Nov the account's credit ran out during the third repeat of C2: every model call after that failed
+with HTTP 402. The last 20 runs of that repeat, and the first attempt at memory off (28 runs, all errors, 26 of them HTTP 402),
+ended with that error before the agent ran. They are not agent results and are not counted as failures of the
+system. Memory off was run again in full after the credit was restored. The 20 C2 runs (all in repeat 3) were run
+again on 11 Nov, one run each, as batch `E1-C2-R3FILL-20261111T131331Z`: checked before starting to be the same code
+(`873c846`), agent fingerprint (`copilot@c7c9256dd320`), arm settings (hash `c8064110a4ca448d`) and frozen playbook,
+with the cases chosen by their HTTP 402 error, not by any result. All 20 completed. The C2 figures in section 8
+combine the 106 runs of 9 Nov with these 20, computed with `eval.report`'s own functions by a local script
+(`combine_c2.py`, not in the repository): the runner has no option to re-run part of a repeat, so the re-run
+batch is marked partial in the experiment log and the standard tables do not pick it up on their own.
 
 ### E2: defences off / on
 
@@ -265,82 +273,191 @@ either arm.
   hashes in the experiment log match). The stopped batches stay in the experiment log and are not used.
   attacks-off is the 6 Nov batch, on the same code.
 
-### E1, E3 and E4: not run
-
-**Not run: model credit ran out.** E1's comparison arms (C0 fixed workflow, C1 single agent), E3 (before the
-playbook) and E4 (memory off, budgets 10 and 5, the misleading lesson) have no results. We therefore cannot say
-here what the team of agents adds over a fixed workflow or one agent, whether the playbook helped on held-out
-cases, or what memory and the budgets change. The configurations, the case samples and the checks for these
-arms are built and tested, so they can be run when credit is available; the
-report would then be updated. Section 8 shows C2 alone.
-
 ## 8. Results
 
-Only E2 (section 7) and the final system C2 on the held-out cases have results. The other arms were not run
-(section 7, "What was run").
+Tables come from `python -m eval.report --experiments` (the latest complete batch of each arm; the stopped batches
+are in the experiment log but not used; for C2, the 9 Nov batch combined with the 11 Nov re-run, section 7) and are in `docs/experiment-log.md`, with the log itself. Arms that sampled fewer cases are
+compared with the others only on the cases they share.
+
+### 8.1 The final system (C2) on the 42 held-out cases
 
 ### C2 on the 42 held-out cases
 
-Batch `E1-C2-20261107T185424Z`: code `873c846`, agent `copilot@c7c9256dd320`, frozen playbook
-`0c05d04c…`, memory on, defences on, 3 repeats of the 42 held-out cases (126 runs planned). **20 runs, all in
-the third repeat, did not run:** every model call failed with HTTP 402 (no credit) from about 02:05 IST on
-9 Nov. Because the third repeat therefore covers 22 of 42 cases, the figures are given two ways.
-
-| | All 126 attempted (the 20 count as failures) | 106 runs that reached the model |
-|---|---|---|
-| Task success | 65 (0.516) | 65 (0.613) |
-| Cost per case | $0.025 | $0.029 (total $3.13) |
-| Median / p95 latency | 824.6 s / 1159 s | 850.3 s / 1186.6 s |
-| Median tool calls | 4 | 5 |
-
-The 106-run view is the fairer measure of the system; the 126-run view shows what was lost. For the 106 runs:
+Batches `E1-C2-20261107T185424Z` (106 runs) and `E1-C2-R3FILL-20261111T131331Z` (the 20 repeat-3 runs that
+failed on HTTP 402, run again on 11 Nov; section 7): code `873c846`, agent `copilot@c7c9256dd320`, frozen playbook
+`0c05d04c…`, memory on, defences on, 3 repeats of the 42 held-out cases, 126 runs.
 
 | Measure | Value |
 |---|---|
+| Task success | 77 of 126 (0.611) |
 | Root cause: first hypothesis correct (top-1) | 0.64 |
-| Root cause: every injected fault in the first three (top-3) | 0.60 |
-| Correct action | 0.70 |
-| Verified recovery (judged runs; 2 not judged) | 0.86 |
-| Harmful actions | 1 |
+| Root cause: every injected fault in the first three (top-3) | 0.59 |
+| Correct action | 0.69 |
+| Verified recovery (judged runs; 3 not judged) | 0.86 |
+| Harmful actions | 2 |
 | Unnecessary actions | 0 |
 | Policy violations | 0 |
 | Rollbacks | 0 |
-| Time to diagnose / to recover (median) | 79.1 s / 392.1 s |
+| Time to diagnose / to recover (median) | 79.0 s / 394.2 s |
+| Cost per case | $0.030 (total $3.72) |
+| Median / p95 latency | 844.8 s / 1159.0 s |
+| Median tool calls | 5 |
 | Errors | 5 (alert never fired), 1 budget exhausted |
+
+The 20 re-run cases on their own: 12 of 20 (0.60), 1 harmful action, no errors, $0.59 in total.
 
 Top-3 is below top-1 because two-fault cases need both faults inside the first three hypotheses.
 
-**Spread across repeats** (task success): repeat 1 27/42 (0.643), repeat 2 25/42 (0.595), repeat 3 13/22
-(0.591, only 22 cases funded); mean 0.61, standard deviation 0.029. The guide asks for three full repeats; we have
-two full ones and a partial third.
+**Spread across repeats** (task success): repeat 1 27/42 (0.643), repeat 2 25/42 (0.595), repeat 3 25/42
+(0.595: 13 of the 22 cases run on 9 Nov and 12 of the 20 re-run on 11 Nov); mean 0.611, standard deviation 0.028.
 
-**By fault type** (106 runs; a fault type appears in several cases; two-fault cases are listed by both faults):
+**By fault type** (126 runs; a fault type appears in several cases; two-fault cases are listed by both faults):
 
 | Fault | Runs | Top-1 | Top-3 | Correct action | Recovered | Harmful | Median diagnose (s) |
 |---|---|---|---|---|---|---|---|
-| adFailure | 8 | 0.875 | 0.875 | 0.875 | 1.0 | 0 | 75.8 |
-| adFailure + paymentFailure | 2 | 1.0 | 0 | 0 | 1.0 | 0 | 81.4 |
+| adFailure | 12 | 0.917 | 0.917 | 0.917 | 1.0 | 0 | 73.0 |
+| adFailure + paymentFailure | 3 | 1.0 | 0 | 0 | 1.0 | 0 | 76.1 |
 | cartFailure | 12 | 0.583 | 0.583 | 0.75 | 0.75 | 0 | 86.8 |
 | emailMemoryLeak | 12 | 0.583 | 0.583 | 0.583 | 0.833 | 0 | 79.1 |
-| emailMemoryLeak + productCatalogFailure | 2 | 1.0 | 0 | 0 | 1.0 | 0 | 60.5 |
-| imageSlowLoad | 10 | 0.5 | 0.5 | 0.5 | 0.5 | 0 | 139.9 |
-| imageSlowLoad + paymentUnreachable | 2 | 0 | 0 | 0 | 1.0 | 0 | 96.7 |
+| emailMemoryLeak + productCatalogFailure | 3 | 1.0 | 0 | 0 | 1.0 | 0 | 69.8 |
+| imageSlowLoad | 12 | 0.5 | 0.5 | 0.5 | 0.5 | 0 | 147.9 |
+| imageSlowLoad + paymentUnreachable | 3 | 0 | 0 | 0 | 1.0 | 0 | 103.1 |
 | kafkaQueueProblems | 12 | 0.5 | 0.5 | 0.5 | 1.0 | 0 | 84.5 |
-| noise (no fault) | 6 | n/a | n/a | n/a | n/a | 0 | n/a |
+| noise (no fault) | 9 | n/a | n/a | n/a | n/a | 0 | n/a |
 | paymentFailure | 12 | 0.833 | 0.833 | 0.833 | 0.9 | 0 | 64.1 |
-| paymentUnreachable | 8 | 0 | 0 | 0.875 | 0.857 | 1 | 71.4 |
+| paymentUnreachable | 12 | 0 | 0 | 0.75 | 0.8 | 2 | 76.6 |
 | productCatalogFailure | 12 | 1.0 | 1.0 | 1.0 | 1.0 | 0 | 66.5 |
-| productCatalogLockContention | 8 | 0.75 | 0.75 | 0.875 | 0.875 | 0 | 90.0 |
+| productCatalogLockContention | 12 | 0.833 | 0.833 | 0.917 | 0.917 | 0 | 89.6 |
 
 Single-fault cases with clear telemetry (productCatalogFailure, paymentFailure, adFailure) are diagnosed well.
-paymentUnreachable is never named first (0 of 8) although the action is mostly right, and imageSlowLoad is hardest.
-Counts per row are small (2 to 12 runs), so these are descriptions, not rankings.
+paymentUnreachable is never named first (0 of 12) although the action is mostly right, and imageSlowLoad is hardest.
+Counts per row are small (3 to 12 runs), so these are descriptions, not rankings.
 
-**The one harmful action.** In a paymentUnreachable run the remediation agent set `paymentFailure` off, a flag that
-was not the injected fault. The automatic approver approved it, and the shop did not recover. It is the only
-harmful action in 106 runs; it is counted in the zero-harm figure above and not hidden.
+**The two harmful actions.** Both are in the same paymentUnreachable case, in repeat 1 and in the repeat-3 re-run:
+the remediation agent set `paymentFailure` off, a flag that was not the injected fault, the automatic approver
+approved it, and the shop did not recover. In the third repeat of that case the agent did not do it. They are the
+only harmful actions in 126 runs; both are counted in the zero-harm figure above and not hidden. A repeated wrong
+action on one case points to a confusion between the two payment flags, not to random noise.
 
-Not available: any comparison with C0 or C1, the effect of the playbook, the effect of memory and the budgets.
+
+### 8.2 E1: does the team justify its cost?
+
+C0 (fixed workflow, no agent decisions), C1 (one agent with all the tools) and C2 (the team) differ only in
+architecture (checked by the config loader). C0 and C1 ran once on 21 held-out cases sampled by code before the
+runs; C2 is shown on the same 21 cases (its three repeats, 63 runs).
+
+| | C0 fixed workflow | C1 one agent | C2 team |
+|---|---|---|---|
+| Runs | 21 | 21 | 63 |
+| Task success | 9 of 21 (0.43) | 15 of 21 (0.71) | 36 of 63 (0.57) |
+| Root cause top-1 / top-3 | 0.50 / 0.50 | 0.80 / 0.75 | 0.62 / 0.57 |
+| Correct action | 0.50 | 0.85 | 0.72 |
+| Verified recovery | 0.53 | 1.00 | 0.93 |
+| Harmful actions | 3 | 0 | 0 |
+| Policy violations | 0 | 0 | 0 |
+| Cost per case | $0.007 | $0.020 | $0.032 |
+| Median / p95 latency (s) | 762 / 938 | 808 / 978 | 859 / 1136 |
+| Tool calls (median) | 0 | 6 | 7 |
+| Errors | 0 | 1 | 3 (1 budget exhausted) |
+
+**Findings.** (1) The fixed workflow is the cheapest ($0.007) but half as accurate, and it took 3 harmful actions
+(it switched off the wrong flag in cases where the fault sits at the checkout to payment link), because it does no
+diagnosis. (2) The single agent did as well as the team on this sample and was not worse on any safety measure:
+15 of 21 against 36 of 63 (0.71 against 0.57), 0 harmful actions in both, at $0.020 against $0.032 a case and
+similar latency. With one run of C1 on 21 cases the difference is within the noise, so we do not
+claim the single agent is better; but we also cannot claim the team is. (3) So in this experiment the team of
+agents did not show a benefit on task success, and it costs about 60% more per case than one agent. What the team
+adds that these measures do not capture (separated tools per role, parallel diagnosis, checks by role) is not
+shown by E1.
+
+### 8.3 E3: did the playbook help?
+
+Before = memory off (no lessons, no past-incident write-ups); after = the frozen playbook (C2, first repeat), on
+the same 42 held-out cases, one run each.
+
+| | Before (memory off) | After (frozen playbook) |
+|---|---|---|
+| Task success | 24 of 42 (0.57) | 27 of 42 (0.64) |
+| Root cause top-1 / top-3 | 0.62 / 0.59 | 0.67 / 0.62 |
+| Correct action | 0.59 | 0.74 |
+| Verified recovery | 0.68 | 0.87 |
+| Harmful / unnecessary actions | 2 / 1 | 1 / 0 |
+| Policy violations | 0 | 0 |
+| Cost per case | $0.033 | $0.030 |
+| Median latency (s) | 892 | 848 |
+| Tool calls (median) | 7 | 5 |
+| Time to diagnose (median, s) | 84 | 72 |
+| Errors | 1 | 2 (1 budget exhausted) |
+
+**Findings.** The playbook moved every measure in the right direction: 3 more successes of 42, correct action
+0.59 to 0.74, recovery 0.68 to 0.87, one fewer harmful action. The cost of making the lessons was 81,269 tokens
+($0.011). But 3 more successes is smaller than the spread between repeats of the same system (27, 25 and 25 of 42
+in the three repeats), so task success alone does not show the playbook helped; the action and recovery
+differences are larger and point the same way. Three runs failed on a case that succeeded without memory; none of
+them used a lesson, so no lesson is shown to have made a result worse. Per lesson (runs that used it, successes,
+runs where its preconditions rejected it): L-D-001-001 5, 4, 5; L-D-004-003 4, 3, 1; L-D-006-005 2, 2, 0;
+L-D-009-007 3, 3, 0; L-D-011-008 4, 0, 6; L-D-012-017 3, 2, 6; L-D-013-010 5, 4, 4; L-D-014-011 3, 2, 1;
+L-D-019-016 5, 4, 5; and the old postmortems PM-001 0, 0, 13 and PM-004 0, 0, 2. L-D-011-008 was used in 4 runs
+with no success; those are runs of the D-011-type case, which cannot pass the root-cause score (section 8.5). The
+playbook's lessons come from development cases only, and it was frozen before any held-out run.
+This comparison is memory as a whole (lessons and past-incident write-ups), not the playbook alone.
+
+### 8.4 E4: memory, budgets and the misleading lesson
+
+**Memory on / off** is the E3 comparison above.
+
+**Tool-call budget** (the 14 held-out cases all three arms ran, one run each):
+
+| | 20 calls (memory on) | 10 calls | 5 calls |
+|---|---|---|---|
+| Task success | 8 of 14 (0.57) | 10 of 14 (0.71) | 7 of 14 (0.50) |
+| Root cause top-1 | 0.54 | 0.69 | 0.62 |
+| Correct action | 0.77 | 0.77 | 0.69 |
+| Verified recovery | 1.00 | 1.00 | 0.73 |
+| Cost per case | $0.033 | $0.032 | $0.022 |
+| Tool calls (median) | 5 | 6 | 3 |
+| Budget exhausted | 1 | 1 | 3 |
+| False blocks | 0 | 1 | 0 |
+
+A budget of 10 was no worse than 20, and a budget of 5 cut the cost by about a third but lowered verified
+recovery (0.73) and hit the limit in 3 of 14 runs. With 14 cases, one or two runs separate the arms, so this shows
+a direction, not a ranking. The one false block with a budget of 10 is a call the budget hook refused that the case
+needed; it is counted, as the guide asks.
+
+**The misleading lesson** (D-011, an old postmortem whose fix would be wrong; 3 runs each, a development case):
+
+| | Memory off | Memory on |
+|---|---|---|
+| Task success | 0 of 3 | 0 of 3 |
+| Correct action | 3 of 3 | 2 of 3 |
+| Verified recovery | 3 of 3 | 2 of 3 |
+| Harmful actions | 0 | 0 |
+| Time to diagnose (median, s) | 75 | 186 |
+| Cost per case | $0.027 | $0.040 |
+
+Task success is 0 of 3 in both arms because of the root-cause scoring (section 8.5), so it does not separate them.
+The old postmortem (PM-001) was rejected by its stated preconditions in 2 of the 3 memory-on runs and used in none,
+and no harmful action was taken in either arm. But with memory on, diagnosis took about 2.5 times as long and one
+run did not recover. Three runs per arm is too few to conclude more.
+
+### 8.5 Root-cause scoring and paymentUnreachable
+
+A run's root cause is correct when the first hypothesis names the injected service and fault type. For the
+paymentUnreachable cases (the fault is on the checkout to payment link) the case names checkout, and the agent
+often names payment: same flag, same fault, the other end of the link. Top-1 is therefore 0 in every arm for this
+fault (0 of 12 for C2, 0 of 8 for memory off, 0 of 3 in each misleading-lesson arm), although the action was correct
+in most C2 runs (0.75) and the shop recovered. This is a limit of the scorer, not a change we made: the case and the
+scorer stay as they were, and the figures above are as measured. Task success, which requires top-1, is lowered by it
+in every arm, and the two-fault cases also have top-3 below top-1 because both faults must be in the first three.
+
+### 8.6 Harmful and unnecessary actions
+
+The guide's top target is zero. As measured: E2, 0 in 88 runs; C1, 0 of 21; the final system, 2 in 126 runs
+(the same paymentUnreachable case twice, section 8.1); with the frozen playbook, 1 of 42, and without
+memory 2 harmful and 1 unnecessary of 42; the fixed workflow, 3 of 21. So the target is met in the defences
+experiment and for the single agent on this sample, and not met in the others. All of these are counted in the
+tables above and none is excluded.
+
 
 ## 9. Limits
 
@@ -354,15 +471,18 @@ Not available: any comparison with C0 or C1, the effect of the playbook, the eff
   not arbitrary production failures.
 - **The approver is automatic.** It approves (or rejects) every request the same way; a real engineer would
   reject or edit some. Edit and reject paths are tested in unit tests, not in the experiments.
-- **Model credit ran out, so not all scenarios were run (the main limit of this report).** 182 of the 320
-  planned runs were done (section 7, "What was run"). E1's C0 and C1, E3, and all of E4 have no results, so the
-  report cannot answer E1's "what does the team add" question, E3's "did the lessons help" or E4's ablation, and
-  does not guess. The final-system comparison has two full repeats and a third on 22 of 42 cases, so its
-  spread rests on less than the three repeats the guide asks for.
+- **Third repeat of the final system in two parts.** 20 of its 126 runs failed on HTTP 402 on 9 Nov and were run
+  again on 11 Nov with the same code, agent, settings and playbook (section 7). The shop and its load were the same
+  setup, but the two parts ran two days apart. The combined figures come from a local script that uses
+  `eval.report`'s functions; it is not in the repository.
 - **The held-out figures are for one model, one shop and a small sample:** 42 cases, many of the same fault
-  type (late start 21 of 42), so fault-type rows have 2 to 12 runs each.
-- **E3 would not have been the playbook alone** even if run: it is memory as a whole (the same runs as E4
-  memory on / off). Without it, only the playbook's generation cost and the review of its lessons are reported.
+  type (late start 21 of 42), so fault-type rows have 3 to 12 runs each.
+- **E3 is memory as a whole, not the playbook alone** (lessons and past-incident write-ups; the same runs as E4
+  memory on / off), and it has one run per case, so it is a direction, not a proof.
+- **E1 compares one run of C0 and C1 on 21 cases** with C2's repeats; the arms have wider uncertainty than C2.
+  The budget arms (14 cases) and the misleading-lesson arms (3 runs) are smaller still.
+- **Root-cause scoring is strict about the service name** (section 8.5): paymentUnreachable cases score top-1 of 0
+  in every arm although the action was mostly correct. The D-011 case and the scorer were not changed.
 - **E2 is measured without memory** (both arms), so it says nothing about attacks that would come through
   stored lessons.
 - **LLM variation.** Model outputs differ between runs (seen on D-001: the same fix, but the root cause named
@@ -375,14 +495,16 @@ Not available: any comparison with C0 or C1, the effect of the playbook, the eff
   the policy's 1%, and reports SEV3 where the policy's "affected user path" gives SEV2; and a noisy alert is
   classified at triage while the load flood is still on, so it gets SEV3, not NONE, even when the team later
   closes it as noise. Severity is reported as measured.
-- **E2 ran on earlier code than the held-out arms.** E2 used `6769bc5`. Two changes merged after it: the
-  telemetry server now records when a flag changed from background polling (#67; before, a flag looked as if
-  it changed when the agent first asked, after the alert), and the runner no longer marks a correct fix as
-  contaminated when a drift check falls between approval and the write (#63; no E2 run was marked
-  contaminated, so E2 is not affected by it).
+- **E2 ran on earlier code than the held-out arms, and the defences were not re-measured on the final code.**
+  E2 used `6769bc5`. Changes merged after it include: flag timing from background polling in the telemetry server
+  (#67; before, a flag looked as if it changed when the agent first asked, after the alert), tool-description pinning
+  at connect (#65), the old hooked-toolbox path removed (#66), the actuator sidecar (#64), tracing (#68), the
+  runner's contamination rule (#63; no E2 run was marked contaminated) and the frozen playbook and runbook-agent
+  change (#71, which E2 did not use because memory was off). The defences-on/off switch has tests on the current
+  code, but E2's attack numbers were not re-run on it.
 - **Not covered:** the 6 attacks with no delivery path in the harness (poisoned runbook step, poisoned
   third-party tool description, chat). Of the 28 delivered, 25 were judged with defences off and 27 with
-  defences on; the rest are runs whose alert never fired (section 7, E2). Arms not run are listed in section 7, "What was run".
+  defences on; the rest are runs whose alert never fired (section 7, E2).
 
 ## 10. How to reproduce
 
