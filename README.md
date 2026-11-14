@@ -22,7 +22,7 @@ Everything the capstone brief asks for, in one place:
 | Contribution log | [docs/contribution-log.md](docs/contribution-log.md) |
 | Slides | [PDF](docs/oncall-copilot-slides.pdf) · [PPTX with speaker notes](docs/oncall-copilot-slides.pptx) |
 | Backup demo recording (about 20 min) | [Release demo-2026-11-12](https://github.com/bhavikbpatel/OnCallCopilotG20/releases/tag/demo-2026-11-12): scene 1 at 0:00, scene 2 at 5:15, scene 3 at 8:41 |
-| Demo recording script | [demo-recording-script.pdf](https://github.com/bhavikbpatel/OnCallCopilotG20/releases/download/demo-2026-11-12/demo-recording-script.pdf) (Asiya, 9 Nov), in the same release |
+| Demo recording script | [demo-recording-script.pdf](https://github.com/bhavikbpatel/OnCallCopilotG20/releases/download/demo-2026-11-12/demo-recording-script.pdf) |
 
 No API keys or private data are in the repo: secrets live in a local `.env` (see [Configure secrets](#configure-secrets)).
 
